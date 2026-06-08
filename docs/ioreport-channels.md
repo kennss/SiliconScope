@@ -1,51 +1,69 @@
-# 검증된 IOReport 채널 맵 (M1 Max, macOS 26.5)
+# Verified IOReport channel map (M1 Max, macOS 26.5)
 
-> ktop이 사용하는 IOReport 채널의 실측 위치. 칩마다 다를 수 있으니 다른 모델에서 재검증 필요.
-> 링크는 `-undefined dynamic_lookup` (CLAUDE.md §5). 전부 sudo 불필요.
+> The real, measured locations of the channels WhisPlayInfo reads. These can differ per
+> chip — re-verify on other models. IOReport links via `-undefined dynamic_lookup`
+> (symbols resolved at runtime from the dyld shared cache). Everything here is sudoless.
 
-## 전력 (Power) — group `Energy Model`, format Simple, 단위 mJ
-| 채널 | 의미 | 비고 |
+## Power — group `Energy Model`, format Simple, unit mJ
+
+| Channel | Meaning | Notes |
 |---|---|---|
-| `CPU Energy` | CPU 총 전력 | = EACC + PACC 합 |
-| `EACC_CPU` | E 클러스터 | suffix `_CPU` = 클러스터 합 |
-| `PACC0_CPU`, `PACC1_CPU` | P 클러스터 0/1 | M1 Max는 P클러스터 2개 |
-| `GPU0`, `GPU SRAM0` | GPU | `GPU Energy`는 단위 다름(~nJ) → 제외 |
-| `ANE0` (`ANE1`) | Neural Engine | 유휴 시 0 (정상) |
-| `DRAM0` | 메모리 | |
+| `CPU Energy` | total CPU power | = sum of EACC + PACC |
+| `EACC_CPU` | E cluster | suffix `_CPU` = cluster total |
+| `PACC0_CPU`, `PACC1_CPU` | P clusters 0 / 1 | M1 Max has two P clusters |
+| `GPU0`, `GPU SRAM0` | GPU | `GPU Energy` uses a different unit (~nJ) → excluded |
+| `ANE0` (`ANE1`) | Neural Engine | 0 when idle (expected) |
+| `DRAM0` | memory | |
 
-W = (mJ delta / interval_s) / 1000
+`Watts = (mJ delta / interval_s) / 1000`
 
-## CPU 사용률/주파수 — group `CPU Stats`, subgroup `CPU Complex Performance States`, format State
-| 채널 | 클러스터 |
+## CPU frequency — group `CPU Stats`, subgroup `CPU Complex Performance States`, format State
+
+| Channel | Cluster |
 |---|---|
 | `ECPU` | E |
-| `PCPU`, `PCPU1` | P (2 클러스터) |
-- state[0] = `IDLE`; usage = (total − IDLE) / total
-- 활성 state(`V0P4`…`V14P0`) residency × DVFS MHz 가중 = 평균 주파수
-- `*CPM` 변종은 IDLE=0(fabric) → 제외
+| `PCPU`, `PCPU1` | P (two clusters) |
 
-## DVFS 주파수 테이블 — IORegistry `AppleARMIODevice`
-| key | 클러스터 | 실측(M1 Max) |
+- state[0] = `IDLE`; active-state (`V0P4`…`V14P0`) residency × DVFS MHz, weighted = average frequency.
+- The `*CPM` variants have IDLE=0 (fabric) → excluded.
+- **CPU usage** is *not* taken from this residency (cluster residency over-counts). Usage
+  comes from `host_processor_info` ticks (busy/total per core, averaged per cluster) to
+  match Activity Monitor / iStat.
+
+## DVFS frequency table — IORegistry `AppleARMIODevice`
+
+| Key | Cluster | Measured (M1 Max) |
 |---|---|---|
-| `voltage-states1-sram` | E | 600…2064 MHz (5단) |
-| `voltage-states5-sram` | P | 600…3228 MHz (15단) |
-| `voltage-states9` | GPU | — |
-- (freqHz, voltage) UInt32 쌍 배열, freqHz/1e6 = MHz, 0 제외
+| `voltage-states1-sram` | E | 600…2064 MHz (5 steps) |
+| `voltage-states5-sram` | P | 600…3228 MHz (15 steps) |
+| `voltage-states9` | GPU | up to ~1296 MHz |
 
-## 메모리 대역폭 — group `AMC Stats`, subgroup `Perf Counters`, format Simple, 단위 bytes
-| 채널 패턴 | 분류 |
+- Array of (freqHz, voltage) UInt32 pairs; `freqHz / 1e6 = MHz`; zero entries skipped.
+
+## Memory bandwidth — group `AMC Stats`, subgroup `Perf Counters`, format Simple, unit bytes
+
+| Channel pattern | Category |
 |---|---|
 | `ECPU DCS RD/WR`, `PCPU0/1 DCS RD/WR` | CPU |
 | `GFX DCS RD/WR` | GPU |
-| `DISP/ISP/ANS/PRORES/STRM CODEC/PCIE LN DCS …` | 기타/미디어 |
+| `PRORES / STRM CODEC DCS …` | Media Engine |
+| `DISP / ISP / ANS / PCIE LN DCS …` | Other |
 
-GB/s = (bytes / interval_s) / 1e9
+`GB/s = (bytes / interval_s) / 1e9`
 
-## 비-IOReport 소스
-- 토폴로지: sysctl `hw.perflevel0`(=Performance/P), `hw.perflevel1`(=Efficiency/E)
-- 메모리: `host_statistics64(HOST_VM_INFO64)` + sysctl `hw.memsize`, `vm.swapusage`
-- 팬: SMC `FNum`, `F{i}Ac` (AppleSMC, IOConnectCallStructMethod kernel index 2)
-- thermal pressure: `ProcessInfo.thermalState`
-- 온도: IOHIDEventSystemClient (PrimaryUsagePage 0xff00, PrimaryUsage 5, event type 15, field=type<<16).
-  센서명이 cryptic(`PMU tdie*/tdev*/tcal/TP*`)해 CPU/GPU 분리 불가 → die 평균/최고로 집계, battery(gas gauge) 제외.
-  `CIOReport.ktopCopyTemperatureSensors()` C 헬퍼 사용 (Swift에선 `Unmanaged` → `takeRetainedValue`).
+## Non-IOReport sources
+
+- **Topology:** sysctl `hw.perflevel0` (= Performance / P), `hw.perflevel1` (= Efficiency / E).
+- **CPU usage:** `host_processor_info` (PROCESSOR_CPU_LOAD_INFO) ticks. E-cores are the
+  first logical CPUs (indices `0..<eCoreCount`), P-cores the rest.
+- **Memory:** `host_statistics64(HOST_VM_INFO64)` + sysctl `hw.memsize`, `vm.swapusage`;
+  pressure level from sysctl `kern.memorystatus_vm_pressure_level` (1 normal / 2 elevated / 4 critical).
+- **Fans:** SMC `FNum`, `F{i}Ac` (AppleSMC, `IOConnectCallStructMethod` kernel index 2, `flt` type).
+- **Temperatures:** SMC `flt` keys by prefix — `Tp*` = CPU cores, `Tg*` = GPU, `Tm*` = Memory,
+  `TB*` = Battery; `tcal` (calibration) excluded. Apple Silicon exposes ~3 sensors per CPU core,
+  folded to one reading per core (hottest of the group).
+- **Thermal pressure:** `ProcessInfo.thermalState`.
+- **Network:** `getifaddrs` (AF_LINK `ifi_ibytes` / `ifi_obytes`).
+- **Disk:** IOBlockStorageDriver `Statistics` (`Bytes (Read)` / `Bytes (Write)`) + volume capacity.
+- **Battery:** `IOPSCopyPowerSourcesInfo`.
+- **Processes:** `libproc` (`proc_listallpids`, `proc_pidinfo`, `proc_name`).
