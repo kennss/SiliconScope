@@ -1,13 +1,15 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-12
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
 //             (btop-style vertical split), a Sensors accordion, and the process table.
 //  Notes:     No separate Power/Thermal cards — power lives in the header, temperature
 //             in the Sensors card. Combined cards split left/right with a Divider.
+//             allWarnings() adds context-aware banners (bandwidth-bound, GPU throttle)
+//             on top of the snapshot's own data-level warnings.
 //
 import SwiftUI
 import KtopCore
@@ -23,6 +25,15 @@ struct DashboardView: View {
                 if !warnings.isEmpty { WarningBanner(warnings: warnings) }
 
                 HeaderView(topology: monitor.topology, power: snapshot.power, battery: snapshot.battery)
+
+                AIWorkloadCard(bottleneck: monitor.bottleneck,
+                               gpu: snapshot.gpu,
+                               bandwidth: snapshot.bandwidth,
+                               ceilingGBs: monitor.bandwidthCeilingGBs,
+                               chipName: monitor.topology?.chipName ?? "",
+                               engineHint: snapshot.likelyAIEngine,
+                               clockDropFraction: monitor.gpuClockDropFraction)
+                    .frame(height: 96)
 
                 HStack(spacing: 8) {
                     CPUCard(cpu: snapshot.cpu, topology: monitor.topology, history: monitor.history.pCPU)
@@ -55,10 +66,14 @@ struct DashboardView: View {
     }
 
     private func allWarnings(_ s: SystemSnapshot) -> [SystemSnapshot.Warning] {
+        // Bandwidth-bound is no longer a banner alert — it's the AI Workload verdict
+        // (AIWorkloadCard). The banner keeps only the data-level + throttle alarms.
         var warnings = s.warnings
-        if s.gpu.usage > 0.5 && s.bandwidth.totalGBs > 0.8 * monitor.bandwidthPeakGBs {
-            warnings.append(.init(level: .warning,
-                                  message: "Bandwidth-bound — LLM token throughput limited"))
+        if monitor.gpuThrottling {
+            let level: SystemSnapshot.Warning.Level = s.thermal.pressure == .critical ? .critical : .warning
+            warnings.append(.init(level: level,
+                                  message: String(format: "GPU throttling — clock %.0f MHz (-%.0f%% vs peak)",
+                                                   s.gpu.freqMHz, monitor.gpuClockDropFraction * 100)))
         }
         return warnings
     }
@@ -117,6 +132,61 @@ private struct WarningBanner: View {
                             in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8)
                     .strokeBorder((critical ? Color.red : Color.orange).opacity(0.4), lineWidth: 1))
+            }
+        }
+    }
+}
+
+// MARK: - AI Workload (hero)
+
+/// The hero card: the dominant bottleneck verdict plus a "% of ceiling" bandwidth gauge.
+/// "Where does the AI workload actually run, and what limits it right now?"
+private struct AIWorkloadCard: View {
+    let bottleneck: Bottleneck
+    let gpu: GPUSample
+    let bandwidth: BandwidthSample
+    let ceilingGBs: Double
+    let chipName: String
+    let engineHint: String
+    let clockDropFraction: Double
+
+    private var bwFraction: Double { ceilingGBs > 0 ? min(1, bandwidth.totalGBs / ceilingGBs) : 0 }
+    private var shortChip: String { chipName.replacingOccurrences(of: "Apple ", with: "") }
+
+    var body: some View {
+        Card(title: "AI Workload") {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Circle().fill(bottleneck.color).frame(width: 9, height: 9)
+                    Text(bottleneck.label)
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(bottleneck.color)
+                    Text(bottleneck.detail)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(Theme.dim)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                Bar(label: "Mem BW % of ceiling",
+                    value: bwFraction,
+                    detail: String(format: "%.0f%% · %.0f / %.0f GB/s · %@",
+                                   bwFraction * 100, bandwidth.totalGBs, ceilingGBs, shortChip))
+                HStack(spacing: 6) {
+                    Text(String(format: "GPU %.0f%%", gpu.usagePercent))
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.text)
+                    // Suppress the engine hint when idle — claiming "LLM-style" on an
+                    // idle GPU contradicts the verdict.
+                    if bottleneck != .idle {
+                        Text("·").font(.system(size: 10.5)).foregroundStyle(Theme.faint)
+                        Text(bottleneck == .thermalThrottled
+                             ? String(format: "GPU clock -%.0f%% vs peak", clockDropFraction * 100)
+                             : engineHint)
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundStyle(Theme.dim)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
         }
     }

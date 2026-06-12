@@ -29,16 +29,20 @@ Prefer to build it yourself? See [Build & run](#build--run).
 
 ## Highlights
 
+- **AI Workload view** — a bottleneck classifier (*bandwidth-bound* / *compute-bound* /
+  *thermal-throttled* / *memory-pressured*) with a per-chip **"% of ceiling"** bandwidth
+  gauge — answers "what's limiting my local LLM right now?"
 - **E-core / P-core split** — per-cluster utilization + real DVFS frequency
 - **GPU** — utilization, power, frequency
 - **ANE & Media Engine** — Neural-Engine power and media-codec bandwidth (the differentiators)
 - **Memory bandwidth** — CPU / GPU / Media / total GB/s (the local-LLM bottleneck signal)
 - **Memory** — Wired / Active / Compressed / Free stacked bar + macOS **memory-pressure** alerts
 - **Network** ↑/↓ and **Disk** read/write + free space, with live graphs
-- **Temperatures** — grouped CPU / GPU / Memory / Battery (SMC), fan RPM, thermal pressure
+- **Temperatures** — grouped CPU / GPU / Memory / Battery (SMC), fan RPM, thermal pressure,
+  and **GPU throttle detection** (clock held below its rolling peak under pressure)
 - **Power** — per-domain CPU / GPU / ANE / DRAM / SoC, plus battery %
 - **Processes** — sort, filter, kill (in-card scroll)
-- **No `sudo` required.** Menu-bar mode **and** full dashboard.
+- **No `sudo` required.** Full dashboard **and** menu-bar mode (with a compact GPU readout).
 
 ## Build & run
 

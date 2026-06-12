@@ -1,16 +1,18 @@
 //
 //  File:      Theme.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-12
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline).
 //             Restrained instrument-panel look: one accent, muted heat colors, dense
 //             monospaced typography. All in-app text is English.
 //  Notes:     Theme.heat(fraction) maps 0...1 load to green/amber/red. Cards are
 //             neutral (no per-card colors) so data — not chrome — carries the eye.
+//             Bottleneck.color lives here (UI layer) so KtopCore stays SwiftUI-free.
 //
 import SwiftUI
 import Charts
+import KtopCore
 
 enum Theme {
     static let bg     = Color(red: 0.051, green: 0.055, blue: 0.067)
@@ -26,6 +28,21 @@ enum Theme {
         case ..<0.55: return Color(red: 0.34, green: 0.74, blue: 0.49)
         case ..<0.82: return Color(red: 0.87, green: 0.66, blue: 0.28)
         default:      return Color(red: 0.88, green: 0.37, blue: 0.37)
+        }
+    }
+}
+
+extension Bottleneck {
+    /// UI accent for each verdict: neutral when fine, amber/green for the workload
+    /// profiles, red for the two problem states. Kept out of KtopCore (no SwiftUI there).
+    var color: Color {
+        switch self {
+        case .idle:             return Theme.faint
+        case .gpuActive:        return Theme.accent
+        case .computeBound:     return Theme.heat(0.4)   // GPU well-utilized — healthy
+        case .bandwidthBound:   return Theme.heat(0.7)   // a known limiter, expected
+        case .thermalThrottled: return Theme.heat(1)
+        case .memoryPressured:  return Theme.heat(1)
         }
     }
 }

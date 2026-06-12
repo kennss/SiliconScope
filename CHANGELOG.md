@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+AI-workload monitoring — the next-version hero feature.
+
+- **AI Workload view** — a bottleneck classifier with a single verdict:
+  bandwidth-bound / compute-bound / thermal-throttled / memory-pressured (plus idle /
+  GPU-active). Front-and-center hero card on the dashboard; mirrored as a `Workload:`
+  line in the menu bar.
+- **Per-chip memory-bandwidth ceiling table** + a "% of ceiling" gauge (M1–M4; Max bins
+  split by P-core count; self-corrects to the observed peak for chips outside the table).
+- **GPU throttle detector** — flags the GPU clock held below its slowly-decaying rolling
+  peak while thermal pressure has risen (warning banner + menu-bar flame).
+- **Compact GPU menu-bar mode** — single line: GPU% / GPU W / GPU GB/s / die °C.
+
 ## v1.0.2 — 2026-06-09
 
 Crash fix: launch failure on macOS 27.

@@ -44,7 +44,7 @@ Tracing today's growing workloads makes the differentiator clear:
 | Processes (top/tree/kill) | ✓✓ | ✗ | top apps | ✓ |
 | Disk / Network | ✓ | ✗ | ✓✓ | ✓ |
 | Battery | basic | ✗ | ✓✓ | ✓ |
-| Alerts | ✗ | ✗ | ✓ | ✓ (memory pressure, bandwidth-bound) |
+| Alerts | ✗ | ✗ | ✓ | ✓✓ (bottleneck classifier, GPU throttle, memory pressure) |
 
 **Read:** NeoAsitop = strong chip metrics (plain UI) / iStat = broad (weak on AI; no ANE/bandwidth) / btop = strong processes & UX (thin on Apple Silicon).
 → **WhisPlayInfo = NeoAsitop's chip metrics + iStat's memory-pressure/thermal breadth + btop's process/UX**, plus an AI-workload lens.
@@ -89,24 +89,29 @@ All data sources are sudoless (see `ioreport-channels.md`).
 
 ---
 
-## 3. "AI Workload" view (roadmap — see NEXT_VERSION.md)
+## 3. "AI Workload" view (shipped)
 
-A dedicated, curated panel that answers "why is my AI workload slow?" at a glance:
+A curated hero card that answers "where does my AI workload run, and what limits it
+right now?" at a glance. A single **bottleneck classifier** verdict drives it:
 
 ```
-┌─ AI Workload ──────────────────────────────┐
-│ GPU    ███████████░  88%   24.3 W           │
-│ ANE    ░░░░░░░░░░░░   2%  (est.)  idle       │
-│ Mem BW ██████████░░  142 / 160 GB/s         │
-│ Mem    wired 38.2 GB · pressure ●elevated   │
-│ Power  package 41 W                          │
-│ Thermal ● nominal (no throttle)             │
-│ ─ Likely engine: GPU/Metal (LLM-style)  ─   │
-└─────────────────────────────────────────────┘
+┌─ AI Workload ─────────────────────────────────────────────────┐
+│ ● Bandwidth-bound   Memory BW near ceiling, GPU not maxed      │
+│ Mem BW % of ceiling ████████░░ 78% · 312 / 400 GB/s · M3 Max   │
+│ GPU 64% · GPU/Metal (LLM-style)                                │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-- "Likely engine": GPU high / ANE low → `GPU/Metal (LLM-style)`; ANE high → `ANE (CoreML-style)`.
-- Bandwidth near the chip ceiling → a `Bandwidth-bound` warning (LLM token-generation bottleneck).
+- **Verdict** (precedence: memory > thermal > workload profile):
+  - *Memory-pressured* — unified memory full (macOS pressure critical).
+  - *Thermal-throttled* — GPU clock held below its rolling peak while pressure rises.
+  - *Bandwidth-bound* — BW near the chip ceiling, GPU not maxed (LLM token generation).
+  - *Compute-bound* — GPU saturated, BW has headroom (prompt processing).
+  - *GPU-active* / *Idle* — otherwise.
+- **"% of ceiling"** uses a per-chip unified-memory-bandwidth table (M1–M4, Max bins
+  split by P-core count), raised to the observed peak so it self-corrects and still
+  works on chips not in the table.
+- **Likely engine**: GPU high / ANE low → `GPU/Metal (LLM-style)`; ANE high → `ANE (CoreML-style)`.
 
 This interpretation layer — not the raw numbers — is what sets WhisPlayInfo apart from
 general-purpose monitors.
