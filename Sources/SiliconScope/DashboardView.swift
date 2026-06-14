@@ -36,12 +36,13 @@ struct DashboardView: View {
                     .frame(height: 96)
 
                 AIRuntimeCard(runtime: snapshot.aiRuntime,
+                              api: snapshot.runtimeAPI,
                               budget: snapshot.memoryBudget,
                               memoryRisk: monitor.memoryRisk,
                               cpuOffloadLikely: snapshot.aiCPUOffloadLikely,
                               likelyEngine: snapshot.likelyAIEngine,
                               gpuSystemPercent: snapshot.gpu.usagePercent)
-                    .frame(height: 88)
+                    .frame(height: 112)
 
                 HStack(spacing: 8) {
                     CPUCard(cpu: snapshot.cpu, topology: monitor.topology, history: monitor.history.pCPU)
@@ -206,6 +207,7 @@ private struct AIWorkloadCard: View {
 /// model/tokens-per-sec lines arrive with the opt-in runtime API.
 private struct AIRuntimeCard: View {
     let runtime: AIRuntimeSample
+    let api: RuntimeAPISample
     let budget: MemoryBudget
     let memoryRisk: MemoryBudget.Risk
     let cpuOffloadLikely: Bool
@@ -216,9 +218,10 @@ private struct AIRuntimeCard: View {
 
     var body: some View {
         Card(title: "AI Runtime") {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 header
                 if runtime.isActive { engineLine }
+                modelLine
                 budgetLine
             }
         }
@@ -249,20 +252,77 @@ private struct AIRuntimeCard: View {
         }
     }
 
-    // GPU is system-wide (per-process GPU is sudoless-impossible — labelled, never faked).
-    private var engineLine: some View {
-        HStack(spacing: 6) {
-            Text(String(format: "GPU %.0f%% (system)", gpuSystemPercent))
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.text)
-            Text("·").font(.system(size: 10.5)).foregroundStyle(Theme.faint)
-            Text(likelyEngine).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
-            if cpuOffloadLikely {
-                Text("· likely CPU offload (est.)")
-                    .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.heat(0.7))
+    // Prefer ③'s authoritative processor split; otherwise the chip-level system line
+    // (per-process GPU is sudoless-impossible — labelled "(system)", never faked).
+    @ViewBuilder private var engineLine: some View {
+        if api.isReachable, let split = api.primaryModel?.processorLabel {
+            HStack(spacing: 6) {
+                Text(split).font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.text)
+                Text("· runtime").font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                Spacer(minLength: 0)
             }
+        } else {
+            HStack(spacing: 6) {
+                Text(String(format: "GPU %.0f%% (system)", gpuSystemPercent))
+                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.text)
+                Text("·").font(.system(size: 10.5)).foregroundStyle(Theme.faint)
+                Text(likelyEngine).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                if cpuOffloadLikely {
+                    Text("· likely CPU offload (est.)")
+                        .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.heat(0.7))
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // ③ model line: authoritative loaded-model info + tokens/sec, or a status hint.
+    @ViewBuilder private var modelLine: some View {
+        switch api.status {
+        case .ok:
+            if let m = api.primaryModel {
+                HStack(spacing: 6) {
+                    Image(systemName: "cube.fill").font(.system(size: 9.5)).foregroundStyle(Theme.accent)
+                    Text(m.name).font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
+                    Text(modelDetail(m)).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+                    if let tps = api.tokensPerSec {
+                        Text(String(format: "· %.0f tok/s", tps))
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.heat(0.4))
+                    }
+                    Spacer(minLength: 0)
+                }
+            } else {
+                runtimeNote("runtime running — no model loaded")
+            }
+        case .runningNoServer: runtimeNote("runtime running — start its local server for model + tok/s")
+        case .apiNotApplicable: runtimeNote("CLI runtime — no local API")
+        case .unreachable:      runtimeNote("runtime API unreachable")
+        case .disabled:
+            if runtime.isActive {
+                runtimeNote("Enable “Connect to local AI runtimes” in Settings for model + tok/s")
+            }
+        }
+    }
+
+    private func runtimeNote(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle").font(.system(size: 9.5)).foregroundStyle(Theme.faint)
+            Text(text).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim).lineLimit(1)
             Spacer(minLength: 0)
         }
+    }
+
+    private func modelDetail(_ m: RuntimeModelInfo) -> String {
+        var parts: [String] = []
+        if let p = m.parameterSize { parts.append(p) }
+        if let q = m.quantization { parts.append(q) }
+        if m.sizeBytes > 0 { parts.append(String(format: "%.1f GB", m.sizeGB)) }
+        if let ctx = m.contextLength, ctx > 0 { parts.append("\(ctx / 1024)k ctx") }
+        return parts.isEmpty ? "" : "· " + parts.joined(separator: " · ")
     }
 
     private var budgetLine: some View {

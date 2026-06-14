@@ -116,6 +116,13 @@ final class SiliconScopeMonitor {
     private(set) var memoryCompressionRate: Double = 0   // compressions pages/sec
     private static let compressionRatePagesPerSec = 200.0
 
+    // Opt-in runtime API (③): polled on its own cadence behind UserDefaults
+    // "aiRuntimeAPIEnabled". Default OFF — the task is never spawned until enabled.
+    private let apiClient = RuntimeAPIClient()
+    private var apiPollTask: Task<Void, Never>?
+    private(set) var runtimeAPI = RuntimeAPISample()
+    private static let apiCadenceSeconds = 2.5
+
     /// Refined memory risk: the static budget baseline plus live swap/compression rates.
     /// swapping ⇐ active swap I/O (or the static baseline); tight ⇐ compression rising
     /// while headroom is nearly gone — catches the collapse before static used% would.
@@ -138,10 +145,18 @@ final class SiliconScopeMonitor {
         let sampler = sampler
         loopTask = Task { [weak self] in
             while !Task.isCancelled {
-                let snap = await Task.detached(priority: .utility) {
+                let sampled = await Task.detached(priority: .utility) {
                     sampler.sample(interval: 0.2)
                 }.value
                 guard let self else { return }
+                // Opt-in runtime API: pull the key each tick and lazily start/stop polling.
+                if UserDefaults.standard.bool(forKey: "aiRuntimeAPIEnabled") {
+                    self.startAPIPollingIfNeeded()
+                } else {
+                    self.stopAPIPolling()
+                }
+                var snap = sampled
+                snap.runtimeAPI = self.effectiveRuntimeAPI()    // C4 staleness applied
                 self.snapshot = snap
                 self.bandwidthPeakGBs = max(self.bandwidthPeakGBs, snap.bandwidth.totalGBs)
                 self.mediaPeakGBs = max(self.mediaPeakGBs, snap.bandwidth.mediaGBs)
@@ -158,10 +173,68 @@ final class SiliconScopeMonitor {
     func stop() {
         loopTask?.cancel()
         loopTask = nil
+        stopAPIPolling()
         // C5: drop rate state so a later restart doesn't diff across the pause.
         previousMem = nil
         memorySwapRate = 0
         memoryCompressionRate = 0
+    }
+
+    // MARK: - Opt-in runtime API polling
+
+    /// C4: a poll result older than 3× cadence is downgraded to .unreachable so the UI
+    /// never shows a frozen tokens/sec from a wedged poll.
+    private func effectiveRuntimeAPI() -> RuntimeAPISample {
+        var s = runtimeAPI
+        if s.status == .ok, let updated = s.lastUpdated,
+           Date().timeIntervalSince(updated) > 3 * Self.apiCadenceSeconds {
+            s.status = .unreachable
+        }
+        return s
+    }
+
+    private struct ProbeInputs {
+        let kind: AIRuntimeKind?
+        let ollamaEmbedded: Int?
+        let ollamaPort: Int
+        let lmStudioPort: Int
+    }
+
+    /// Captured under a brief main-actor hold, so the poll task doesn't retain the monitor
+    /// across the network call (avoids a retain cycle and a frozen monitor).
+    private func currentProbeInputs() -> ProbeInputs {
+        ProbeInputs(kind: snapshot.aiRuntime.primaryKind,
+                    ollamaEmbedded: snapshot.aiRuntime.ollamaEmbeddedPort,
+                    ollamaPort: Self.port(forKey: "aiRuntimeOllamaPort", default: 11434),
+                    lmStudioPort: Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234))
+    }
+
+    private func startAPIPollingIfNeeded() {
+        guard apiPollTask == nil else { return }
+        let client = apiClient
+        apiPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let inputs = self?.currentProbeInputs() else { return }
+                let result = await client.probe(primaryKind: inputs.kind,
+                                                ollamaEmbeddedPort: inputs.ollamaEmbedded,
+                                                ollamaPort: inputs.ollamaPort,
+                                                lmStudioPort: inputs.lmStudioPort)
+                self?.runtimeAPI = result
+                try? await Task.sleep(for: .seconds(Self.apiCadenceSeconds))
+            }
+        }
+    }
+
+    private func stopAPIPolling() {
+        guard apiPollTask != nil else { return }
+        apiPollTask?.cancel()
+        apiPollTask = nil
+        runtimeAPI = RuntimeAPISample()   // back to .disabled
+    }
+
+    private static func port(forKey key: String, default def: Int) -> Int {
+        let v = UserDefaults.standard.integer(forKey: key)
+        return v > 0 ? v : def
     }
 
     /// Diffs the lifetime VM counters into pages/sec rates (guards against counter resets).

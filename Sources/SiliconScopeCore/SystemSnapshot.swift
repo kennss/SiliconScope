@@ -24,6 +24,7 @@ public struct SystemSnapshot: Sendable {
     public var processes: [ProcessRow] = []
     public var memoryBudget = MemoryBudget.empty
     public var aiRuntime = AIRuntimeSample()
+    public var runtimeAPI = RuntimeAPISample()   // stamped by the monitor (opt-in poll)
 
     public init() {}
 

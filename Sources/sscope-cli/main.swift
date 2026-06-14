@@ -71,7 +71,7 @@ print("  largest model that fits now: " + budget.fitsNow.map { $0.label }.joined
 
 let processes = ProcessSampler()
 _ = processes.sample(top: 1)            // prime CPU% baseline
-Thread.sleep(forTimeInterval: 0.5)
+try? await Task.sleep(for: .seconds(0.5))
 let allRows = processes.sample(top: .max)
 print("\ntop processes by CPU (no sudo):")
 for p in allRows.prefix(8) {
@@ -88,4 +88,23 @@ for p in ai.processes {
 if let kind = ai.primaryKind {
     print(String(format: "  primary: %@ (RSS %.1f GB) → budget loadable %.1f GB",
                  kind.displayName, Double(ai.primaryMemoryBytes) / 1e9, budget.loadableGB))
+}
+
+// Opt-in runtime API probe (one shot). Run: sscope-cli --ai
+if CommandLine.arguments.contains("--ai") {
+    let result = await RuntimeAPIClient().probe(
+        primaryKind: ai.primaryKind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
+        ollamaPort: 11434, lmStudioPort: 1234)
+    let src = result.source.map { " · \($0.rawValue)" } ?? ""
+    print("\nruntime API: \(result.status.rawValue)\(src)")
+    for m in result.loadedModels {
+        var d = "  model: \(m.name)"
+        if let p = m.parameterSize { d += " · \(p)" }
+        if let q = m.quantization { d += " · \(q)" }
+        if m.sizeBytes > 0 { d += String(format: " · %.1f GB", m.sizeGB) }
+        if let split = m.processorLabel { d += " · \(split)" }
+        if let ctx = m.contextLength { d += " · \(ctx) ctx" }
+        print(d)
+    }
+    if let tps = result.tokensPerSec { print(String(format: "  tokens/sec: %.1f", tps)) }
 }

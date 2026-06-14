@@ -16,19 +16,27 @@ nor Activity Monitor cover.
 - **GPU throttle detector** — flags the GPU clock held below its slowly-decaying rolling
   peak while thermal pressure has risen above nominal (banner + menu-bar flame).
 - **Compact GPU menu-bar mode** — single line: `GPU% / GPU W / GPU GB/s / die °C`.
+- **AI runtime detection** — recognizes `ollama`, `llama.cpp`, `LM Studio`, `MLX`, `Jan`,
+  `GPT4All`, `vLLM` by process (bundle-first match) and surfaces them in an AI cockpit card.
+- **Model memory budget** — two figures (fits-now / if-you-unload) + "largest model that
+  fits" per quant, with a rate-based swap/compression risk signal.
+- **Runtime API (opt-in)** — reads loaded model, authoritative GPU/CPU split (Ollama
+  `size_vram/size`), and tokens/sec (llama.cpp `/metrics`) from `127.0.0.1`. Off by default.
+  Design: [`ai-local-features-design.md`](ai-local-features-design.md).
 
 ## Planned
 
-- **AI runtime detection** — recognize `ollama`, `llama.cpp`, `MLX`, `LM Studio`, etc. and surface them
 - **Engine attribution** — GPU/Metal vs ANE, as a clear hint
-- **Model memory budget** — estimate the largest model that fits in free unified memory
+- **Ollama tokens/sec without active inference** — embedded `llama-server` `/metrics` at the
+  dynamic argv port, or opt-in passive log-tail
 - **WhisPlay process detect / pin**
-- **Packaging** — `.app` bundle (icon, signing/notarization) + Homebrew cask
+- **Packaging** — Homebrew cask
 
 ## Out of scope (sudoless limits)
 
 - Per-process GPU / ANE attribution (not reliably available without elevated access)
-- tokens/sec (needs runtime-log integration, not chip telemetry)
+- tokens/sec from chip telemetry alone — now obtained from the runtimes' own HTTP APIs
+  (opt-in), not the SoC counters
 
 ## Compatibility notes / lessons learned
 
