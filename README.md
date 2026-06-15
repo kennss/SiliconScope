@@ -58,6 +58,8 @@ Requires macOS on Apple Silicon and the Xcode toolchain.
 xcrun swift run SiliconScope        # SwiftUI GUI (dashboard + menu bar)
 xcrun swift run -q sscope-cli       # data-layer verification CLI
 xcrun swift build                   # build everything
+scripts/build-app.sh                # create dist/SiliconScope.app locally
+open dist/SiliconScope.app          # launch the local app bundle
 ```
 
 > Use `xcrun`. A non-Xcode `swift` (e.g. swiftly) may not match the macOS SDK and
