@@ -20,6 +20,10 @@ Apple Silicon accelerators — hence the focus on ANE / Media / bandwidth.
 
 *The full dashboard plus the menu-bar cockpit: a live 6-bar glyph (CPU / GPU / ANE / Media / memory / bandwidth) and six color-matched per-engine trend graphs — each on a fixed axis so a small signal reads small.*
 
+![Measuring a local model's speed and efficiency](docs/img/benchmark.png)
+
+*On-demand benchmark (v1.5.0): "Measure tok/s" runs one short generation and reports the model's decode speed and energy efficiency — **tokens/sec · tokens/Wh** — stored per model. Here: gemma 26B (MoE) at ~59 tok/s · 4608 tok/Wh on an M1 Max.*
+
 ## Install
 
 **[⬇ Download the latest DMG](https://github.com/kennss/SiliconScope/releases/latest)**, then:
