@@ -24,6 +24,8 @@ Apple Silicon accelerators — hence the focus on ANE / Media / bandwidth.
 
 *On-demand benchmark (v1.5.0): "Measure tok/s" runs one short generation and reports the model's decode speed and energy efficiency — **tokens/sec · tokens/Wh** — stored per model. Here: gemma 26B (MoE) at ~59 tok/s · 4608 tok/Wh on an M1 Max.*
 
+> 📊 **Measured tok/s on your Mac?** [Post it in Discussions](https://github.com/kennss/SiliconScope/discussions/5) — a crowd-sourced per-chip table helps others pick the right hardware.
+
 ## Install
 
 **[⬇ Download the latest DMG](https://github.com/kennss/SiliconScope/releases/latest)**, then:
