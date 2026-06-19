@@ -103,6 +103,84 @@ open dist/SiliconScope.app          # launch the local app bundle
 Verified IOReport channel map: [`docs/ioreport-channels.md`](docs/ioreport-channels.md).
 Display spec: [`docs/display-spec.md`](docs/display-spec.md).
 
+### Deep dive — the hard parts
+
+Most of these are private/undocumented APIs with no SDK stub. The patterns below are the
+reason people clone this repo — each one is a gotcha that cost a day to figure out.
+
+#### 1. IOReport without `sudo` — and without an SDK stub
+
+`IOReport` carries the good stuff (per-domain power, cluster residency, memory bandwidth) and
+needs **no root**. The catch: there's no `.tbd` stub in the SDK, so `-framework IOReport`
+fails to link. The fix is to **declare the symbols yourself** and let dyld resolve them from
+the shared cache at runtime:
+
+```swift
+// Package.swift — link the final binary with dynamic_lookup
+linkerSettings: [.unsafeFlags(["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"])]
+```
+```c
+// Sources/CIOReport/include/ktop_ioreport.h — your own extern decls (one isolated C target)
+extern CFDictionaryRef IOReportCreateSamples(IOReportSubscriptionRef, CFMutableDictionaryRef, CFTypeRef);
+extern CFDictionaryRef IOReportCreateSamplesDelta(CFDictionaryRef prev, CFDictionaryRef cur, CFTypeRef);
+```
+
+Sampling is **two snapshots a short interval apart (~175 ms), then `…SamplesDelta`** — power
+and residency are deltas, not instantaneous values. All private declarations live in one C
+target (`CIOReport`) so the unsafe surface is contained and the Swift side stays clean.
+
+> Trade-off: private API ⇒ **no App Store sandbox**. Self-distribute (sign + notarize). The
+> `dynamic_lookup` flag is broad — it defers *all* undefined symbols to runtime, so a real
+> link typo only surfaces on launch. Worth knowing.
+
+#### 2. Per-unit temperatures: curated SMC keys, HID fallback
+
+On Apple Silicon a naive SMC "scan all `T…` keys" returns almost nothing useful, and the HID
+sensor set (`IOHIDEventSystemClient`, `PrimaryUsagePage 0xff00` / usage `5`) returns *many*
+sensors but with cryptic PMU names (`PMU tdie3`, `tcal`). iStat-style friendly names come from
+a **hand-curated, per-generation map of SMC FourCC keys read directly** (not scanned):
+
+```swift
+// SensorCatalog.swift — detected from the CPU brand string (M1…M5)
+cpu([("Tp09","E-Core 1"), ("Tp01","P-Core 1"), ("Tp05","P-Core 2"), …]) +
+gpu([("Tg05","GPU 1"), …]) + mem([("Tm02","Memory 1"), …])
+```
+
+The keys are near-arbitrary and change every generation (tables adapted from
+[Stats](https://github.com/exelban/stats)). Fallback chain: **curated SMC → HID set → SMC
+scan** (Intel). Variants (Pro/Max/Ultra) need no special-casing — absent keys simply don't
+read back and are skipped.
+
+#### 3. E/P-core split + real DVFS frequency
+
+Topology from `sysctl hw.perflevel0/1`; per-core utilization from `host_processor_info` ticks
+(the same source Activity Monitor uses). Frequency is residency-weighted: IOReport gives time
+spent in each DVFS state, and the **state→MHz table comes from IORegistry** (`voltage-states*`),
+so the reported MHz is what the cluster actually ran at, not a nominal max.
+
+#### 4. ANE & memory bandwidth (with an honest caveat)
+
+The IOReport **Energy Model** group exposes per-domain power including the Neural Engine, and
+the bandwidth channels give CPU/GPU/Media/total GB/s. **ANE "usage" is a power-normalized
+estimate** — Apple doesn't expose ANE occupancy, so it's labeled as an estimate rather than
+faked as a percentage.
+
+#### 5. Dynamic per-metric menu-bar items (AppKit, not SwiftUI)
+
+Each metric becomes its own menu-bar item you can toggle. SwiftUI's `MenuBarExtra` can't do
+this: a conditional scene won't compile (SceneBuilder has no `buildOptional`), and
+`MenuBarExtra(isInserted:)` triggers a main-menu update **loop** (beachball). The working
+answer is AppKit — an `NSStatusItem` + `NSPopover` per enabled metric, reconciled against the
+toggles each tick. Live glyphs are drawn to `NSImage` (a live SwiftUI `label:` collapses to
+zero width in a status item).
+
+#### 6. Auto-update in a pure-SPM app
+
+Sparkle via SPM, with **no Xcode project**: `package.sh` embeds `Sparkle.framework`, fixes the
+rpath, signs nested helpers deep→shallow, then runs `generate_appcast`. The feed is the
+**latest GitHub release's `appcast.xml`** (`…/releases/latest/download/appcast.xml`), so each
+release just attaches the DMG + appcast and the app updates itself.
+
 ## Not on the Mac App Store
 
 SiliconScope uses private (un-entitled) APIs (IOReport, SMC, HID), so it cannot be
