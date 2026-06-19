@@ -71,14 +71,25 @@ public final class BatterySampler {
             info.maxCapacity = props["NominalChargeCapacity"] as? Int
                 ?? props["AppleRawMaxCapacity"] as? Int
                 ?? props["MaxCapacity"] as? Int ?? 0
-            if info.designCapacity > 0, info.maxCapacity > 0 {
-                info.healthPercent = min(100, Double(info.maxCapacity) / Double(info.designCapacity) * 100)
-            }
+            info.healthPercent = Self.healthPercent(maxCapacity: info.maxCapacity,
+                                                    designCapacity: info.designCapacity)
             let failed = (props["PermanentFailureStatus"] as? Int ?? 0) != 0
-            info.condition = (failed || (info.healthPercent > 0 && info.healthPercent < 80))
-                ? "Service Recommended" : "Normal"
+            info.condition = Self.condition(healthPercent: info.healthPercent, permanentFailure: failed)
         }
         return info
+    }
+
+    /// Battery health = full-charge / design capacity, clamped to 100%. Pure, so the
+    /// capacity formula is unit-tested. Returns 0 when capacities are unknown.
+    static func healthPercent(maxCapacity: Int, designCapacity: Int) -> Double {
+        guard designCapacity > 0, maxCapacity > 0 else { return 0 }
+        return min(100, Double(maxCapacity) / Double(designCapacity) * 100)
+    }
+
+    /// Condition string from health + permanent-failure flag (matches macOS wording).
+    static func condition(healthPercent: Double, permanentFailure: Bool) -> String {
+        (permanentFailure || (healthPercent > 0 && healthPercent < 80))
+            ? "Service Recommended" : "Normal"
     }
 
     /// Copies the AppleSmartBattery IORegistry properties, or nil on desktops / failure.

@@ -68,21 +68,13 @@ public final class BandwidthSampler {
             let requestor = String(name.dropLast(3))   // strip " RD" / " WR"
             let gbs = (Double(IOReportSimpleGetIntegerValue(channel, 0)) / seconds) / 1_000_000_000.0
 
-            if requestor == "DCS" {
-                total += gbs                                  // chip-wide aggregate = true total
-            } else if requestor.hasPrefix("ECPU") || requestor.hasPrefix("PCPU") {
-                cpu += gbs
-            } else if requestor.hasPrefix("GFX") {
-                gpu += gbs
-            } else if requestor.hasPrefix("VENC") || requestor.hasPrefix("VDEC")
-                   || requestor.hasPrefix("ISP") || requestor.hasPrefix("JPG")
-                   || requestor.hasPrefix("JPEG") || requestor.contains("PRORES")
-                   || requestor.contains("CODEC") {
-                // Media Engine = isp + strm codec + prores + vdec + venc + jpeg + jpg
-                // (matches NeoAsitop's requestor list). MSR is NOT media -> falls into "other".
-                media += gbs
+            switch Self.classify(requestor: requestor) {
+            case .total: total += gbs    // "DCS" chip-wide aggregate = true total
+            case .cpu:   cpu += gbs
+            case .gpu:   gpu += gbs
+            case .media: media += gbs
+            case .other: break           // MSR / DISP / ANS / PCIe … folded into "other" below
             }
-            // remaining requestors (MSR / DISP / ANS / PCIe …) are folded into "other" below
             return Int32(kKtopIOReportIterOk)
         }
 
@@ -93,5 +85,21 @@ public final class BandwidthSampler {
         // "DCS" is the authoritative chip total; derive other so the parts sum to it.
         result.otherGBs = total > 0 ? max(0, total - cpu - gpu - media) : 0
         return result
+    }
+
+    /// Which bandwidth bucket a DCS requestor belongs to. Pure (string → unit), so the
+    /// NeoAsitop-adapted requestor map can be unit-tested and locked against regressions.
+    enum Requestor { case total, cpu, gpu, media, other }
+
+    static func classify(requestor: String) -> Requestor {
+        if requestor == "DCS" { return .total }
+        if requestor.hasPrefix("ECPU") || requestor.hasPrefix("PCPU") { return .cpu }
+        if requestor.hasPrefix("GFX") { return .gpu }
+        // Media Engine = isp + strm codec + prores + vdec + venc + jpeg + jpg. MSR is NOT media.
+        if requestor.hasPrefix("VENC") || requestor.hasPrefix("VDEC")
+            || requestor.hasPrefix("ISP") || requestor.hasPrefix("JPG")
+            || requestor.hasPrefix("JPEG") || requestor.contains("PRORES")
+            || requestor.contains("CODEC") { return .media }
+        return .other
     }
 }
