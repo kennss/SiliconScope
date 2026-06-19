@@ -13,29 +13,37 @@
 //
 #include "ktop_ioreport.h"
 
+// Cached HID client: creating an IOHIDEventSystemClient (and applying the matching dict)
+// is expensive, so we do it once and reuse it across samples. Only the (cheaper) service
+// list + per-service events are re-read each call. Single-threaded use (one sampler loop).
+static IOHIDEventSystemClientRef gTemperatureClient = NULL;
+
 CFDictionaryRef ktopCopyTemperatureSensors(void) {
-    int32_t page = 0xff00;   // kHIDPage_AppleVendor
-    int32_t usage = 5;       // kHIDUsage_AppleVendor_TemperatureSensor
     int64_t type = 15;       // kIOHIDEventTypeTemperature
 
-    CFStringRef matchKeys[2] = { CFSTR("PrimaryUsagePage"), CFSTR("PrimaryUsage") };
-    CFNumberRef matchVals[2] = {
-        CFNumberCreate(NULL, kCFNumberSInt32Type, &page),
-        CFNumberCreate(NULL, kCFNumberSInt32Type, &usage)
-    };
-    CFDictionaryRef matching = CFDictionaryCreate(
-        NULL, (const void **)matchKeys, (const void **)matchVals, 2,
-        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    CFRelease(matchVals[0]);
-    CFRelease(matchVals[1]);
+    if (gTemperatureClient == NULL) {
+        int32_t page = 0xff00;   // kHIDPage_AppleVendor
+        int32_t usage = 5;       // kHIDUsage_AppleVendor_TemperatureSensor
+        CFStringRef matchKeys[2] = { CFSTR("PrimaryUsagePage"), CFSTR("PrimaryUsage") };
+        CFNumberRef matchVals[2] = {
+            CFNumberCreate(NULL, kCFNumberSInt32Type, &page),
+            CFNumberCreate(NULL, kCFNumberSInt32Type, &usage)
+        };
+        CFDictionaryRef matching = CFDictionaryCreate(
+            NULL, (const void **)matchKeys, (const void **)matchVals, 2,
+            &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        CFRelease(matchVals[0]);
+        CFRelease(matchVals[1]);
 
-    IOHIDEventSystemClientRef system = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
-    if (system == NULL) { CFRelease(matching); return NULL; }
-    IOHIDEventSystemClientSetMatching(system, matching);
-    CFRelease(matching);
+        IOHIDEventSystemClientRef system = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
+        if (system == NULL) { CFRelease(matching); return NULL; }
+        IOHIDEventSystemClientSetMatching(system, matching);
+        CFRelease(matching);
+        gTemperatureClient = system;
+    }
 
-    CFArrayRef services = IOHIDEventSystemClientCopyServices(system);
-    if (services == NULL) { CFRelease(system); return NULL; }
+    CFArrayRef services = IOHIDEventSystemClientCopyServices(gTemperatureClient);
+    if (services == NULL) { return NULL; }
 
     CFMutableDictionaryRef result = CFDictionaryCreateMutable(
         NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
@@ -59,6 +67,5 @@ CFDictionaryRef ktopCopyTemperatureSensors(void) {
     }
 
     CFRelease(services);
-    CFRelease(system);
-    return result;
+    return result;   // gTemperatureClient is cached, not released
 }

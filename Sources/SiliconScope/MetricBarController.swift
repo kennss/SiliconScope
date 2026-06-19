@@ -77,6 +77,26 @@ final class MetricBarController: NSObject {
                                      dark: dark, reserveValue: "999.9 GB")
              },
              dropdown: { m in AnyView(SSDMenuDropdown(monitor: m)) }),
+
+        Spec(id: "sensors", key: "menubar.sensors",
+             glyph: { m, dark in
+                let f = UserDefaults.standard.bool(forKey: "temperatureFahrenheit")
+                let t = m.snapshot.temperature
+                let cpu = t.cpuMaxCelsius > 0 ? t.cpuMaxCelsius : t.cpuCelsius
+                let (p2, v2): (String, Double) = t.gpuCelsius > 0 ? ("G", t.gpuCelsius) : ("B", t.batteryCelsius)
+                return MenuBarGlyph.twoLine(label: "SEN",
+                                            prefix1: "C", value1: tempGlyphValue(cpu, f),
+                                            prefix2: p2, value2: tempGlyphValue(v2, f),
+                                            dark: dark, reserveValue: "99°")
+             },
+             dropdown: { m in AnyView(SensorsMenuDropdown(monitor: m)) }),
+
+        Spec(id: "battery", key: "menubar.battery",
+             glyph: { m, dark in
+                let b = m.snapshot.battery
+                return MenuBarGlyph.battery(percent: b.percent, charging: b.isCharging, dark: dark)
+             },
+             dropdown: { m in AnyView(BatteryMenuDropdown(monitor: m)) }),
     ]
 
     /// Called each monitor tick: reconcile items with toggles, refresh glyphs.

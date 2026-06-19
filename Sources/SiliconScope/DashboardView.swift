@@ -97,6 +97,7 @@ private struct HeaderView: View {
     let topology: CPUTopology?
     let power: PowerSample
     let battery: BatteryInfo
+    @AppStorage("menubar.battery") private var batteryMB = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -117,6 +118,7 @@ private struct HeaderView: View {
                     Text("\(Int(battery.percent.rounded()))%")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(battery.percent < 20 ? Theme.heat(1) : Theme.text)
+                    MenuBarPin(isOn: $batteryMB)
                 }
             }
         }
@@ -589,6 +591,7 @@ private struct SensorsCard: View {
     let temperature: TemperatureSample
     let thermal: ThermalSample
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
+    @AppStorage("menubar.sensors") private var sensorsMB = false
 
     private var pressureColor: Color {
         switch thermal.pressure {
@@ -600,7 +603,7 @@ private struct SensorsCard: View {
     }
 
     var body: some View {
-        Card(title: "Sensors") {
+        Card(title: "Sensors", menuBarPin: $sensorsMB) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 16) {
                     HStack(spacing: 6) {

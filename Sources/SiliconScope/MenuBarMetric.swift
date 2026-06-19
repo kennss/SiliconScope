@@ -130,6 +130,43 @@ enum MenuBarGlyph {
         img.isTemplate = false
         return img
     }
+
+    /// Battery icon (outline + proportional fill + terminal nub) followed by "NN%".
+    /// Fill is green while charging, red at/under 20%, otherwise the menu-bar ink.
+    static func battery(percent: Double, charging: Bool, dark: Bool) -> NSImage {
+        let ink = dark ? NSColor.white : NSColor.black
+        let pct = max(0, min(100, percent))
+        let font = NSFont.systemFont(ofSize: 9, weight: .medium)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.95)]
+        let label = String(format: "%.0f%%", pct) as NSString
+        let textW = ceil(label.size(withAttributes: attrs).width)
+        let bodyW: CGFloat = 22, bodyH: CGFloat = 11, nub: CGFloat = 2, gap: CGFloat = 4
+        let width = ceil(bodyW + nub + gap + textW) + 2
+        let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+            let y = (height - bodyH) / 2
+            let body = NSRect(x: 0.75, y: y, width: bodyW, height: bodyH)
+            let outline = NSBezierPath(roundedRect: body, xRadius: 2.5, yRadius: 2.5)
+            outline.lineWidth = 1
+            ink.withAlphaComponent(0.55).setStroke(); outline.stroke()
+            // terminal nub
+            ink.withAlphaComponent(0.55).setFill()
+            NSBezierPath(roundedRect: NSRect(x: body.maxX + 0.5, y: y + bodyH / 2 - 2.5, width: nub, height: 5),
+                         xRadius: 1, yRadius: 1).fill()
+            // fill
+            let inner = body.insetBy(dx: 2, dy: 2)
+            let fillColor: NSColor = charging ? NSColor(srgbRed: 0.36, green: 0.82, blue: 0.45, alpha: 1)
+                : (pct <= 20 ? NSColor(srgbRed: 0.92, green: 0.36, blue: 0.34, alpha: 1) : ink.withAlphaComponent(0.85))
+            fillColor.setFill()
+            NSBezierPath(roundedRect: NSRect(x: inner.minX, y: inner.minY,
+                                             width: max(1, inner.width * CGFloat(pct / 100)), height: inner.height),
+                         xRadius: 1.2, yRadius: 1.2).fill()
+            label.draw(at: NSPoint(x: body.maxX + nub + gap, y: (height - label.size(withAttributes: attrs).height) / 2),
+                       withAttributes: attrs)
+            return true
+        }
+        img.isTemplate = false
+        return img
+    }
 }
 
 // MARK: - Shared palette + helpers
@@ -172,6 +209,11 @@ func iStatRate(_ bytesPerSec: Double) -> String {
     if bytesPerSec >= 1e6 { return String(format: "%.1f MB", bytesPerSec / 1e6) }
     if bytesPerSec >= 1e3 { return String(format: "%.0f KB", bytesPerSec / 1e3) }
     return String(format: "%.0f B", bytesPerSec)
+}
+/// Tiny temperature readout for the menu-bar glyph ("75°"), honoring the °F setting.
+func tempGlyphValue(_ celsius: Double, _ fahrenheit: Bool) -> String {
+    guard celsius > 0 else { return "–" }
+    return String(format: "%.0f°", fahrenheit ? celsius * 9.0 / 5.0 + 32.0 : celsius)
 }
 
 // MARK: - Shared dropdown components
@@ -315,7 +357,7 @@ struct CPUMenuDropdown: View {
                 Label("Open Dashboard", systemImage: "macwindow").frame(maxWidth: .infinity)
             }
         }
-        .padding(12).frame(width: 250).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(12).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
 
     private func coreRow(_ label: String, _ v: Double, _ pct: Double, _ mhz: Double, _ color: Color) -> some View {
@@ -399,7 +441,7 @@ struct GPUMenuDropdown: View {
             Divider()
             OpenDashboardButton()
         }
-        .padding(12).frame(width: 250).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(12).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
 }
 
@@ -454,7 +496,7 @@ struct MEMMenuDropdown: View {
             Divider()
             OpenDashboardButton()
         }
-        .padding(12).frame(width: 250).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(12).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
 }
 
@@ -504,7 +546,7 @@ struct NETMenuDropdown: View {
             Divider()
             OpenDashboardButton()
         }
-        .padding(12).frame(width: 258).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(12).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
 
     private func ifaceIcon(_ i: InterfaceInfo) -> String {
@@ -540,7 +582,7 @@ struct SSDMenuDropdown: View {
             Divider()
             OpenDashboardButton()
         }
-        .padding(12).frame(width: 268).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(12).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
 
     private func volumeRow(_ v: VolumeInfo) -> some View {
@@ -551,7 +593,7 @@ struct SSDMenuDropdown: View {
                 Text(v.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
-                Text("\(compactBytes(UInt64(max(0, v.freeBytes)))) free")
+                Text("\(iStatBytes(UInt64(max(0, v.freeBytes)))) free")
                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
             }
             GeometryReader { geo in
@@ -561,5 +603,192 @@ struct SSDMenuDropdown: View {
                 }
             }.frame(height: 5)
         }
+    }
+}
+
+// MARK: - Sensors dropdown (iStat "SENSORS" panel: temps + fans + power)
+
+struct SensorsMenuDropdown: View {
+    let monitor: SiliconScopeMonitor
+    @AppStorage("temperatureFahrenheit") private var fahrenheit = false
+
+    var body: some View {
+        let s = monitor.snapshot
+        let temp = s.temperature
+        let thermal = s.thermal
+        VStack(alignment: .leading, spacing: 7) {
+            MenuSectionHeader("Sensors")
+
+            if temp.groups.isEmpty {
+                Text("no sensors available")
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            } else {
+                MenuSectionHeader("Temperatures")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(temp.groups) { group in
+                            HStack {
+                                Text(group.category.rawValue.uppercased())
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .tracking(0.5).foregroundStyle(Theme.faint)
+                                Spacer()
+                                Text("avg \(formatTemperature(group.average, fahrenheit: fahrenheit)) · max \(formatTemperature(group.maximum, fahrenheit: fahrenheit))")
+                                    .font(.system(size: 9, design: .monospaced)).foregroundStyle(Theme.faint)
+                            }
+                            ForEach(group.sensors) { sensor in
+                                SensorTempRow(name: sensor.name, celsius: sensor.celsius, fahrenheit: fahrenheit)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+            }
+
+            Divider()
+            HStack {
+                MenuSectionHeader("Fans")
+                if thermal.hasFans {
+                    Text(thermal.pressure.rawValue.capitalized)
+                        .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                }
+            }
+            if thermal.hasFans {
+                ForEach(Array(thermal.fanRPMs.enumerated()), id: \.offset) { idx, rpm in
+                    SensorFanRow(label: fanLabel(idx, count: thermal.fanRPMs.count), rpm: rpm)
+                }
+            } else {
+                Text("Fanless").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            }
+
+            Divider()
+            OpenDashboardButton()
+        }
+        .padding(12).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+    }
+
+    private func fanLabel(_ idx: Int, count: Int) -> String {
+        if count == 2 { return idx == 0 ? "Left Fan" : "Right Fan" }
+        return "Fan \(idx + 1)"
+    }
+}
+
+/// Sensor temperature row: name (left) + reading + a heat-colored bar (iStat style).
+struct SensorTempRow: View {
+    let name: String, celsius: Double, fahrenheit: Bool
+    var body: some View {
+        let heat = min(1, celsius / 100)
+        HStack(spacing: 8) {
+            Text(name).font(.system(size: 10.5, design: .monospaced))
+                .foregroundStyle(Theme.dim).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 4)
+            Text(formatTemperature(celsius, fahrenheit: fahrenheit))
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.heat(heat)).frame(width: 44, alignment: .trailing)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.06))
+                Capsule().fill(Theme.heat(heat)).frame(width: max(2, 60 * min(1, celsius / 110)))
+            }.frame(width: 60, height: 5)
+        }
+    }
+}
+
+/// Fan row: label (left) + rpm + a bar normalized to a typical ceiling.
+struct SensorFanRow: View {
+    let label: String, rpm: Double
+    private let ceiling = 6500.0
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+            Spacer(minLength: 4)
+            Text(String(format: "%.0f rpm", rpm))
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
+                .frame(width: 70, alignment: .trailing)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.06))
+                Capsule().fill(MetricPalette.downC).frame(width: max(2, 60 * min(1, rpm / ceiling)))
+            }.frame(width: 60, height: 5)
+        }
+    }
+}
+
+// MARK: - Battery dropdown (iStat "BATTERY" panel: charge + health + power)
+
+private func wattStr(_ w: Double) -> String { String(format: "%.2f W", w) }
+
+struct BatteryMenuDropdown: View {
+    let monitor: SiliconScopeMonitor
+    var body: some View {
+        let s = monitor.snapshot
+        let b = s.battery
+        let chargeColor: Color = b.isCharging ? MetricPalette.gpuC
+            : (b.percent <= 20 ? Theme.heat(1) : Theme.text)
+        VStack(alignment: .leading, spacing: 7) {
+            MenuSectionHeader("Battery")
+
+            if b.hasBattery {
+                HStack {
+                    Text(b.stateLabel).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                    Spacer()
+                    Text("\(Int(b.percent.rounded()))%")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(chargeColor)
+                }
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.06))
+                    GeometryReader { geo in
+                        Capsule().fill(chargeColor).frame(width: max(2, geo.size.width * b.percent / 100))
+                    }
+                }.frame(height: 7)
+
+                Divider()
+                MenuKV(label: "Health", value: b.healthPercent > 0 ? "\(Int(b.healthPercent.rounded()))%" : "—")
+                MenuKV(label: "Cycles", value: "\(b.cycleCount)")
+                MenuKV(label: "Condition", value: b.condition.isEmpty ? "—" : b.condition,
+                       color: b.condition == "Normal" ? Theme.text : Theme.heat(1))
+            } else {
+                Text("No battery (desktop Mac)")
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            }
+
+            Divider()
+            MenuSectionHeader("Power")
+            let pmax = 50.0
+            MenuMeterRow(label: "CPU", value: wattStr(s.power.cpuWatts),
+                         fraction: s.power.cpuWatts / pmax, color: Color(nsColor: MetricPalette.pCPU))
+            MenuMeterRow(label: "GPU", value: wattStr(s.power.gpuWatts),
+                         fraction: s.power.gpuWatts / pmax, color: MetricPalette.gpuC)
+            if s.power.aneWatts > 0.05 {
+                MenuMeterRow(label: "ANE", value: wattStr(s.power.aneWatts),
+                             fraction: s.power.aneWatts / pmax, color: MetricPalette.aneC)
+            }
+            if s.power.dramWatts > 0.05 {
+                MenuMeterRow(label: "DRAM", value: wattStr(s.power.dramWatts),
+                             fraction: s.power.dramWatts / pmax, color: MetricPalette.downC)
+            }
+            HStack {
+                Text("Total (SoC)").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                Spacer()
+                Text(wattStr(s.power.socWatts))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Theme.text)
+            }
+
+            let energy = s.processes.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(3)
+            if !energy.isEmpty {
+                Divider()
+                MenuSectionHeader("Apps Using Energy")
+                ForEach(Array(energy)) { proc in
+                    HStack(spacing: 6) {
+                        Text(proc.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+                            .lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 0)
+                        Text(String(format: "%.0f%%", proc.cpuPercent))
+                            .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                    }
+                }
+            }
+
+            Divider()
+            OpenDashboardButton()
+        }
+        .padding(12).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
 }

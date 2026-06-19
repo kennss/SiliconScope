@@ -1,14 +1,15 @@
 //
 //  File:      TemperatureSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-19
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  Reads categorized temperatures sudolessly via SMC. Enumerates the SMC
-//             temperature keys once, classifies them by prefix, then reads them each
-//             sample and aggregates into groups with CPU/GPU/Battery representatives.
-//  Notes:     Prefix map (Apple Silicon convention): Tp*=CPU cores, Tg*=GPU, Tm*=Memory,
-//             TB*=Battery; everything else -> Other. Within a category, sensors are
-//             numbered for friendly labels (e.g. "CPU 1"). Values outside (5,120)C dropped.
+//  Overview:  Reads categorized temperatures sudolessly. Prefers the rich Apple Silicon
+//             HID sensor set (IOHIDEventSystem, via HIDSensorReader) — the source iStat
+//             uses, exposing the full per-unit die/SoC/NAND/battery set. Falls back to SMC
+//             (Intel / older Macs), classifying keys by prefix and folding per-core sensors.
+//  Notes:     HID names are raw PMU labels ("PMU tdie3", "NAND CH0 temp", "gas gauge
+//             battery"); friendlyHID() strips/classifies them. SMC prefix map: Tp*=CPU,
+//             Tg*=GPU, Tm*=Memory, TB*=Battery. Values outside (5,130)C are dropped.
 //
 import Foundation
 
@@ -32,6 +33,15 @@ public final class TemperatureSampler {
     }
 
     public func sample() -> TemperatureSample {
+        // 1) Best: curated per-generation SMC keys read directly -> friendly per-unit names
+        //    (P-Core / E-Core / GPU / Memory), exactly the iStat-style breakdown.
+        if let smc, let curated = Self.curatedSample(smc: smc) { return curated }
+
+        // 2) Rich HID sensor set (Apple Silicon, but raw PMU names) for chips without a table.
+        let hid = HIDSensorReader.read().filter { $0.celsius > 5 && $0.celsius < 130 }
+        if !hid.isEmpty { return Self.buildSample(fromHID: hid) }
+
+        // 3) SMC key scan (Intel / older Macs).
         var result = TemperatureSample()
         guard let smc else { return result }
 
@@ -83,5 +93,74 @@ public final class TemperatureSampler {
         if key.hasPrefix("Tg") { return .gpu }
         if key.hasPrefix("Tm") { return .memory }
         return .other
+    }
+
+    /// Reads the curated SMC key table for the detected Apple Silicon generation, directly
+    /// (not by scanning), yielding friendly per-unit names. Returns nil if the chip is
+    /// unknown or none of the keys read back (then the caller falls back to HID / scan).
+    static func curatedSample(smc: SMCReader) -> TemperatureSample? {
+        let gen = SensorCatalog.detectGeneration()
+        guard gen != .unknown else { return nil }
+
+        var byCategory: [SensorCategory: [TempSensor]] = [:]
+        for entry in SensorCatalog.curated(for: gen) {
+            guard let value = smc.readDouble(entry.key), value > 5, value < 130 else { continue }
+            byCategory[entry.category, default: []].append(
+                TempSensor(rawName: entry.key, name: entry.name, celsius: value))
+        }
+        guard !byCategory.isEmpty else { return nil }
+
+        var result = TemperatureSample()
+        var groups: [SensorGroup] = []
+        for category in SensorCategory.allCases {
+            guard let sensors = byCategory[category], !sensors.isEmpty else { continue }
+            let group = SensorGroup(category: category, sensors: sensors)   // table order
+            groups.append(group)
+            switch category {
+            case .cpu:     result.cpuCelsius = group.average; result.cpuMaxCelsius = group.maximum
+            case .gpu:     result.gpuCelsius = group.average
+            case .battery: result.batteryCelsius = group.average
+            default:       break
+            }
+        }
+        result.groups = groups
+        return result
+    }
+
+    /// Builds a TemperatureSample from the HID sensor set, grouping by classified category.
+    static func buildSample(fromHID hid: [(name: String, celsius: Double)]) -> TemperatureSample {
+        var byCategory: [SensorCategory: [TempSensor]] = [:]
+        for s in hid {
+            let (category, label) = friendlyHID(s.name)
+            byCategory[category, default: []].append(
+                TempSensor(rawName: s.name, name: label, celsius: s.celsius))
+        }
+        var result = TemperatureSample()
+        var groups: [SensorGroup] = []
+        for category in SensorCategory.allCases {
+            guard let sensors = byCategory[category], !sensors.isEmpty else { continue }
+            let group = SensorGroup(category: category, sensors: sensors.sorted { $0.name < $1.name })
+            groups.append(group)
+            switch category {
+            case .cpu:     result.cpuCelsius = group.average; result.cpuMaxCelsius = group.maximum
+            case .gpu:     result.gpuCelsius = group.average
+            case .battery: result.batteryCelsius = group.average
+            default:       break
+            }
+        }
+        result.groups = groups
+        return result
+    }
+
+    /// Classifies a raw HID sensor name into a category + a cleaned display label.
+    /// Most Apple Silicon sensors are SoC die/thermal points (tdie/tdev/TP/tcal) → CPU/SoC.
+    static func friendlyHID(_ raw: String) -> (category: SensorCategory, label: String) {
+        let n = raw.lowercased()
+        let label = raw.replacingOccurrences(of: "PMU ", with: "")
+        if n.contains("battery") || n.contains("gas gauge") { return (.battery, "Battery") }
+        if n.contains("nand") || n.contains("ssd") || n.contains("flash") { return (.memory, label) }
+        if n.contains("gpu") { return (.gpu, label) }
+        if n.contains("dram") || n.contains("ddr") { return (.memory, label) }
+        return (.cpu, label)   // tdie / tdev / TP* / tcal — SoC die / CPU complex
     }
 }
