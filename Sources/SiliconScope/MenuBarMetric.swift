@@ -244,6 +244,11 @@ func tempGlyphValue(_ celsius: Double, _ fahrenheit: Bool) -> String {
     return String(format: "%.0f°", fahrenheit ? celsius * 9.0 / 5.0 + 32.0 : celsius)
 }
 
+/// VM page rate for the PAGES panel ("0/s", "1.2K/s").
+func pagesRate(_ pagesPerSec: Double) -> String {
+    pagesPerSec >= 1000 ? String(format: "%.1fK/s", pagesPerSec / 1000) : String(format: "%.0f/s", pagesPerSec)
+}
+
 // MARK: - Shared dropdown components
 
 /// Small faint caption above a history sparkline so it's not a mystery line.
@@ -517,6 +522,14 @@ struct MEMMenuDropdown: View {
                 Text(String(format: "%.2f GB of %.2f GB", m.swapUsedGB, Double(m.swapTotalBytes) / 1_073_741_824))
                     .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
             }
+
+            Divider()
+            MenuSectionHeader("Pages / sec")
+            MenuKV(label: "Page-ins", value: pagesRate(monitor.memoryPageInRate))
+            MenuKV(label: "Page-outs", value: pagesRate(monitor.memoryPageOutRate))
+            MenuKV(label: "Swap-ins", value: pagesRate(monitor.memorySwapInRate))
+            MenuKV(label: "Swap-outs", value: pagesRate(monitor.memorySwapOutRate),
+                   color: monitor.memorySwapOutRate > 0 ? Theme.heat(1) : Theme.text)
 
             Divider()
             MenuSectionHeader("Top by Memory")

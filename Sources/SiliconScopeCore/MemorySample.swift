@@ -32,6 +32,7 @@ public struct MemorySample: Sendable, Equatable {
     public var compressions: UInt64 = 0
     public var swapins: UInt64 = 0
     public var swapouts: UInt64 = 0
+    public var pageins: UInt64 = 0
     public var pageouts: UInt64 = 0
 
     public init() {}

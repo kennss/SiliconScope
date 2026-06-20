@@ -136,11 +136,20 @@ final class SiliconScopeMonitor {
     // Memory-pressure precursor: rate deltas of the lifetime VM counters (pages/sec).
     // Mirrors gpuClockPeakMHz tracking — the static budget risk lives in Core, the
     // temporal refinement (the real "before tokens/sec collapses" signal) lives here.
-    private var previousMem: (compressions: UInt64, swapins: UInt64, swapouts: UInt64, timeNs: UInt64)?
+    private struct MemCounters { let pageins, pageouts, swapins, swapouts, compressions, timeNs: UInt64 }
+    private var previousMem: MemCounters?
+    private(set) var memoryPageInRate: Double = 0        // pages/sec (PAGES panel)
+    private(set) var memoryPageOutRate: Double = 0
+    private(set) var memorySwapInRate: Double = 0        // recovery reads (normal)
     private(set) var memorySwapOutRate: Double = 0       // swapouts/sec — eviction under pressure
-                                                         // (NOT swapins, which are normal recovery reads)
     private(set) var memoryCompressionRate: Double = 0   // compressions pages/sec
     private static let compressionRatePagesPerSec = 200.0
+
+    private func resetMemoryRates() {
+        previousMem = nil
+        memoryPageInRate = 0; memoryPageOutRate = 0
+        memorySwapInRate = 0; memorySwapOutRate = 0; memoryCompressionRate = 0
+    }
 
     // Opt-in runtime API (③): polled on its own cadence behind UserDefaults
     // "aiRuntimeAPIEnabled". Default OFF — the task is never spawned until enabled.
@@ -177,9 +186,7 @@ final class SiliconScopeMonitor {
     func start() {
         guard loopTask == nil else { return }
         // C5: clear rate state so the first tick after (re)start emits no spurious delta.
-        previousMem = nil
-        memorySwapOutRate = 0
-        memoryCompressionRate = 0
+        resetMemoryRates()
         let sampler = sampler
         loopTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -215,9 +222,7 @@ final class SiliconScopeMonitor {
         loopTask = nil
         stopAPIPolling()
         // C5: drop rate state so a later restart doesn't diff across the pause.
-        previousMem = nil
-        memorySwapOutRate = 0
-        memoryCompressionRate = 0
+        resetMemoryRates()
     }
 
     // MARK: - Opt-in runtime API polling
@@ -389,19 +394,26 @@ final class SiliconScopeMonitor {
     private func updateMemoryRates(_ snap: SystemSnapshot) {
         let nowNs = DispatchTime.now().uptimeNanoseconds
         let m = snap.memory
-        defer { previousMem = (m.compressions, m.swapins, m.swapouts, nowNs) }
-        guard let prev = previousMem, nowNs > prev.timeNs else {
-            memorySwapOutRate = 0
-            memoryCompressionRate = 0
-            return
-        }
+        let cur = MemCounters(pageins: m.pageins, pageouts: m.pageouts, swapins: m.swapins,
+                              swapouts: m.swapouts, compressions: m.compressions, timeNs: nowNs)
+        defer { previousMem = cur }
+        guard let prev = previousMem, nowNs > prev.timeNs else { resetRatesOnly(); return }
         let secs = Double(nowNs - prev.timeNs) / 1_000_000_000
         guard secs > 0 else { return }
         func delta(_ now: UInt64, _ was: UInt64) -> Double { now >= was ? Double(now - was) : 0 }
+        memoryPageInRate  = delta(cur.pageins, prev.pageins)   / secs
+        memoryPageOutRate = delta(cur.pageouts, prev.pageouts) / secs
+        memorySwapInRate  = delta(cur.swapins, prev.swapins)   / secs
         // Only swapouts (eviction under pressure) signal a problem; swapins are recovery
         // reads of pages swapped earlier and must NOT trip the "swapping" warning.
-        memorySwapOutRate = delta(m.swapouts, prev.swapouts) / secs
-        memoryCompressionRate = delta(m.compressions, prev.compressions) / secs
+        memorySwapOutRate = delta(cur.swapouts, prev.swapouts) / secs
+        memoryCompressionRate = delta(cur.compressions, prev.compressions) / secs
+    }
+
+    /// Zeros the rates without touching previousMem (the caller's defer sets it).
+    private func resetRatesOnly() {
+        memoryPageInRate = 0; memoryPageOutRate = 0
+        memorySwapInRate = 0; memorySwapOutRate = 0; memoryCompressionRate = 0
     }
 }
 

@@ -47,6 +47,7 @@ public final class MemorySampler {
             result.compressions = UInt64(stats.compressions)
             result.swapins = UInt64(stats.swapins)
             result.swapouts = UInt64(stats.swapouts)
+            result.pageins = UInt64(stats.pageins)
             result.pageouts = UInt64(stats.pageouts)
         }
 
