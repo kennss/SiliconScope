@@ -94,7 +94,7 @@ Add an **App Icon** set to `Assets.xcassets` and supply these PNGs (macOS slots)
 The `build/png/` output from the script (or re-rendering the SVG at each size) fills every slot. Then set the target's *App Icon* to this set.
 
 ### Notes
-- This is a **full-bleed squircle** (the art *is* the icon mask). This is common and accepted for third-party macOS apps. If you want to follow Apple's exact icon-grid spacing, place the existing squircle inside a transparent 1024 canvas scaled to ~824px (≈100px margin each side); not required.
+- The master art is **inset to Apple's icon grid**: a single transform group scales the squircle to **824×824** centered on the 1024 canvas (≈100px transparent margin each side), so the Dock icon matches stock macOS icons instead of sitting edge-to-edge. The earlier full-bleed art is in git history.
 - Always regenerate small sizes from the **SVG**, never by upscaling 16/32px rasters.
 - Corners must stay **transparent** (they already are in the master PNG/SVG).
 
