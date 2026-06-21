@@ -1,15 +1,16 @@
 //
 //  File:      CPUTopology.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Static Apple Silicon CPU topology: efficiency/performance core counts
 //             (sysctl) and the per-cluster DVFS frequency tables (IORegistry).
 //  Notes:     perflevel0 = "Performance" (P), perflevel1 = "Efficiency" (E).
 //             DVFS tables come from AppleARMIODevice voltage-states: each blob is a
-//             (freqHz, voltage) UInt32 pair array; freqHz/1e6 = MHz, zero entries
-//             skipped. voltage-states1-sram = E cluster, voltage-states5-sram = P.
-//             All sudoless.
+//             (freq, voltage) UInt32 pair array; zero entries skipped. M1–M3 store freq
+//             in Hz (÷1e6 = MHz); M4 switched the CPU tables to KHz, so readVoltageStates
+//             rescales ×1000 when the Hz reading is implausibly low (see there).
+//             voltage-states1-sram = E cluster, voltage-states5-sram = P. All sudoless.
 //
 import Foundation
 import IOKit
@@ -85,6 +86,14 @@ public struct CPUTopology: Sendable {
             }
             IOObjectRelease(entry)
             entry = IOIteratorNext(iterator)
+        }
+        // Unit fix: M1–M3 store these CPU freqs in Hz (÷1e6 above → MHz). M4 switched the same
+        // voltage-states*-sram tables to KHz, so the Hz interpretation yields ~1–5 "MHz". Real
+        // DVFS maxes are 600–4500 MHz, so when the computed max is implausibly low the source
+        // was KHz — rescale ×1000. Self-correcting across chip generations (no per-chip branch);
+        // GPU voltage-states9 stays Hz on M4 and reads plausibly, so it is left untouched.
+        if let maxFreq = freqs.max(), maxFreq > 0, maxFreq < 100 {
+            freqs = freqs.map { $0 * 1000 }
         }
         return freqs
     }

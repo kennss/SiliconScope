@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.2.2 — 2026-06-21
+
+Fix: **CPU core frequencies read as ~1–5 MHz on M4** (both E and P clusters). M4 changed the
+`voltage-states` DVFS tables from Hz (M1–M3) to KHz, so the old Hz→MHz conversion collapsed them
+to near-zero. Frequencies now rescale automatically when the Hz reading is implausibly low —
+chip-agnostic, so it also covers any future unit change. M1–M3 are unaffected, and the GPU clock
+(still reported in Hz on M4) was already correct. Thanks to [@Borda](https://github.com/Borda)
+for the detailed M4 Max report (#6).
+
 ## v2.2.1 — 2026-06-21
 
 Menu-bar polish — thanks to first-time contributor [@davidarny](https://github.com/davidarny)
