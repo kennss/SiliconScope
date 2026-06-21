@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.2.1 — 2026-06-21
+
+Menu-bar polish — thanks to first-time contributor [@davidarny](https://github.com/davidarny)
+for three of these fixes.
+
+- **Unified popover buttons** — the combined and per-metric popovers now share one button style
+  (rounded panel, hairline border, monospaced label, uniform height), with Open Dashboard as the
+  single accent action. (#7)
+- **Settings opens focused** — opening Settings from the popover now brings the app forward
+  instead of leaving the window behind and greyed-out until a Cmd+Tab. (#8)
+- **App icon sized to Apple's grid** — the Dock icon was full-bleed and read oversized next to
+  stock apps; it's now inset (~100px margin) to match its neighbors. (#9)
+- **Menu-bar dropdowns are mutually exclusive** — opening one SiliconScope dropdown now dismisses
+  the others (the per-metric popovers and the combined SS popover) instead of stacking up, like
+  every other menu-bar item.
+- Dev: `scripts/build-app.sh` now embeds Sparkle.framework so the locally-built bundle launches.
+
 ## v2.2.0 — 2026-06-21
 
 **GPU memory + an AI-cockpit cleanup.**

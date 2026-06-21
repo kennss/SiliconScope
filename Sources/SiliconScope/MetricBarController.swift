@@ -1,7 +1,7 @@
 //
 //  File:      MetricBarController.swift
 //  Created:   2026-06-19
-//  Updated:   2026-06-19
+//  Updated:   2026-06-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style per-metric menu-bar items via AppKit NSStatusItem. SwiftUI's
 //             MenuBarExtra can't do dynamic toggling here (a conditional scene won't compile
@@ -142,8 +142,34 @@ final class MetricBarController: NSObject {
         if e.popover.isShown {
             e.popover.performClose(nil)
         } else {
+            // Only one menu-bar dropdown open at a time, like every other status item: close
+            // any other per-metric popover before opening this one. (Each NSPopover is .transient
+            // but transient dismissal doesn't fire reliably when the click lands on another of
+            // our own status buttons, so enforce it explicitly.)
+            closeAllPopovers(except: id)
+            closeCombinedPopover()
             e.popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
             e.popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    /// Dismiss the combined "SS" MenuBarExtra popover. SwiftUI has no public API to close a
+    /// MenuBarExtra from outside, so we order out its backing window, identified by its private
+    /// class name "MenuBarExtraWindow" (verified at runtime). Our own per-metric popovers are
+    /// NSPopover-backed and the dashboard is an AppKitWindow, so neither is affected.
+    private func closeCombinedPopover() {
+        for w in NSApp.windows
+        where w.isVisible && String(describing: type(of: w)).contains("MenuBarExtraWindow") {
+            w.orderOut(nil)
+        }
+    }
+
+    /// Close every per-metric popover (optionally keeping one open). Called before opening one,
+    /// and when the combined "SS" popover appears, so SiliconScope's menu-bar items behave like
+    /// standard mutually-exclusive dropdowns instead of stacking up.
+    func closeAllPopovers(except keepID: String? = nil) {
+        for (id, e) in entries where id != keepID && e.popover.isShown {
+            e.popover.performClose(nil)
         }
     }
 }

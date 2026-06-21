@@ -63,6 +63,9 @@ struct MenuBarView: View {
         .frame(width: compactGPU ? 340 : 270)
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
+        // Opening the combined "SS" popover dismisses any open per-metric dropdowns, so the
+        // menu-bar surfaces stay mutually exclusive like standard dropdowns.
+        .onAppear { MetricBarController.shared.closeAllPopovers() }
     }
 
     /// Single-line GPU-focused readout: GPU% / GPU W / GPU bandwidth / die °C.
