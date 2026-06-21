@@ -11,14 +11,18 @@
 //
 import Foundation
 import CIOReport
+import Foundation
+import IOKit
 
 public final class GPUSampler {
     private let subscription: IOReportSubscriptionRef
     private let subscribedChannels: CFMutableDictionary
     private let gpuFreqs: [Double]
+    private let accelerator: io_service_t   // cached IOAccelerator service for GPU memory stats
 
     public init?(topology: CPUTopology) {
         self.gpuFreqs = topology.gpuFreqsMHz
+        self.accelerator = Self.findAccelerator()
         guard let channels = IOReportCopyChannelsInGroup("GPU Stats" as CFString, nil, 0, 0, 0)?
             .takeRetainedValue()
         else {
@@ -79,6 +83,45 @@ public final class GPUSampler {
         var result = GPUSample()
         result.usage = total > 0 ? active / total : 0
         result.freqMHz = active > 0 ? freqAcc / active : 0
+        let mem = readGPUMemory()
+        result.inUseMemoryBytes = mem.inUse
+        result.allocatedMemoryBytes = mem.alloc
         return result
+    }
+
+    deinit { if accelerator != 0 { IOObjectRelease(accelerator) } }
+
+    /// Finds the IOAccelerator service that exposes GPU memory stats (kept retained; the
+    /// caller releases it in deinit). Returns 0 if none — memory then reads as zero.
+    private static func findAccelerator() -> io_service_t {
+        var iter: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault,
+              IOServiceMatching("IOAccelerator"), &iter) == KERN_SUCCESS else { return 0 }
+        defer { IOObjectRelease(iter) }
+        var svc = IOIteratorNext(iter)
+        while svc != 0 {
+            var props: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(svc, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+               let d = props?.takeRetainedValue() as? [String: Any],
+               let perf = d["PerformanceStatistics"] as? [String: Any],
+               perf["In use system memory"] != nil {
+                return svc   // keep this one
+            }
+            IOObjectRelease(svc)
+            svc = IOIteratorNext(iter)
+        }
+        return 0
+    }
+
+    /// GPU unified-memory footprint from IOAccelerator PerformanceStatistics.
+    private func readGPUMemory() -> (inUse: UInt64, alloc: UInt64) {
+        guard accelerator != 0 else { return (0, 0) }
+        var props: Unmanaged<CFMutableDictionary>?
+        guard IORegistryEntryCreateCFProperties(accelerator, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+              let d = props?.takeRetainedValue() as? [String: Any],
+              let perf = d["PerformanceStatistics"] as? [String: Any] else { return (0, 0) }
+        let inUse = (perf["In use system memory"] as? Int).map { UInt64(max(0, $0)) } ?? 0
+        let alloc = (perf["Alloc system memory"] as? Int).map { UInt64(max(0, $0)) } ?? 0
+        return (inUse, alloc)
     }
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.1.4 — 2026-06-21
+
+**GPU memory.** The GPU / Media / Neural card and dropdown now show the GPU's unified-memory
+footprint ("X.X GB in use"), read sudolessly from IOAccelerator. Apple Silicon has no hard
+CPU/GPU memory split (it's shared), but this surfaces how much the GPU itself is actively
+using — something Activity Monitor and the TUI monitors don't show.
+
 ## v2.1.3 — 2026-06-21
 
 Discoverability: a **Menu bar items** section in Settings lets you toggle CPU / GPU / Memory /

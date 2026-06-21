@@ -463,6 +463,7 @@ struct GPUMenuDropdown: View {
                          value: String(format: "%.1f W", s.power.aneWatts),
                          fraction: min(1, s.power.aneWatts / max(monitor.anePeakWatts, 0.1)), color: MetricPalette.aneC)
             MenuKV(label: "DRAM power", value: String(format: "%.1f W", s.power.dramWatts))
+            MenuKV(label: "GPU memory", value: String(format: "%.1f GB in use", s.gpu.inUseMemoryGB))
             GraphCaption("GPU (green) / Media (orange) / ANE (purple) · 60s")
             ZStack {   // all three normalized to 0...1 (each vs its tracked peak)
                 Sparkline(values: monitor.history.gpu, color: MetricPalette.gpuC, height: 30, yDomain: 0...1)

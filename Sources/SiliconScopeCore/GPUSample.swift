@@ -3,17 +3,24 @@
 //  Created:   2026-06-08
 //  Updated:   2026-06-08
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  Value type holding one GPU reading: utilization and average clock.
-//  Notes:     usage is 0...1 (active residency fraction); freq is the
-//             residency-weighted average clock in MHz. Power lives in PowerSample.
+//  Overview:  Value type holding one GPU reading: utilization, average clock, and the GPU's
+//             unified-memory footprint.
+//  Notes:     usage is 0...1 (active residency fraction); freq is the residency-weighted
+//             average clock in MHz. Power lives in PowerSample. Memory comes from
+//             IOAccelerator "PerformanceStatistics": inUse = actively used by the GPU now;
+//             allocated = the reserved GPU pool (can be large — not all touched).
 //
 import Foundation
 
 public struct GPUSample: Sendable, Equatable {
     public var usage: Double = 0       // 0...1
     public var freqMHz: Double = 0
+    public var inUseMemoryBytes: UInt64 = 0
+    public var allocatedMemoryBytes: UInt64 = 0
 
     public init() {}
 
     public var usagePercent: Double { usage * 100 }
+    public var inUseMemoryGB: Double { Double(inUseMemoryBytes) / 1_073_741_824 }
+    public var allocatedMemoryGB: Double { Double(allocatedMemoryBytes) / 1_073_741_824 }
 }

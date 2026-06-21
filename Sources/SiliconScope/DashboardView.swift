@@ -464,6 +464,7 @@ private struct AcceleratorCard: View {
                 detail: String(format: "%.1f GB/s", bandwidth.mediaGBs), color: mediaColor)
             Bar(label: "ANE est.", value: min(1, power.aneWatts / max(anePeak, 0.1)),
                 detail: String(format: "%.1f W", power.aneWatts), color: aneColor)
+            KV(key: "GPU memory", value: String(format: "%.1f GB in use", gpu.inUseMemoryGB))
             Spacer(minLength: 2)
             GraphCaption("GPU (green) / Media (orange) / ANE (purple) · 60s")
             ZStack {
