@@ -4,7 +4,89 @@ v1.0.0 is a general Apple Silicon monitor. The next version specializes toward
 **AI-inference monitoring** on Apple Silicon — the niche neither terminal monitors
 nor Activity Monitor cover.
 
-## TODO — next patch
+## What's next — backlog (updated 2026-06-22)
+
+Current actionable items, roughly by priority. Detail follows below / in the linked notes.
+
+- [ ] **Battery monitoring expansion** — see the dedicated section below. On-brand, sudoless,
+  *monitoring* only (NOT charge control — that needs SMC writes + a privileged helper, which
+  breaks the sudoless/read-only identity; AlDente owns that space and is a complement, not a
+  competitor).
+- [ ] **Remove the "Compact GPU mode (menu bar)" setting** (legacy v1.x) — see below.
+- [ ] **Cut the next release** to ship what's already on `main` but unreleased since v2.2.3:
+  `sscope-cli --sensors-all` (full SMC T-key dump for mapping unmapped chips) and the
+  `String(cBuffer:)` deprecation cleanup. (`--power-debug` already shipped in v2.2.3.)
+- [ ] **M4 Max sensor mapping (#6)** — awaiting a `--sensors-all` dump from an M4 Max owner
+  (Borda/KoheiKanagu). The `*`-flagged keys reading plausible per-core temps are the missing
+  E-Core 3/4, P-Core 5, Memory sensors; add them to `SensorCatalog.m4` once identified.
+- [ ] **M2 ANE channel (#11)** — awaiting a `--power-debug` dump from an M2 owner. If ANE power
+  sits in the `PMP` group (not `Energy Model`) on M2, extend `PowerSampler.sample()` to scan it.
+- [ ] **Homebrew cask** — validated & ready; blocked only by the 30-day repo-age rule →
+  submit ~2026-07-08. See the `homebrew-cask-plan` memory note.
+- [ ] **mlx-serve runtime detection** — deferred until it's bigger; recipe in the
+  `runtime-detection-watch` memory note.
+
+## TODO — battery monitoring expansion
+
+We already read battery charge/charging-state + health/cycles/condition/temp sudolessly from
+`AppleSmartBattery` (IORegistry) and `IOPowerSources` (see `Battery.swift`). Extend the
+*monitoring* (never control), all sudoless:
+
+- [ ] **Charge / discharge rate (W)** — instantaneous power in/out, signed (charging vs
+  draining). Source: `AppleSmartBattery` `InstantAmperage` × `Voltage` (or `BatteryData`),
+  or `IOPSGetPowerSourceDescription`. Show as a live value + sparkline like the other metrics.
+- [ ] **Time to full / time to empty** — `IOPowerSources` exposes `TimeToFullCharge` /
+  `TimeToEmpty` (minutes; -1 = "calculating"); or derive from the rate above + remaining
+  capacity. Display whichever applies to the current charging state.
+- [ ] **Adapter wattage** — `AppleSmartBattery` `AdapterDetails` dict (`Watts`, `Description`,
+  `Voltage`, `Current`): show the connected charger's rated W and whether it's delivering full
+  power (useful for "is this cable/charger underpowering me?").
+- [ ] **Charging state detail** — beyond a bare %: `IsCharging` / `FullyCharged` /
+  `ExternalConnected`, plus "not charging on AC" (held by macOS Optimized Battery Charging /
+  the 80% limit). Makes "why isn't it charging?" legible.
+- [ ] **Battery temperature trend** — we already read battery °C; add a rolling history
+  sparkline (same treatment as CPU/GPU temp).
+- [ ] **Health time-series** — persist a periodic sample of health (max/design capacity) +
+  cycle count so degradation is visible over weeks/months, not just a point-in-time number.
+  (Cycle count moves slowly — sampling daily is enough.)
+
+UI: likely a richer **Battery** dropdown / dashboard card grouping these, gated on
+`hasBattery` (desktops — Mac mini/Studio/Pro — have none; branch like the fanless `fan_exist`).
+
+### Peripheral battery in the battery dropdown (à la iStat Menus)
+
+Optional: show connected accessories' battery when the user opens the battery dropdown — a
+reasonable, iStat-precedented convenience (NOT a full multi-device dashboard; that's
+AirBattery's job). **Verified sudoless sources on a real machine (2026-06-22), per device type:**
+
+| Device type | Sudoless source | Effort |
+|---|---|---|
+| Apple Magic Mouse / Trackpad / Keyboard | IORegistry `BatteryPercent` (+ `BatteryStatusFlags`) on the HID node | **Easy** |
+| AirPods (L / R / Case) | `system_profiler SPBluetoothDataType` → `Left/Right/Case Battery Level` | **Easy** (parse) |
+| Other standard BLE-Battery-Service devices | same as above (macOS aggregates) | Easy |
+| **Logitech (e.g. MX Master 3S)** | **NOT** in IORegistry/`system_profiler` — needs **HID++** feature-report query over IOHIDDevice | **Medium**, vendor-specific |
+
+Notes / gotchas:
+- `system_profiler SPBluetoothDataType` spawns a process and takes ~1–2 s → **cache it, refresh
+  ~every 60 s** (peripheral battery changes slowly), never per tick.
+- AirPods report only while connected/advertising; values go stale/absent when cased.
+- Logitech HID++ would be a genuine differentiator (even macOS's own battery menu can't show
+  MX Master without Logi Options+), but it's per-vendor work and can break across firmware.
+- **Not a reverse-engineering job — adapt an existing impl.** HID++ battery is well-solved:
+  open the device via `IOHIDDevice`, send a HID++ 2.0 feature report (Battery Status `0x1000`
+  / Unified Battery `0x1004`), parse the %. Sudoless (HID feature reports don't need root).
+  License-clean references (adapt protocol/logic + attribute, like we do for NeoAsitop):
+  **MIT** — [Mouser](https://github.com/TomBadash/Mouser) (Python, MX 2/3/3S),
+  [batteryconsole](https://github.com/omar16100/batteryconsole) (Rust, macOS-only, exactly this);
+  **Apache-2.0** — [OpenLogi](https://github.com/AprilNEA/OpenLogi) (Rust, 5.2k★).
+  Swift/IOKit mechanics can be *learned* from [optune](https://github.com/Sanjays2402/optune)
+  (Swift) but it's **GPL-3.0 → reference only, write our own** (SS license is undecided).
+
+Suggested phasing: (1) Mac's own battery expansion above → (2) easy peripheral tier (Apple
+Magic via IORegistry + AirPods via system_profiler) → (3) Logitech HID++ if wanted.
+Dev's own kit spans all tiers (Magic Mouse 2 + Magic Trackpad + AirPods Pro = easy; MX Master 3S = HID++).
+
+## TODO — cleanup
 
 - [ ] **Remove the "Compact GPU mode (menu bar)" setting** (legacy v1.x). It swapped the SS
   combined dropdown for a one-line GPU readout — now redundant with the per-metric GPU
