@@ -229,6 +229,11 @@ adapted but unverified**. On an M2/M3/M4/M5, run `xcrun swift run -q sscope-cli 
   scratch — declarations/facts referenced, no code copied.
 - Auto-update by **[Sparkle](https://sparkle-project.org)**.
 - Design language inspired by **btop**.
+- Further reading on *why* local LLMs run on the GPU (Metal) rather than the ANE — the very
+  distinction SiliconScope's AI view is built around:
+  [**muramoto's measured deep-dive on the ANE for LLM inference**](https://zenn.dev/salescore/articles/776dff7a85f781)
+  (Japanese, Zenn) — shows the ANE wins for small fixed-shape models (Whisper, ViT, embeddings)
+  but loses to the GPU on 4B+ LLMs.
 
 ## License
 
