@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-18
+//  Updated:   2026-06-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -159,5 +159,21 @@ if CommandLine.arguments.contains("--power-debug") {
     print("\"Energy Model\" group; if ANE power shows up under another group (e.g. PMP), that")
     print("explains a 0 reading. Tip: run a webcam app (Photo Booth) to actually exercise the ANE.")
     for l in lines { print("  \(l)") }
+    print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")
+}
+
+// Full SMC temperature-key dump for mapping sensors on chips not in the curated table.
+// Run: sscope-cli --sensors-all   (paste into a sensor-key contribution issue)
+if CommandLine.arguments.contains("--sensors-all") {
+    let gen = SensorCatalog.detectGeneration()
+    let curated = Set(SensorCatalog.curated(for: gen).map(\.key))
+    let all = TemperatureSampler().allSMCKeys()
+    print("\n=== all present SMC \"T*\" keys — generation: \(gen) (\(all.count) keys) ===")
+    print("  (* = present on this chip but NOT in our curated table — candidate for a missing sensor)")
+    for e in all {
+        let mark = curated.contains(e.key) ? " " : "*"
+        let val = e.celsius.map { String(format: "%5.1f C", $0) } ?? "   —  "
+        print(String(format: "  %@ %-5@ [%-4@] %@", mark as NSString, e.key as NSString, e.type as NSString, val as NSString))
+    }
     print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")
 }

@@ -1,7 +1,7 @@
 //
 //  File:      TemperatureSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-21
+//  Updated:   2026-06-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads categorized temperatures sudolessly. Prefers the rich Apple Silicon
 //             HID sensor set (IOHIDEventSystem, via HIDSensorReader) — the source iStat
@@ -124,6 +124,14 @@ public final class TemperatureSampler {
             return (e.key, e.name, valid)
         }
         return (String(describing: gen), entries)
+    }
+
+    /// Full dump of every SMC "T…" key present on this Mac (key · type · value), regardless of
+    /// whether it's in the curated table. Lets contributors on unmapped chips (e.g. M4 Max)
+    /// surface keys SiliconScope doesn't yet know — a missing sensor may live under an unknown
+    /// FourCC. Surfaced by `sscope-cli --sensors-all`.
+    public func allSMCKeys() -> [(key: String, type: String, celsius: Double?)] {
+        smc?.allTemperatureKeys() ?? []
     }
 
     /// Reads the curated SMC key table for the detected Apple Silicon generation, directly

@@ -1,7 +1,7 @@
 //
 //  File:      SMCReader.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Minimal read-only Apple SMC client (sudoless) for fan speed and other
 //             scalar keys. Opens the AppleSMC IOService and reads keys via the fixed
@@ -87,6 +87,29 @@ final class SMCReader {
             if let (type, _) = readKey(key), type == "flt " { keys.append(key) }
         }
         return keys
+    }
+
+    /// Enumerates EVERY "T…" key present (any data type), with its SMC type FourCC and decoded
+    /// value when the type is a scalar we understand. Unlike `temperatureKeys()` (flt-only,
+    /// keys only), this is the full picture — for mapping sensors on chips not in the curated
+    /// table, where a missing rail (e.g. an M4 Max core) may sit under an unknown key/type.
+    /// One-shot diagnostic (scans every SMC key).
+    func allTemperatureKeys() -> [(key: String, type: String, celsius: Double?)] {
+        guard let count = readDouble("#KEY"), count > 0 else { return [] }
+        var out: [(String, String, Double?)] = []
+        for index in 0..<Int(count) {
+            var input = SMCKeyData()
+            input.data8 = cmdReadIndex
+            input.data32 = UInt32(index)
+            var output = SMCKeyData()
+            guard call(&input, &output) else { continue }
+            let key = string(from: output.key)
+            guard key.hasPrefix("T"), let (type, _) = readKey(key) else { continue }
+            let v = readDouble(key)
+            let valid = (v.map { $0 > 5 && $0 < 130 } ?? false) ? v : nil
+            out.append((key, type.trimmingCharacters(in: .whitespaces), valid))
+        }
+        return out.sorted { $0.0 < $1.0 }
     }
 
     // MARK: - Private
