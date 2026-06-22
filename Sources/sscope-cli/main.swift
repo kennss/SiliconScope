@@ -177,3 +177,17 @@ if CommandLine.arguments.contains("--sensors-all") {
     }
     print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")
 }
+
+// Connected-peripheral battery levels (Apple Magic Mouse/Trackpad/Keyboard etc., sudoless via
+// IORegistry BatteryPercent). Run: sscope-cli --peripherals
+if CommandLine.arguments.contains("--peripherals") {
+    let devices = PeripheralBatterySampler().sample()
+    print("\n=== peripheral battery (\(devices.count)) — sudoless IORegistry ===")
+    if devices.isEmpty {
+        print("  (none — no connected device exposes BatteryPercent; Logitech/AirPods need other paths)")
+    }
+    for d in devices {
+        print(String(format: "  %-22@ %-9@ %3d%%  [%@]",
+                     d.name as NSString, d.kind.rawValue as NSString, d.percent, d.address as NSString))
+    }
+}
