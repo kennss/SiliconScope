@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.4.1 — 2026-06-24
+
+**MacBook Neo (A18 Pro) now reports power and memory bandwidth.** On the A18, the usual IOReport
+power/bandwidth channels read zero (the Energy Model only populates GPU, and there's no
+per-requestor bandwidth), so SiliconScope now reads the A18's real sources instead:
+
+- **System power** from SMC `PSTR`, and **CPU package power** from SMC `PZC0` (verified jumping
+  from ~0.8 W idle to ~6.2 W under load).
+- **Total memory bandwidth** by summing the IOReport `PMP` → `DRAM BW` lanes.
+
+That makes SiliconScope the first Mac monitor to surface power and bandwidth on the MacBook Neo —
+which, together with GPU usage, drives the AI-workload (bandwidth- vs compute-bound) read on the
+Neo too. Per-component ANE/Media and the CPU E/P split aren't exposed by the A18 and remain
+unavailable. Huge thanks to **@Dreaminko** ([#12](https://github.com/kennss/SiliconScope/issues/12)),
+who ran the diagnostic dumps that mapped all of this.
+
 ## v2.4.0 — 2026-06-24
 
 **Hide the combined menu-bar icon + reach Settings from anywhere.** On notch-limited menu bars,
