@@ -1,7 +1,7 @@
 //
 //  File:      SettingsView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-19
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Preferences window (Cmd+,). Refresh cadence, temperature unit, menu-bar
 //             compact GPU mode, launch-at-login, threshold alerts, and the AI runtime API
@@ -23,6 +23,7 @@ struct SettingsView: View {
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     // Per-metric menu-bar items — same keys the ⬚ pin on each dashboard card writes, so the
     // two stay in sync (MetricBarController reconciles status items from these each tick).
+    @AppStorage("menubar.combined") private var mbCombined = true
     @AppStorage("menubar.cpu") private var mbCPU = false
     @AppStorage("menubar.gpu") private var mbGPU = false
     @AppStorage("menubar.mem") private var mbMEM = false
@@ -50,6 +51,8 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Combined (SS)", isOn: $mbCombined)
+                Divider()
                 Toggle("CPU", isOn: $mbCPU)
                 Toggle("GPU / Media / Neural", isOn: $mbGPU)
                 Toggle("Memory", isOn: $mbMEM)
@@ -60,7 +63,7 @@ struct SettingsView: View {
             } header: {
                 Text("Menu bar items")
             } footer: {
-                Text("Show any metric as its own menu-bar item with a live glyph + dropdown. You can also toggle these with the ⬚ on each dashboard card.")
+                Text("Show any metric as its own menu-bar item with a live glyph + dropdown (also toggleable with the ⬚ on each dashboard card). Turn off Combined (SS) to free a menu-bar slot on notch-limited Macs — Settings stays reachable from any item's dropdown.")
             }
 
             Section {

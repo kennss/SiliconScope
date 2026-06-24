@@ -1,7 +1,7 @@
 //
 //  File:      MetricBarController.swift
 //  Created:   2026-06-19
-//  Updated:   2026-06-21
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style per-metric menu-bar items via AppKit NSStatusItem. SwiftUI's
 //             MenuBarExtra can't do dynamic toggling here (a conditional scene won't compile
@@ -10,7 +10,9 @@
 //             glyph and an NSPopover hosting its SwiftUI dropdown.
 //  Notes:     Driven from the monitor loop via sync(monitor:): it adds/removes items as the
 //             per-metric UserDefaults toggles flip and refreshes each glyph every tick. The
-//             combined "SS" glyph stays a SwiftUI MenuBarExtra (always on).
+//             combined "SS" item is managed here too (key "menubar.combined", default ON via
+//             register(defaults:)), so it can be hidden like the rest — its glyph/dropdown
+//             reuse MenuBarIcon.glyph / MenuBarView.
 //
 import AppKit
 import SwiftUI
@@ -32,7 +34,18 @@ final class MetricBarController: NSObject {
     private var entries: [String: Entry] = [:]
     private weak var monitor: SiliconScopeMonitor?
 
+    override init() {
+        super.init()
+        // Combined "SS" defaults ON; per-metric items default OFF (absent key → false).
+        UserDefaults.standard.register(defaults: ["menubar.combined": true])
+    }
+
     private static let specs: [Spec] = [
+        // Combined "SS" glyph (live 5-bar) + full cockpit dropdown. First so it sits leftmost.
+        Spec(id: "ss", key: "menubar.combined",
+             glyph: { m, dark in MenuBarIcon.glyph(for: m, dark: dark) },
+             dropdown: { m in AnyView(MenuBarView(monitor: m)) }),
+
         Spec(id: "cpu", key: "menubar.cpu",
              glyph: { m, dark in
                 MenuBarGlyph.bars(label: "CPU",

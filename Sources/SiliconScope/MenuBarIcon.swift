@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarIcon.swift
 //  Created:   2026-06-16
-//  Updated:   2026-06-16
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The live menu-bar glyph used as the MenuBarExtra label: six mini bars —
 //             CPU / GPU / ANE / Media Engine / Memory-usage / Memory-bandwidth — that track
@@ -50,7 +50,7 @@ struct MenuBarIcon: View {
         NSColor(srgbRed: 0.32, green: 0.82, blue: 0.86, alpha: 1),  // Mem BW cyan
     ]
 
-    private static func glyph(for monitor: SiliconScopeMonitor, dark: Bool) -> NSImage {
+    static func glyph(for monitor: SiliconScopeMonitor, dark: Bool) -> NSImage {
         let s = monitor.snapshot
         let values: [Double] = [
             s.cpu.pUsage,

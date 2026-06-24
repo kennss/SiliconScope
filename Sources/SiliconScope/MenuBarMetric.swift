@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarMetric.swift
 //  Created:   2026-06-19
-//  Updated:   2026-06-22
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style per-metric menu-bar items. Each dashboard card can be toggled
 //             into its own menu-bar item (a stacked label + a mini histogram or two-line
@@ -342,6 +342,19 @@ struct MenuMeterRow: View {
     }
 }
 
+/// Opens the SwiftUI Settings scene from any context — including NSPopover-hosted per-metric
+/// dropdowns, where `@Environment(\.openSettings)` isn't available. macOS routes the Settings
+/// scene via the `showSettingsWindow:` action (14+); `showPreferencesWindow:` is the older name.
+/// Opens the SwiftUI Settings scene from any context — including NSPopover-hosted dropdowns,
+/// where neither `@Environment(\.openSettings)` nor `NSApp.sendAction(showSettingsWindow:)`
+/// actually surface the window. Posts a notification that `SettingsOpenerBridge` (a hidden view
+/// in the dashboard scene) acts on via SwiftUI's own `openSettings` — the mechanism that works.
+@MainActor func openAppSettings() {
+    NSApplication.shared.setActivationPolicy(.regular)
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    NotificationCenter.default.post(name: .openSiliconScopeSettings, object: nil)
+}
+
 /// Centered accent section header, iStat-style.
 struct MenuSectionHeader: View {
     let title: String
@@ -388,7 +401,7 @@ struct CPUMenuDropdown: View {
                 }
             }
             Divider()
-            OpenDashboardButton()
+            MenuActionsFooter()
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
@@ -448,6 +461,23 @@ struct OpenDashboardButton: View {
     }
 }
 
+/// Footer for the per-metric dropdowns: Settings + Open Dashboard, so the combined "SS" menu-bar
+/// item isn't required to reach them (it can be hidden via Settings → "Combined (SS)").
+struct MenuActionsFooter: View {
+    var body: some View {
+        HStack(spacing: 7) {
+            Button { openAppSettings() } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .buttonStyle(PopoverButtonStyle())
+            Button { openMainDashboard() } label: {
+                Label("Dashboard", systemImage: "macwindow")
+            }
+            .buttonStyle(PopoverButtonStyle(prominent: true))
+        }
+    }
+}
+
 // MARK: - GPU / MEM / NET / SSD dropdowns
 
 struct GPUMenuDropdown: View {
@@ -478,7 +508,7 @@ struct GPUMenuDropdown: View {
                           color: MetricPalette.mediaC, height: 30, yDomain: 0...1)
             }
             Divider()
-            OpenDashboardButton()
+            MenuActionsFooter()
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
@@ -553,7 +583,7 @@ struct MEMMenuDropdown: View {
                 }
             }
             Divider()
-            OpenDashboardButton()
+            MenuActionsFooter()
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
@@ -603,7 +633,7 @@ struct NETMenuDropdown: View {
                 }
             }
             Divider()
-            OpenDashboardButton()
+            MenuActionsFooter()
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
@@ -639,7 +669,7 @@ struct SSDMenuDropdown: View {
             MenuKV(label: "Write", value: formatRate(d.writeBytesPerSec), color: MetricPalette.upC)
             Sparkline(values: monitor.history.diskWrite, color: MetricPalette.upC, height: 22)
             Divider()
-            OpenDashboardButton()
+            MenuActionsFooter()
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
@@ -720,7 +750,7 @@ struct SensorsMenuDropdown: View {
             }
 
             Divider()
-            OpenDashboardButton()
+            MenuActionsFooter()
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }
@@ -854,7 +884,7 @@ struct BatteryMenuDropdown: View {
             }
 
             Divider()
-            OpenDashboardButton()
+            MenuActionsFooter()
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
     }

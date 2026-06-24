@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-21
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Compact menu-bar popover content: the essentials at a glance (E/P, mem,
 //             GPU, bandwidth, power, die temp), trend sparklines, top processes, plus
@@ -19,8 +19,6 @@ struct MenuBarView: View {
     let monitor: SiliconScopeMonitor
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     @AppStorage("compactGPUMode") private var compactGPU = false
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let snapshot = monitor.snapshot
@@ -38,22 +36,15 @@ struct MenuBarView: View {
             // mono label) at a uniform height. "Check for Updates…" lives in Settings.
             VStack(spacing: 7) {
                 Button {
-                    openWindow(id: "siliconscope-main")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    openMainDashboard()
                 } label: {
                     Label("Open Dashboard", systemImage: "macwindow")
                 }
                 .buttonStyle(PopoverButtonStyle(prominent: true))
 
                 HStack(spacing: 7) {
-                    Button("Settings") {
-                        openSettings()
-                        // Bring the app forward so Settings opens in front of (and focused
-                        // over) whatever app the user clicked from — otherwise it appears
-                        // behind, inactive (grey) until a Cmd+Tab. Mirrors "Open Dashboard".
-                        NSApplication.shared.activate(ignoringOtherApps: true)
-                    }
-                    .buttonStyle(PopoverButtonStyle())
+                    Button("Settings") { openAppSettings() }
+                        .buttonStyle(PopoverButtonStyle())
                     Button("Quit") { NSApplication.shared.terminate(nil) }
                         .buttonStyle(PopoverButtonStyle())
                 }
@@ -63,9 +54,6 @@ struct MenuBarView: View {
         .frame(width: compactGPU ? 340 : 270)
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
-        // Opening the combined "SS" popover dismisses any open per-metric dropdowns, so the
-        // menu-bar surfaces stay mutually exclusive like standard dropdowns.
-        .onAppear { MetricBarController.shared.closeAllPopovers() }
     }
 
     /// Single-line GPU-focused readout: GPU% / GPU W / GPU bandwidth / die °C.

@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeApp.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-16
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App entry point. Shows a full dashboard Window and a MenuBarExtra (with a
 //             live 5-bar MenuBarIcon glyph), both backed by one shared SiliconScopeMonitor.
@@ -15,13 +15,37 @@
 import SwiftUI
 import AppKit
 
+extension Notification.Name {
+    /// Posted by menu-bar dropdowns to open Settings; handled by SettingsOpenerBridge.
+    static let openSiliconScopeSettings = Notification.Name("ai.calidalab.SiliconScope.openSettings")
+}
+
+/// Invisible view in the dashboard scene that routes the menu-bar dropdowns' Settings request to
+/// SwiftUI's `openSettings`. The dropdowns are AppKit NSPopovers where `@Environment(\.openSettings)`
+/// isn't available and `showSettingsWindow:` doesn't surface the window — but a scene-attached view
+/// like this one can call openSettings() directly, which does.
+private struct SettingsOpenerBridge: View {
+    @Environment(\.openSettings) private var openSettings
+    var body: some View {
+        Color.clear
+            .onReceive(NotificationCenter.default.publisher(for: .openSiliconScopeSettings)) { _ in
+                openSettings()
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+    }
+}
+
 @main
 struct SiliconScopeApp: App {
     @State private var monitor = SiliconScopeMonitor()
 
+    // The combined "SS" menu-bar item and all per-metric items are AppKit NSStatusItems managed
+    // by MetricBarController (driven from the monitor loop), so each can be toggled — including
+    // hiding the combined SS on notch-limited menu bars. (SwiftUI's MenuBarExtra can't: its
+    // isInserted: init has no custom-label form for the live glyph, and toggling it loops the
+    // main menu.) The monitor is started from the dashboard window's onAppear at launch.
     var body: some Scene {
         dashboardWindow
-        mainMenuBar
         Settings { SettingsView() }
     }
 
@@ -29,6 +53,7 @@ struct SiliconScopeApp: App {
         Window("SiliconScope", id: "siliconscope-main") {
             DashboardView(monitor: monitor)
                 .frame(minWidth: 640, minHeight: 600)
+                .background(SettingsOpenerBridge())   // routes dropdown "Settings" → openSettings()
                 .onAppear {
                     NSApplication.shared.setActivationPolicy(.regular)
                     if let icon = Self.loadAppIcon() {
@@ -48,15 +73,6 @@ struct SiliconScopeApp: App {
         }
     }
 
-    private var mainMenuBar: some Scene {
-        MenuBarExtra {
-            MenuBarView(monitor: monitor)
-                .onAppear { monitor.start() }
-        } label: {
-            MenuBarIcon(monitor: monitor)
-        }
-        .menuBarExtraStyle(.window)
-    }
 
     /// Resolves the app icon without ever touching SwiftPM's `Bundle.module`.
     /// `Bundle.module`'s generated accessor calls `fatalError` when its resource
