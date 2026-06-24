@@ -1,7 +1,7 @@
 //
 //  File:      PowerSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-22
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads per-domain SoC power (CPU E/P, GPU, ANE, DRAM) sudolessly via
 //             the private IOReport framework. Subscribes once, then each sample()
@@ -19,6 +19,10 @@ import CIOReport
 public final class PowerSampler {
     private let subscription: IOReportSubscriptionRef
     private let subscribedChannels: CFMutableDictionary
+    // A18 (MacBook Neo): IOReport's Energy Model only populates GPU, so the component sum is ~0.
+    // SMC `PSTR` gives the true system/SoC total (direct watts). Read it when on an A18.
+    private let smc = SMCReader()
+    private let isA18 = SensorCatalog.detectGeneration() == .a18
 
     /// Returns nil if IOReport is unavailable (e.g. non-Apple-Silicon hardware).
     public init?() {
@@ -85,6 +89,11 @@ public final class PowerSampler {
             }
             return Int32(kKtopIOReportIterOk)
         }
+
+        // A18: Energy Model only exposes GPU, so cpu/ane/dram stay 0 and the derived sum is wrong.
+        // SMC PSTR is the true system total (direct watts) — surface it as the SoC total.
+        if isA18, let pstr = smc?.readDouble("PSTR") { result.measuredSocWatts = pstr }
+
         return result
     }
 

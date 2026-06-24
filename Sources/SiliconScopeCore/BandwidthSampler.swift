@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-09
+//  Updated:   2026-06-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly via IOReport
 //             "AMC Stats". Subscribes once; each sample() diffs two snapshots and
@@ -19,9 +19,12 @@ import CIOReport
 public final class BandwidthSampler {
     private let subscription: IOReportSubscriptionRef
     private let subscribedChannels: CFMutableDictionary
+    // A18 (MacBook Neo) has no per-requestor "AMC Stats"; its DRAM bandwidth lives in the "PMP"
+    // group's "DRAM BW" subgroup (by DVFS frequency state). M-series uses "AMC Stats".
+    private let isA18 = SensorCatalog.detectGeneration() == .a18
 
     public init?() {
-        guard let channels = IOReportCopyChannelsInGroup("AMC Stats" as CFString, nil, 0, 0, 0)?
+        guard let channels = IOReportCopyChannelsInGroup((isA18 ? "PMP" : "AMC Stats") as CFString, nil, 0, 0, 0)?
             .takeRetainedValue()
         else {
             return nil
@@ -49,6 +52,27 @@ public final class BandwidthSampler {
         }
 
         let seconds = max(interval, 0.001)
+
+        // A18: sum the PMP "DRAM BW" frequency-state lanes (F1–F5 RD/WR, bytes) for the total.
+        // There's no per-requestor split on A18, so only the total is known (cpu/gpu/media stay 0).
+        if isA18 {
+            var totalBytes = 0.0
+            IOReportIterate(delta) { channel in
+                guard IOReportChannelGetFormat(channel) == kKtopIOReportFormatSimple,
+                      let subgroupRef = IOReportChannelGetSubGroup(channel)?.takeUnretainedValue(),
+                      (subgroupRef as String) == "DRAM BW",
+                      let nameRef = IOReportChannelGetChannelName(channel)?.takeUnretainedValue()
+                else { return Int32(kKtopIOReportIterOk) }
+                let name = (nameRef as String).uppercased()
+                guard name.hasSuffix(" RD") || name.hasSuffix(" WR") else { return Int32(kKtopIOReportIterOk) }
+                totalBytes += Double(IOReportSimpleGetIntegerValue(channel, 0))
+                return Int32(kKtopIOReportIterOk)
+            }
+            var result = BandwidthSample()
+            result.measuredTotalGBs = (totalBytes / seconds) / 1_000_000_000.0
+            return result
+        }
+
         var cpu = 0.0, gpu = 0.0, media = 0.0, total = 0.0
 
         IOReportIterate(delta) { channel in
