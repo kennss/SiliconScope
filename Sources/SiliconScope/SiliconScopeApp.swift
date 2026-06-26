@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeApp.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-24
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App entry point. Shows a full dashboard Window and a MenuBarExtra (with a
 //             live 5-bar MenuBarIcon glyph), both backed by one shared SiliconScopeMonitor.
@@ -51,7 +51,7 @@ struct SiliconScopeApp: App {
 
     private var dashboardWindow: some Scene {
         Window("SiliconScope", id: "siliconscope-main") {
-            DashboardView(monitor: monitor)
+            DashboardContainer(monitor: monitor)
                 .frame(minWidth: 640, minHeight: 600)
                 .background(SettingsOpenerBridge())   // routes dropdown "Settings" → openSettings()
                 .onAppear {

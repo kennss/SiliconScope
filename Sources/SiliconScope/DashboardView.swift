@@ -14,64 +14,80 @@
 import SwiftUI
 import SiliconScopeCore
 
-struct DashboardView: View {
+// Hosts the dashboard: chooses the data source (live monitor or session replay), builds the
+// DashboardState in its body so @Observable / playhead changes re-render, and pins the matching
+// bottom bar (RecordBar live, ReplayBar in replay).
+struct DashboardContainer: View {
     let monitor: SiliconScopeMonitor
 
     var body: some View {
-        let snapshot = monitor.snapshot
+        DashboardView(state: DashboardState(live: monitor),
+                      onBenchmark: { Task { await monitor.runBenchmark() } })
+            .safeAreaInset(edge: .bottom, spacing: 0) { RecordBar(monitor: monitor) }
+    }
+}
+
+struct DashboardView: View {
+    let state: DashboardState
+    var onBenchmark: (() -> Void)? = nil   // nil → replay: hides the benchmark control + process kill
+
+    var body: some View {
+        let s = state
+        let snapshot = s.snapshot
         ScrollView {
             VStack(spacing: 4) {
-                let warnings = allWarnings(snapshot)
+                let warnings = allWarnings(s)
                 if !warnings.isEmpty { WarningBanner(warnings: warnings) }
 
-                HeaderView(topology: monitor.topology, power: snapshot.power, battery: snapshot.battery)
+                HeaderView(topology: s.topology, power: snapshot.power, battery: snapshot.battery)
 
                 // AI cockpit pair, side by side (matches the rest of the 2-column grid and
                 // saves a stacked row of vertical space).
                 HStack(alignment: .top, spacing: 6) {
-                    AIWorkloadCard(bottleneck: monitor.bottleneck,
+                    AIWorkloadCard(bottleneck: s.bottleneck,
                                    gpu: snapshot.gpu,
                                    bandwidth: snapshot.bandwidth,
-                                   ceilingGBs: monitor.bandwidthCeilingGBs,
-                                   chipName: monitor.topology?.chipName ?? "",
+                                   ceilingGBs: s.bandwidthCeilingGBs,
+                                   chipName: s.topology?.chipName ?? "",
                                    engineHint: snapshot.likelyAIEngine,
-                                   clockDropFraction: monitor.gpuClockDropFraction)
+                                   clockDropFraction: s.gpuClockDropFraction)
                     AIRuntimeCard(runtime: snapshot.aiRuntime,
                                   api: snapshot.runtimeAPI,
                                   budget: snapshot.memoryBudget,
-                                  memoryRisk: monitor.memoryRisk,
+                                  memoryRisk: s.memoryRisk,
                                   cpuOffloadLikely: snapshot.aiCPUOffloadLikely,
                                   likelyEngine: snapshot.likelyAIEngine,
-                                  isBenchmarking: monitor.isBenchmarking,
-                                  benchmark: monitor.benchmarkForCurrentModel,
-                                  benchmarkError: monitor.benchmarkError,
-                                  onBenchmark: { Task { await monitor.runBenchmark() } })
+                                  isBenchmarking: s.isBenchmarking,
+                                  benchmark: s.benchmark,
+                                  benchmarkError: s.benchmarkError,
+                                  onBenchmark: onBenchmark ?? {},
+                                  allowBenchmark: onBenchmark != nil)
                 }
                 .frame(height: 108)
 
                 HStack(spacing: 6) {
-                    CPUCard(cpu: snapshot.cpu, topology: monitor.topology,
-                            eHistory: monitor.history.eCPU, pHistory: monitor.history.pCPU)
+                    CPUCard(cpu: snapshot.cpu, topology: s.topology,
+                            eHistory: s.history.eCPU, pHistory: s.history.pCPU)
                     AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth,
-                                    anePeak: monitor.anePeakWatts, mediaPeak: monitor.mediaPeakGBs,
-                                    gpuHistory: monitor.history.gpu, gpuMemHistory: monitor.history.gpuMem,
-                                    mediaHistory: monitor.history.media, aneHistory: monitor.history.ane)
+                                    anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
+                                    gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
+                                    mediaHistory: s.history.media, aneHistory: s.history.ane)
                 }
                 .frame(height: 166)
 
                 HStack(alignment: .top, spacing: 6) {
                     MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
-                                        bandwidthPeak: monitor.bandwidthPeakGBs,
-                                        memHistory: monitor.history.memory, bwHistory: monitor.history.bandwidth)
+                                        bandwidthPeak: s.bandwidthPeakGBs,
+                                        memHistory: s.history.memory, bwHistory: s.history.bandwidth)
                     NetworkDiskCard(network: snapshot.network, disk: snapshot.disk,
-                                    downHistory: monitor.history.netDown, upHistory: monitor.history.netUp,
-                                    readHistory: monitor.history.diskRead, writeHistory: monitor.history.diskWrite)
+                                    downHistory: s.history.netDown, upHistory: s.history.netUp,
+                                    readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
                 }
                 .frame(height: 176)
 
                 HStack(spacing: 6) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
-                    ProcessCard(processes: snapshot.processes)
+                    ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil)
                 }
                 .frame(height: 196)
             }
@@ -79,18 +95,17 @@ struct DashboardView: View {
         }
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
-        .safeAreaInset(edge: .bottom, spacing: 0) { RecordBar(monitor: monitor) }
     }
 
-    private func allWarnings(_ s: SystemSnapshot) -> [SystemSnapshot.Warning] {
+    private func allWarnings(_ s: DashboardState) -> [SystemSnapshot.Warning] {
         // Bandwidth-bound is no longer a banner alert — it's the AI Workload verdict
         // (AIWorkloadCard). The banner keeps only the data-level + throttle alarms.
-        var warnings = s.warnings
-        if monitor.gpuThrottling {
-            let level: SystemSnapshot.Warning.Level = s.thermal.pressure == .critical ? .critical : .warning
+        var warnings = s.snapshot.warnings
+        if s.gpuThrottling {
+            let level: SystemSnapshot.Warning.Level = s.snapshot.thermal.pressure == .critical ? .critical : .warning
             warnings.append(.init(level: level,
                                   message: String(format: "GPU throttling — clock %.0f MHz (-%.0f%% vs peak)",
-                                                   s.gpu.freqMHz, monitor.gpuClockDropFraction * 100)))
+                                                   s.snapshot.gpu.freqMHz, s.gpuClockDropFraction * 100)))
         }
         return warnings
     }
@@ -226,6 +241,7 @@ private struct AIRuntimeCard: View {
     let benchmark: BenchmarkRecord?
     let benchmarkError: String?
     let onBenchmark: () -> Void
+    var allowBenchmark = true        // false during replay — no live runtime to benchmark
 
     private static let gb = 1_073_741_824.0
 
@@ -250,7 +266,7 @@ private struct AIRuntimeCard: View {
     // On-demand speed benchmark — only when the runtime API is on with a loaded model
     // (that's how we know the model name + have an endpoint to generate against).
     @ViewBuilder private var benchmarkLine: some View {
-        if api.status == .ok, api.primaryModel != nil {
+        if allowBenchmark, api.status == .ok, api.primaryModel != nil {
             HStack(spacing: 6) {
                 if isBenchmarking {
                     ProgressView().controlSize(.small).scaleEffect(0.7)
@@ -736,6 +752,7 @@ private struct SensorGroupRow: View {
 
 private struct ProcessCard: View {
     let processes: [ProcessRow]
+    var allowKill = true            // false during replay — recorded PIDs are stale (would kill live)
 
     enum SortKey { case cpu, memory, name }
     @State private var sortKey: SortKey = .cpu
@@ -794,9 +811,11 @@ private struct ProcessCard: View {
                             .font(.system(size: 11, design: .monospaced))
                             .contentShape(Rectangle())
                             .contextMenu {
-                                Button("Quit \(process.name)") { pendingKill = process; pendingForce = false }
-                                Button("Force Quit \(process.name)", role: .destructive) {
-                                    pendingKill = process; pendingForce = true
+                                if allowKill {
+                                    Button("Quit \(process.name)") { pendingKill = process; pendingForce = false }
+                                    Button("Force Quit \(process.name)", role: .destructive) {
+                                        pendingKill = process; pendingForce = true
+                                    }
                                 }
                             }
                         }
