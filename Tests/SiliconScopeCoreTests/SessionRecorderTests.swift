@@ -78,7 +78,7 @@ final class SessionRecorderTests: XCTestCase {
         let text = try String(contentsOf: rec.fileURL!, encoding: .utf8)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         let frameLine = text.split(separator: "\n").dropFirst().first!   // skip the meta line
-        let frame = try dec.decode(SessionRecorder.Frame.self, from: Data(frameLine.utf8))
+        let frame = try dec.decode(RecordedFrame.self, from: Data(frameLine.utf8))
         XCTAssertEqual(frame.snapshot.processes.count, 5)
     }
 }

@@ -15,20 +15,6 @@
 import Foundation
 
 public final class SessionRecorder {
-    /// One recorded frame: elapsed seconds since start + the full snapshot at that instant.
-    struct Frame: Codable { let t: Double; let snapshot: SystemSnapshot }
-
-    /// First line of the file — session metadata (chip, model, OS, start, cadence).
-    struct Meta: Codable {
-        let kind: String          // always "meta"
-        let app: String
-        let chip: String
-        let model: String
-        let os: String
-        let started: Date
-        let cadenceHz: Double
-    }
-
     public private(set) var isRecording = false
     public private(set) var sampleCount = 0
     public private(set) var startedAt: Date?
@@ -52,16 +38,19 @@ public final class SessionRecorder {
     public var elapsed: TimeInterval { startedAt.map { Date().timeIntervalSince($0) } ?? 0 }
 
     /// Begins a recording: creates a temp .ssrec, writes the meta line, starts the clock.
-    public func start(directory: URL? = nil) throws {
+    public func start(directory: URL? = nil, topology: CPUTopology? = nil) throws {
         guard !isRecording else { return }
         let dir = directory ?? FileManager.default.temporaryDirectory
         let stamp = Int(Date().timeIntervalSince1970)
         let url = dir.appendingPathComponent("SiliconScope-recording-\(stamp).ssrec")
         FileManager.default.createFile(atPath: url.path, contents: nil)
         let h = try FileHandle(forWritingTo: url)
-        let meta = Meta(kind: "meta", app: Self.appVersion, chip: Self.sysctl("machdep.cpu.brand_string"),
-                        model: Self.sysctl("hw.model"), os: ProcessInfo.processInfo.operatingSystemVersionString,
-                        started: Date(), cadenceHz: cadence > 0 ? 1.0 / cadence : 0)
+        let meta = RecordingMeta(version: recordingFormatVersion, app: Self.appVersion,
+                                 chip: Self.sysctl("machdep.cpu.brand_string"),
+                                 model: Self.sysctl("hw.model"),
+                                 os: ProcessInfo.processInfo.operatingSystemVersionString,
+                                 started: Date(), cadenceHz: cadence > 0 ? 1.0 / cadence : 0,
+                                 topology: topology)
         try writeLine(h, encoder.encode(meta))
         handle = h; fileURL = url
         startedAt = Date(); lastWriteAt = nil; sampleCount = 0; isRecording = true
@@ -77,7 +66,7 @@ public final class SessionRecorder {
         if snap.processes.count > maxProcesses {
             snap.processes = Array(snap.processes.prefix(maxProcesses))   // dashboard shows a sorted list
         }
-        guard let data = try? encoder.encode(Frame(t: now.timeIntervalSince(started), snapshot: snap)) else { return }
+        guard let data = try? encoder.encode(RecordedFrame(t: now.timeIntervalSince(started), snapshot: snap)) else { return }
         try? writeLine(h, data)
         sampleCount += 1
     }
@@ -129,10 +118,10 @@ public final class SessionRecorder {
         var rows: [String] = [csvHeader]
         for line in text.split(separator: "\n") {
             guard let data = line.data(using: .utf8) else { continue }
-            if let meta = try? dec.decode(Meta.self, from: data), meta.kind == "meta" {
+            if let meta = try? dec.decode(RecordingMeta.self, from: data), meta.kind == "meta" {
                 started = meta.started; continue
             }
-            if let frame = try? dec.decode(Frame.self, from: data) {
+            if let frame = try? dec.decode(RecordedFrame.self, from: data) {
                 rows.append(csvRow(frame.snapshot, t: frame.t, started: started))
             }
         }

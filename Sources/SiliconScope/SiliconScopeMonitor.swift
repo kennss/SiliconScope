@@ -135,7 +135,7 @@ final class SiliconScopeMonitor {
     func startRecording() {
         guard !isRecording else { return }
         do {
-            try recorder.start()
+            try recorder.start(topology: topology)
             isRecording = true
             recordingSampleCount = 0
             hasRecording = false
