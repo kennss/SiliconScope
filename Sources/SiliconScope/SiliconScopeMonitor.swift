@@ -85,8 +85,9 @@ final class SiliconScopeMonitor {
 
     // Session recording (Phase 1): the recorder streams full snapshots to a temp .ssrec. These
     // mirror its state into @Observable properties so the RecordBar reflects start/stop and the
-    // live sample count immediately.
-    private let recorder = SessionRecorder()
+    // live sample count immediately. cadence:0 = record EVERY sample tick, so the recording rate
+    // follows the user's sample-interval setting (the loop's own cadence) rather than a fixed gate.
+    private let recorder = SessionRecorder(cadence: 0)
     private(set) var isRecording = false
     private(set) var recordingSampleCount = 0
     private(set) var hasRecording = false              // a finished recording exists to export
