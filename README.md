@@ -17,9 +17,9 @@ accelerators — and grown into a daily-driver monitor that can stand in for iSt
 
 *Featured on [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP) and [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE).*
 
-![SiliconScope dashboard under a local-LLM load](docs/img/dashboard.png)
+![SiliconScope dashboard with the Replay scrubber](docs/img/dashboard.png)
 
-*Under a local LLM (LM Studio · Llama-3.1-8B, 100% GPU): SiliconScope flags **thermal throttling** (GPU clock held −20% vs peak), measures the workload against the M1 Max's 400 GB/s ceiling, detects the runtime + model, and shows every engine live — GPU / GPU-memory / ANE / Media and E/P-core overlaid trends, per-core temperatures, power, and bandwidth.*
+*The whole machine at a glance — an AI-workload bottleneck classifier, E/P-core overlaid trends, GPU / GPU-memory / ANE / Media, memory measured against the M1 Max's 400 GB/s ceiling, per-core temperatures, power, and live processes. The bar along the bottom is **Replay** (new in 3.0): every metric is recorded, so you can scrub back through a session like a DVR.*
 
 ### Menu bar — every metric, iStat-style
 
@@ -40,6 +40,29 @@ Pin any card to its own menu-bar item — **CPU · GPU · Memory · Network · S
 *On-demand benchmark: "Measure tok/s" runs one short generation and reports the model's decode speed and energy efficiency — **tokens/sec · tokens/Wh** — stored per model.*
 
 > 📊 **Measured tok/s on your Mac?** [Post it in Discussions](https://github.com/kennss/SiliconScope/discussions/5) — a crowd-sourced per-chip table helps others pick the right hardware.
+
+## New in 3.0
+
+### 🧠 Process Inspector — per-process metrics, sudoless
+
+Click any process to open the Inspector. It shows what Activity Monitor can't:
+**CPU (P/E split) · IPC · per-process power (W) · memory · disk** — each with a live
+sparkline — and the one signal nobody else surfaces per process: **Neural-Engine memory**.
+See exactly which app is on the ANE, and how much it's holding.
+
+![Process Inspector — per-process CPU, IPC, power, and Neural-Engine memory](docs/img/inspector.png)
+
+*SpectaloWhispr transcribing live (right): 65% CPU at **2.43 IPC**, **0.64 W**, and **762 MB
+of Neural-Engine memory** — the ANE footprint no other monitor shows per process. Accelerators
+that macOS only reports system-wide (GPU / ANE-power / Media / bandwidth) are labeled as such —
+no faked per-process numbers.*
+
+### ⏺ Record & Replay — a DVR for your Mac's metrics
+
+Hit **Record** and SiliconScope streams every metric — CPU, GPU, ANE, Media, bandwidth, power,
+sensors, processes — to a compact `.ssrec` file. Then replay the whole dashboard with
+**play / pause / scrub / speed**, so you can catch a spike that's already gone by the time you
+look at it. It all stays on your Mac; export a recording to share or diff a run later.
 
 ## Why I built it
 
@@ -80,6 +103,10 @@ Prefer to build it yourself? See [Build & run](#build--run).
 
 ## Highlights
 
+- **Process Inspector** *(new in 3.0)* — focus one process for CPU (P/E split), IPC,
+  per-process **power (W)**, memory, disk, and **Neural-Engine memory** — all sudoless
+- **Record & Replay** *(new in 3.0)* — record every metric to a `.ssrec` file and replay the
+  dashboard with **play / pause / scrub / speed**, like a DVR
 - **AI Workload view** — a bottleneck classifier (*bandwidth-bound* / *compute-bound* /
   *thermal-throttled* / *memory-pressured*) with a per-chip **"% of ceiling"** bandwidth
   gauge — answers "what's limiting my local LLM right now?"
@@ -94,7 +121,7 @@ Prefer to build it yourself? See [Build & run](#build--run).
   **GPU throttle detection** (clock held below its rolling peak under pressure)
 - **Battery** — charge state, **health %, cycle count, condition** (AppleSmartBattery)
 - **Power** — per-domain CPU / GPU / ANE / DRAM / SoC, plus battery
-- **Processes** — sort, filter, kill (in-card scroll)
+- **Processes** — sort, filter, kill, and **click to inspect** (in-card scroll)
 - **Per-metric menu-bar items** — pin CPU / GPU / Memory / Network / SSD / Sensors / Battery
   each to its own menu-bar glyph + dropdown (plus the combined "SS" cockpit glyph)
 - **Auto-update** — built-in Sparkle updater; "Check for Updates…" in the menu
@@ -209,6 +236,18 @@ Sparkle via SPM, with **no Xcode project**: `package.sh` embeds `Sparkle.framewo
 rpath, signs nested helpers deep→shallow, then runs `generate_appcast`. The feed is the
 **latest GitHub release's `appcast.xml`** (`…/releases/latest/download/appcast.xml`), so each
 release just attaches the DMG + appcast and the app updates itself.
+
+#### 7. Per-process metrics — including ANE memory — without `sudo`
+
+The Process Inspector's numbers come from **`proc_pid_rusage(pid, RUSAGE_INFO_V6, …)`** — a
+*public* SDK call (no entitlement, no root for processes you own). `rusage_info_v6` carries far
+more than CPU time: `ri_instructions` / `ri_cycles` (real **IPC**), `ri_energy_nj` (per-process
+**power**, in nanojoules), `ri_user_ptime` (the **P-core** share), disk bytes, wakeups — and the
+one that matters most here, **`ri_neural_footprint`: per-process Neural-Engine memory.** That's
+the only genuinely per-process ANE signal Apple exposes, so the Inspector shows ANE *memory* per
+app but keeps GPU / ANE-power / Media / bandwidth labeled **system-wide** (Apple doesn't
+attribute those to a pid — and faking it would be worse than honest). Counters are turned into
+rates by delta-over-dt between ticks; a `ri_proc_start_abstime` check guards against pid reuse.
 
 ## Not on the Mac App Store
 

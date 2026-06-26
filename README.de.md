@@ -21,7 +21,7 @@ iStat Menus ersetzen kann.
 
 ![SiliconScope-Dashboard unter Last eines lokalen LLM](docs/img/dashboard.png)
 
-*Unter einem lokalen LLM (LM Studio · Llama-3.1-8B, 100 % GPU): SiliconScope erkennt **thermisches Throttling** (GPU-Takt um −20 % gegenüber dem Spitzenwert gedrosselt), misst die Last gegen die 400-GB/s-Grenze des M1 Max, erkennt Runtime und Modell und zeigt jede Engine live — GPU / GPU-Speicher / ANE / Media sowie überlagerte Trends der E-/P-Kerne, Temperaturen pro Kern, Leistung und Bandbreite.*
+*Die ganze Maschine auf einen Blick — ein Engpass-Klassifikator für AI-Workloads, überlagerte E-/P-Kern-Trends, GPU / GPU-Speicher / ANE / Media, der Speicher gemessen an der 400-GB/s-Grenze des M1 Max, Temperaturen pro Kern, Leistung und laufende Prozesse. Die Leiste am unteren Rand ist **Replay** (neu in 3.0): jede Metrik wird aufgezeichnet, sodass du wie bei einem DVR durch eine Sitzung zurückspulen kannst.*
 
 ### Menüleiste — jede Metrik, im iStat-Stil
 
@@ -42,6 +42,31 @@ Pinne jede Karte als eigenständiges Menüleisten-Element an — **CPU · GPU ·
 *On-Demand-Benchmark: „Measure tok/s" führt eine kurze Generierung aus und misst die Dekodiergeschwindigkeit und Energieeffizienz eines Modells — **tokens/sec · tokens/Wh** — und speichert sie pro Modell.*
 
 > 📊 **Schon tok/s auf deinem Mac gemessen?** [Poste es in den Discussions](https://github.com/kennss/SiliconScope/discussions/5) — eine per Crowdsourcing erstellte Tabelle pro Chip hilft anderen bei der Hardware-Wahl.
+
+## Neu in 3.0
+
+### 🧠 Prozess-Inspektor — Metriken pro Prozess, ohne sudo
+
+Klicke auf einen beliebigen Prozess, um den Inspektor zu öffnen. Er zeigt, was die
+Aktivitätsanzeige nicht kann: **CPU (P/E-Aufteilung) · IPC · Leistung pro Prozess (W) ·
+Speicher · Disk** — jeweils mit einer Live-Sparkline — und das eine Signal, das sonst niemand
+pro Prozess zeigt: **Neural-Engine-Speicher**. Sieh genau, welche App die ANE nutzt und wie
+viel sie belegt.
+
+![Prozess-Inspektor — CPU, IPC, Leistung und Neural-Engine-Speicher pro Prozess](docs/img/inspector.png)
+
+*SpectaloWhispr transkribiert live (rechts): 65 % CPU bei **2,43 IPC**, **0,64 W** und **762 MB
+Neural-Engine-Speicher** — der ANE-Speicherbedarf, den kein anderer Monitor pro Prozess zeigt.
+Beschleuniger, die macOS nur systemweit meldet (GPU / ANE-Leistung / Media / Bandbreite), sind
+genau so gekennzeichnet — keine erfundenen Werte pro Prozess.*
+
+### ⏺ Aufzeichnen & Abspielen — ein DVR für die Metriken deines Macs
+
+Drücke **Record**, und SiliconScope schreibt jede Metrik — CPU, GPU, ANE, Media, Bandbreite,
+Leistung, Sensoren, Prozesse — in eine kompakte `.ssrec`-Datei. Spiele dann das gesamte
+Dashboard mit **Play / Pause / Scrub / Geschwindigkeit** ab und fang einen Ausschlag ein, der
+längst vorbei ist, wenn du hinschaust. Alles bleibt auf deinem Mac; exportiere eine Aufzeichnung
+zum Teilen oder zum späteren Vergleich.
 
 ## Warum ich es gebaut habe
 
@@ -82,6 +107,10 @@ Wenn du selbst bauen willst, siehe [Build & run](README.md#build--run) im englis
 
 ## Hauptfunktionen
 
+- **Prozess-Inspektor** *(neu in 3.0)* — fokussiere einen Prozess für CPU (P/E-Aufteilung), IPC,
+  Leistung pro Prozess **(W)**, Speicher, Disk und **Neural-Engine-Speicher** — alles ohne sudo
+- **Aufzeichnen & Abspielen** *(neu in 3.0)* — zeichne jede Metrik in eine `.ssrec`-Datei auf und
+  spiele das Dashboard mit **Play / Pause / Scrub / Geschwindigkeit** ab, wie ein DVR
 - **AI-Workload-Ansicht** — ein Engpass-Klassifikator (*bandwidth-bound* / *compute-bound* /
   *thermal-throttled* / *memory-pressured*) plus eine **„% of ceiling"**-Bandbreitenanzeige pro
   Chip — beantwortet: „Was bremst mein lokales LLM gerade?"
@@ -99,7 +128,7 @@ Wenn du selbst bauen willst, siehe [Build & run](README.md#build--run) im englis
   gehalten wird)
 - **Akku** — Ladezustand, **Gesundheit %, Ladezyklen, Zustand** (AppleSmartBattery)
 - **Leistung** — pro Domäne CPU / GPU / ANE / DRAM / SoC sowie Akku
-- **Prozesse** — sortieren, filtern, beenden (Scrollen innerhalb der Karte)
+- **Prozesse** — sortieren, filtern, beenden und **zum Inspizieren anklicken** (Scrollen innerhalb der Karte)
 - **Menüleisten-Element pro Metrik** — CPU / GPU / Speicher / Netzwerk / SSD / Sensoren / Akku
   jeweils als eigene Glyphe + Dropdown anpinnen (plus die kombinierte „SS"-Cockpit-Glyphe)
 - **Automatische Updates** — eingebauter Sparkle-Updater, „Check for Updates…" im Menü
