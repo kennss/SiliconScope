@@ -52,7 +52,7 @@ See exactly which app is on the ANE, and how much it's holding.
 
 ![Process Inspector — per-process CPU, IPC, power, and Neural-Engine memory](docs/img/inspector.png)
 
-*SpectaloWhispr transcribing live (right): 65% CPU at **2.43 IPC**, **0.64 W**, and **762 MB
+*An on-device transcription app running live (right): 65% CPU at **2.43 IPC**, **0.64 W**, and **762 MB
 of Neural-Engine memory** — the ANE footprint no other monitor shows per process. Accelerators
 that macOS only reports system-wide (GPU / ANE-power / Media / bandwidth) are labeled as such —
 no faked per-process numbers.*
@@ -63,6 +63,10 @@ Hit **Record** and SiliconScope streams every metric — CPU, GPU, ANE, Media, b
 sensors, processes — to a compact `.ssrec` file. Then replay the whole dashboard with
 **play / pause / scrub / speed**, so you can catch a spike that's already gone by the time you
 look at it. It all stays on your Mac; export a recording to share or diff a run later.
+
+![The Replay transport — play / pause / step, scrub, speed, and Save](docs/img/replaybar.png)
+
+*The Replay transport: play / pause / step, scrub the timeline, change speed, and Save the recording.*
 
 ## Why I built it
 

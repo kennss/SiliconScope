@@ -55,7 +55,7 @@ viel sie belegt.
 
 ![Prozess-Inspektor — CPU, IPC, Leistung und Neural-Engine-Speicher pro Prozess](docs/img/inspector.png)
 
-*SpectaloWhispr transkribiert live (rechts): 65 % CPU bei **2,43 IPC**, **0,64 W** und **762 MB
+*Eine On-Device-Transkriptions-App läuft live (rechts): 65 % CPU bei **2,43 IPC**, **0,64 W** und **762 MB
 Neural-Engine-Speicher** — der ANE-Speicherbedarf, den kein anderer Monitor pro Prozess zeigt.
 Beschleuniger, die macOS nur systemweit meldet (GPU / ANE-Leistung / Media / Bandbreite), sind
 genau so gekennzeichnet — keine erfundenen Werte pro Prozess.*
@@ -67,6 +67,10 @@ Leistung, Sensoren, Prozesse — in eine kompakte `.ssrec`-Datei. Spiele dann da
 Dashboard mit **Play / Pause / Scrub / Geschwindigkeit** ab und fang einen Ausschlag ein, der
 längst vorbei ist, wenn du hinschaust. Alles bleibt auf deinem Mac; exportiere eine Aufzeichnung
 zum Teilen oder zum späteren Vergleich.
+
+![Die Replay-Leiste — Play / Pause / Einzelschritt, Scrubben, Geschwindigkeit und Save](docs/img/replaybar.png)
+
+*Die Replay-Leiste: Play / Pause / Einzelschritt, durch die Zeitleiste scrubben, Geschwindigkeit ändern und die Aufzeichnung speichern.*
 
 ## Warum ich es gebaut habe
 
