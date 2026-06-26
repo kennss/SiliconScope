@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-24
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Value type holding one unified-memory bandwidth reading (GB/s), split
 //             by requestor. The headline signal for local-LLM throughput (token
@@ -11,7 +11,7 @@
 //
 import Foundation
 
-public struct BandwidthSample: Sendable, Equatable {
+public struct BandwidthSample: Sendable, Equatable, Codable {
     public var cpuGBs: Double = 0
     public var gpuGBs: Double = 0
     public var mediaGBs: Double = 0    // Media Engine: video codec / ProRes traffic

@@ -1,7 +1,7 @@
 //
 //  File:      Network.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Network throughput (download/upload bytes per second) sampled sudolessly
 //             via getifaddrs. Stateful: diffs interface byte counters against the
@@ -11,7 +11,7 @@
 //
 import Foundation
 
-public struct NetworkSample: Sendable, Equatable {
+public struct NetworkSample: Sendable, Equatable, Codable {
     public var downloadBytesPerSec: Double = 0
     public var uploadBytesPerSec: Double = 0
     public init() {}

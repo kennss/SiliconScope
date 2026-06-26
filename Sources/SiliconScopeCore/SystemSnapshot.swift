@@ -1,7 +1,7 @@
 //
 //  File:      SystemSnapshot.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-22
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  One unified reading of every SiliconScope metric, produced by SystemSampler
 //             and consumed by the UI. Pure value type (Sendable).
@@ -10,7 +10,7 @@
 //
 import Foundation
 
-public struct SystemSnapshot: Sendable {
+public struct SystemSnapshot: Sendable, Codable {
     public var power = PowerSample()
     public var cpu = CPUSample()
     public var gpu = GPUSample()

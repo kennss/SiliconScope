@@ -1,7 +1,7 @@
 //
 //  File:      PeripheralBattery.swift
 //  Created:   2026-06-22
-//  Updated:   2026-06-22
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Sudoless battery levels for connected peripherals, the way iStat Menus surfaces
 //             accessory batteries in its battery dropdown. Two sources, merged:
@@ -19,7 +19,7 @@
 import Foundation
 import IOKit
 
-public enum PeripheralKind: String, Sendable {
+public enum PeripheralKind: String, Sendable, Codable {
     case mouse, keyboard, trackpad, headphones, gamepad, other
 
     /// Fallback label when the device exposes no Product string.
@@ -35,7 +35,7 @@ public enum PeripheralKind: String, Sendable {
     }
 }
 
-public struct PeripheralBattery: Sendable, Equatable, Identifiable {
+public struct PeripheralBattery: Sendable, Equatable, Identifiable, Codable {
     public var name: String
     public var kind: PeripheralKind
     public var percent: Int            // 0–100 (headline; for buds = lower of L/R)

@@ -1,7 +1,7 @@
 //
 //  File:      Battery.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-19
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Battery charge/charging state (IOPowerSources) plus health/cycles/condition
 //             read sudolessly from the AppleSmartBattery IORegistry entry. Stateless.
@@ -14,7 +14,7 @@ import Foundation
 import IOKit
 import IOKit.ps
 
-public struct BatteryInfo: Sendable, Equatable {
+public struct BatteryInfo: Sendable, Equatable, Codable {
     public var hasBattery: Bool = false
     public var percent: Double = 0
     public var isCharging: Bool = false     // actively charging

@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-14
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-snapshot result of AI-runtime detection: the matched processes plus
 //             grouped roll-ups (RAM / CPU% per kind, primary kind, embedded port).
@@ -12,7 +12,7 @@
 //
 import Foundation
 
-public struct AIRuntimeProcess: Sendable, Equatable, Identifiable {
+public struct AIRuntimeProcess: Sendable, Equatable, Identifiable, Codable {
     public let pid: Int32
     public let kind: AIRuntimeKind
     public let displayName: String
@@ -32,7 +32,7 @@ public struct AIRuntimeProcess: Sendable, Equatable, Identifiable {
     }
 }
 
-public struct AIRuntimeSample: Sendable, Equatable {
+public struct AIRuntimeSample: Sendable, Equatable, Codable {
     public var processes: [AIRuntimeProcess] = []
 
     public init() {}

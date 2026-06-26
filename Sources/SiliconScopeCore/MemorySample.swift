@@ -1,7 +1,7 @@
 //
 //  File:      MemorySample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-14
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Unified-memory reading split into the VM categories that sum to the total
 //             (Wired + Active + Compressed + Free), plus swap and lifetime VM counters.
@@ -14,8 +14,8 @@
 //
 import Foundation
 
-public struct MemorySample: Sendable, Equatable {
-    public enum Pressure: String, Sendable, Equatable { case normal, warning, critical }
+public struct MemorySample: Sendable, Equatable, Codable {
+    public enum Pressure: String, Sendable, Equatable, Codable { case normal, warning, critical }
 
     public var totalBytes: UInt64 = 0
     public var wiredBytes: UInt64 = 0

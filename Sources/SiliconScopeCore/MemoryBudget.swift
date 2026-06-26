@@ -1,7 +1,7 @@
 //
 //  File:      MemoryBudget.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-14
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Predictive unified-memory budget for local-AI users. Pure derivation from
 //             a MemorySample (no syscalls): two honest "what fits" figures and a static
@@ -16,7 +16,7 @@
 import Foundation
 
 /// One quantization's "largest model that fits a byte budget" estimate.
-public struct ModelFit: Sendable, Equatable, Identifiable {
+public struct ModelFit: Sendable, Equatable, Identifiable, Codable {
     public let quant: String          // "Q4_K_M" / "Q8_0" / "F16"
     public let bytesPerParam: Double
     public let maxParamsBillions: Double
@@ -33,8 +33,8 @@ public struct ModelFit: Sendable, Equatable, Identifiable {
     }
 }
 
-public struct MemoryBudget: Sendable, Equatable {
-    public enum Risk: String, Sendable, Equatable { case ok, tight, swapping }
+public struct MemoryBudget: Sendable, Equatable, Codable {
+    public enum Risk: String, Sendable, Equatable, Codable { case ok, tight, swapping }
 
     public let totalBytes: UInt64
     public let usedBytes: UInt64

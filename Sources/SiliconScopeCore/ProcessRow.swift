@@ -1,7 +1,7 @@
 //
 //  File:      ProcessRow.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-14
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  One row of the process table: pid, name, CPU%, resident memory, plus the
 //             full executable path and (for AI-runtime candidates only) the argv string.
@@ -13,7 +13,7 @@
 //
 import Foundation
 
-public struct ProcessRow: Sendable, Equatable, Identifiable {
+public struct ProcessRow: Sendable, Equatable, Identifiable, Codable {
     public let pid: Int32
     public let name: String
     public let cpuPercent: Double

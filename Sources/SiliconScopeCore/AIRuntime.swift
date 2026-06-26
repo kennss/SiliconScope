@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-19
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
 //             MLX, Rapid-MLX, Jan, GPT4All, vLLM). Pure logic — no syscalls; consumes the
@@ -14,7 +14,7 @@
 //
 import Foundation
 
-public enum AIRuntimeKind: String, Sendable, CaseIterable {
+public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
     case ollama, llamaCpp, lmStudio, mlx, rapidMLX, jan, gpt4all, vllm
 
     public var displayName: String {

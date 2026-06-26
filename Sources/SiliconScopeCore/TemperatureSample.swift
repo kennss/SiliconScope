@@ -1,7 +1,7 @@
 //
 //  File:      TemperatureSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Temperature readings grouped into user-friendly categories (CPU, GPU,
 //             Memory, Battery, Other) with CPU and Battery surfaced as representatives.
@@ -11,7 +11,7 @@
 //
 import Foundation
 
-public enum SensorCategory: String, Sendable, CaseIterable {
+public enum SensorCategory: String, Sendable, CaseIterable, Codable {
     case cpu = "CPU"
     case gpu = "GPU"
     case memory = "Memory"
@@ -19,7 +19,7 @@ public enum SensorCategory: String, Sendable, CaseIterable {
     case other = "Other"
 }
 
-public struct TempSensor: Sendable, Equatable, Identifiable {
+public struct TempSensor: Sendable, Equatable, Identifiable, Codable {
     public let rawName: String     // SMC key (unique id)
     public let name: String        // friendly label
     public let celsius: Double
@@ -32,7 +32,7 @@ public struct TempSensor: Sendable, Equatable, Identifiable {
     }
 }
 
-public struct SensorGroup: Sendable, Equatable, Identifiable {
+public struct SensorGroup: Sendable, Equatable, Identifiable, Codable {
     public let category: SensorCategory
     public let sensors: [TempSensor]
     public var id: String { category.rawValue }
@@ -49,7 +49,7 @@ public struct SensorGroup: Sendable, Equatable, Identifiable {
     public var maximum: Double { sensors.map(\.celsius).max() ?? 0 }
 }
 
-public struct TemperatureSample: Sendable, Equatable {
+public struct TemperatureSample: Sendable, Equatable, Codable {
     public var cpuCelsius: Double = 0       // average of CPU-core sensors
     public var cpuMaxCelsius: Double = 0
     public var gpuCelsius: Double = 0

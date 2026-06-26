@@ -1,7 +1,7 @@
 //
 //  File:      GPUSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Value type holding one GPU reading: utilization, average clock, and the GPU's
 //             unified-memory footprint.
@@ -12,7 +12,7 @@
 //
 import Foundation
 
-public struct GPUSample: Sendable, Equatable {
+public struct GPUSample: Sendable, Equatable, Codable {
     public var usage: Double = 0       // 0...1
     public var freqMHz: Double = 0
     public var inUseMemoryBytes: UInt64 = 0

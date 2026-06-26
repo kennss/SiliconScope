@@ -1,7 +1,7 @@
 //
 //  File:      ThermalSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Value type holding one thermal reading: OS thermal pressure plus fan
 //             speeds. Thermal pressure is the primary throttle signal for sustained
@@ -11,8 +11,8 @@
 //
 import Foundation
 
-public struct ThermalSample: Sendable, Equatable {
-    public enum Pressure: String, Sendable {
+public struct ThermalSample: Sendable, Equatable, Codable {
+    public enum Pressure: String, Sendable, Codable {
         case nominal, fair, serious, critical, unknown
     }
 

@@ -1,7 +1,7 @@
 //
 //  File:      CPUTopology.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-22
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Static Apple Silicon CPU topology: efficiency/performance core counts
 //             (sysctl) and the per-cluster DVFS frequency tables (IORegistry).
@@ -15,7 +15,7 @@
 import Foundation
 import IOKit
 
-public struct CPUTopology: Sendable {
+public struct CPUTopology: Sendable, Codable {
     public let chipName: String         // e.g. "Apple M1 Max"
     public let eCoreCount: Int
     public let pCoreCount: Int

@@ -1,7 +1,7 @@
 //
 //  File:      Disk.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Disk I/O throughput (read/write bytes per second) and boot-volume
 //             capacity, sampled sudolessly. I/O via IOBlockStorageDriver statistics
@@ -12,7 +12,7 @@
 import Foundation
 import IOKit
 
-public struct DiskSample: Sendable, Equatable {
+public struct DiskSample: Sendable, Equatable, Codable {
     public var readBytesPerSec: Double = 0
     public var writeBytesPerSec: Double = 0
     public var totalBytes: UInt64 = 0

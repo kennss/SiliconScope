@@ -1,7 +1,7 @@
 //
 //  File:      PowerSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-24
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Value type holding one power reading (Watts) for the Apple Silicon
 //             SoC domains that SiliconScope surfaces.
@@ -12,7 +12,7 @@
 //
 import Foundation
 
-public struct PowerSample: Sendable, Equatable {
+public struct PowerSample: Sendable, Equatable, Codable {
     public var eCPUWatts: Double = 0   // efficiency cluster(s)
     public var pCPUWatts: Double = 0   // performance cluster(s)
     public var cpuWatts: Double = 0    // total CPU package (E + P + fabric)
