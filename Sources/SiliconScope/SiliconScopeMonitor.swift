@@ -58,6 +58,14 @@ final class SiliconScopeMonitor {
     var recordingElapsed: TimeInterval { recorder.elapsed }
     var recordingFileURL: URL? { recorder.fileURL }
 
+    // Process Inspector: while a pid is focused, sample just that pid each loop tick (cheap — a few
+    // syscalls on one pid) using the same dt. focusEnded flags that the focused process exited.
+    var focusedPID: Int32?
+    private(set) var focusedDetail: ProcessDetail?
+    private(set) var focusedHistory = ProcessDetailHistory()
+    private(set) var focusEnded = false
+    private var focusSampler: ProcessDetailSampler?
+
     init() {
         topology = sampler.topology
         engine = MetricsEngine(topology: sampler.topology)
@@ -113,6 +121,15 @@ final class SiliconScopeMonitor {
                     self.recorder.append(snap)                       // 1 Hz self-gated inside
                     self.recordingSampleCount = self.recorder.sampleCount
                 }
+                if let sampler = self.focusSampler {                 // Process Inspector (same dt)
+                    if let d = sampler.sample(dt: dt) {
+                        self.focusedDetail = d
+                        self.focusedHistory.push(d)
+                    } else {
+                        self.focusEnded = true                       // focused process exited
+                        self.focusSampler = nil
+                    }
+                }
                 self.checkAlertsAndNotify()
                 MetricBarController.shared.sync(monitor: self)
                 let interval = UserDefaults.standard.object(forKey: "refreshInterval") as? Double ?? 1.0
@@ -125,6 +142,7 @@ final class SiliconScopeMonitor {
         loopTask?.cancel()
         loopTask = nil
         stopAPIPolling()
+        endFocus()
         // C5: drop rate state so a later restart doesn't diff across the pause.
         engine.reset(); lastIngest = nil
     }
@@ -157,6 +175,26 @@ final class SiliconScopeMonitor {
 
     /// Exports a flattened CSV of the recording to `url`.
     func exportRecordingCSV(to url: URL) throws { try recorder.exportCSV(to: url) }
+
+    // MARK: - Process Inspector
+
+    /// Focus a pid: a fresh sampler + history; the loop samples it each tick until endFocus().
+    func focus(_ pid: Int32) {
+        focusedPID = pid
+        focusSampler = ProcessDetailSampler(pid: pid)
+        focusedHistory = ProcessDetailHistory()
+        focusedDetail = nil
+        focusEnded = false
+    }
+
+    /// Stop inspecting (also clears the captured detail/history).
+    func endFocus() {
+        focusedPID = nil
+        focusSampler = nil
+        focusedDetail = nil
+        focusedHistory = ProcessDetailHistory()
+        focusEnded = false
+    }
 
     // MARK: - Opt-in runtime API polling
 

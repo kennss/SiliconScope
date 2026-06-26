@@ -34,6 +34,10 @@ struct DashboardContainer: View {
                    isPresented: Binding(get: { loadError != nil }, set: { if !$0 { loadError = nil } })) {
                 Button("OK") { loadError = nil }
             } message: { Text(loadError ?? "") }
+            .sheet(isPresented: Binding(get: { monitor.focusedPID != nil && replay == nil },
+                                        set: { if !$0 { monitor.endFocus() } })) {
+                InspectorView(monitor: monitor)
+            }
     }
 
     @ViewBuilder private var content: some View {
@@ -44,7 +48,8 @@ struct DashboardContainer: View {
                 }
         } else {
             DashboardView(state: DashboardState(live: monitor),
-                          onBenchmark: { Task { await monitor.runBenchmark() } })
+                          onBenchmark: { Task { await monitor.runBenchmark() } },
+                          onInspect: { monitor.focus($0.pid) })
                 .safeAreaInset(edge: .bottom, spacing: 0) { RecordBar(monitor: monitor) }
         }
     }
@@ -77,6 +82,7 @@ struct DashboardContainer: View {
 struct DashboardView: View {
     let state: DashboardState
     var onBenchmark: (() -> Void)? = nil   // nil → replay: hides the benchmark control + process kill
+    var onInspect: ((ProcessRow) -> Void)? = nil   // nil → replay: process inspection disabled
 
     var body: some View {
         let s = state
@@ -134,7 +140,7 @@ struct DashboardView: View {
 
                 HStack(spacing: 6) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
-                    ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil)
+                    ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect)
                 }
                 .frame(height: 196)
             }
@@ -800,6 +806,7 @@ private struct SensorGroupRow: View {
 private struct ProcessCard: View {
     let processes: [ProcessRow]
     var allowKill = true            // false during replay — recorded PIDs are stale (would kill live)
+    var onInspect: ((ProcessRow) -> Void)? = nil   // tap / "Inspect" → focus this process
 
     enum SortKey { case cpu, memory, name }
     @State private var sortKey: SortKey = .cpu
@@ -857,7 +864,11 @@ private struct ProcessCard: View {
                             }
                             .font(.system(size: 11, design: .monospaced))
                             .contentShape(Rectangle())
+                            .onTapGesture { onInspect?(process) }
                             .contextMenu {
+                                if let onInspect {
+                                    Button("Inspect \(process.name)") { onInspect(process) }
+                                }
                                 if allowKill {
                                     Button("Quit \(process.name)") { pendingKill = process; pendingForce = false }
                                     Button("Force Quit \(process.name)", role: .destructive) {
