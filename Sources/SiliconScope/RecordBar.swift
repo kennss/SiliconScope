@@ -49,15 +49,17 @@ struct RecordBar: View {
             Spacer()
 
             if monitor.hasRecording && !recording {
-                Menu {
-                    Button("Export CSV…") { export(csv: true) }
-                    Button("Export Recording (.ssrec)…") { export(csv: false) }
-                } label: {
+                Button { replayJustRecorded() } label: {
+                    Label("Replay", systemImage: "play.rectangle.fill")
+                }
+                .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                .help("Replay the session you just recorded")
+
+                Button { exportBoth() } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .foregroundStyle(Theme.accent)
+                .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                .help("Save .ssrec (replay) + .csv (analysis) to ~/SiliconScope")
             }
         }
         .font(.callout)
@@ -77,16 +79,42 @@ struct RecordBar: View {
         return String(format: "%02d:%02d:%02d", t / 3600, (t % 3600) / 60, t % 60)
     }
 
-    private func export(csv: Bool) {
+    /// Loads the just-recorded temp .ssrec straight into replay — no export step needed.
+    private func replayJustRecorded() {
+        guard let url = monitor.recordingFileURL else { return }
+        NotificationCenter.default.post(name: .openSiliconScopeRecording, object: nil, userInfo: ["url": url])
+    }
+
+    /// Saves BOTH the lossless .ssrec (replay) and a .csv (analysis), timestamped, into
+    /// ~/SiliconScope by default (created if needed) — the panel lets you pick another location.
+    private func exportBoth() {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = "SiliconScope-session.\(csv ? "csv" : "ssrec")"
-        if csv { panel.allowedContentTypes = [.commaSeparatedText] }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        panel.directoryURL = Self.defaultRecordingsDir()
+        panel.nameFieldStringValue = "SiliconScope-\(Self.timestamp())"   // no extension — both are added
+        panel.message = "Saves two files: .ssrec (replay) and .csv (analysis)."
+        guard panel.runModal() == .OK, let chosen = panel.url else { return }
+        let base = chosen.deletingPathExtension()
+        let ssrec = base.appendingPathExtension("ssrec")
+        let csv = base.appendingPathExtension("csv")
         do {
-            if csv { try monitor.exportRecordingCSV(to: url) } else { try monitor.exportRecording(to: url) }
+            try monitor.exportRecording(to: ssrec)
+            try monitor.exportRecordingCSV(to: csv)
+            NSWorkspace.shared.activateFileViewerSelecting([ssrec, csv])
         } catch {
             NSSound.beep()
         }
+    }
+
+    private static func timestamp() -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss"
+        return f.string(from: Date())
+    }
+
+    /// ~/SiliconScope, created on first use.
+    private static func defaultRecordingsDir() -> URL {
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("SiliconScope", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 }

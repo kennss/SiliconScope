@@ -18,10 +18,15 @@ struct ReplayBar: View {
     var body: some View {
         let c = controller
         HStack(spacing: 10) {
+            // A "REPLAY" status pill (you are NOT live) + a clearly-clickable exit button.
+            Text("REPLAY").font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Theme.accent.opacity(0.15), in: Capsule())
             Button(action: onExit) {
-                Label("Live", systemImage: "dot.radiowaves.left.and.right")
+                Label("Exit to Live", systemImage: "xmark.circle.fill")
             }
-            .buttonStyle(.plain).foregroundStyle(Theme.accent)
+            .buttonStyle(.bordered).tint(Theme.accent)
             .help("Exit replay and return to the live dashboard")
 
             Button { c.stepBackward() } label: { Image(systemName: "backward.frame.fill") }.buttonStyle(.plain)
