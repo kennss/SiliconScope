@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-18
+//  Updated:   2026-06-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -79,6 +79,7 @@ struct DashboardView: View {
         }
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
+        .safeAreaInset(edge: .bottom, spacing: 0) { RecordBar(monitor: monitor) }
     }
 
     private func allWarnings(_ s: SystemSnapshot) -> [SystemSnapshot.Warning] {
