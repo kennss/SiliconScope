@@ -14,10 +14,13 @@
 //
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 extension Notification.Name {
     /// Posted by menu-bar dropdowns to open Settings; handled by SettingsOpenerBridge.
     static let openSiliconScopeSettings = Notification.Name("ai.calidalab.SiliconScope.openSettings")
+    /// Posted by the "Open Recording…" command (carries the .ssrec URL); handled by DashboardContainer.
+    static let openSiliconScopeRecording = Notification.Name("ai.calidalab.SiliconScope.openRecording")
 }
 
 /// Invisible view in the dashboard scene that routes the menu-bar dropdowns' Settings request to
@@ -70,7 +73,21 @@ struct SiliconScopeApp: App {
                 Button("Check for Updates…") { UpdaterController.shared.checkForUpdates() }
                     .disabled(!UpdaterController.shared.canCheck)
             }
+            CommandGroup(after: .newItem) {
+                Button("Open Recording…") { Self.openRecordingPanel() }
+                    .keyboardShortcut("o", modifiers: .command)
+            }
         }
+    }
+
+    /// File → Open Recording…: pick a .ssrec and hand it to DashboardContainer via notification.
+    private static func openRecordingPanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if let ssrec = UTType(filenameExtension: "ssrec") { panel.allowedContentTypes = [ssrec] }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        NotificationCenter.default.post(name: .openSiliconScopeRecording, object: nil, userInfo: ["url": url])
     }
 
 

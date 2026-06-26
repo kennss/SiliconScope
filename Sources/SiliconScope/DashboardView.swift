@@ -12,18 +12,65 @@
 //             on top of the snapshot's own data-level warnings.
 //
 import SwiftUI
+import UniformTypeIdentifiers
 import SiliconScopeCore
 
 // Hosts the dashboard: chooses the data source (live monitor or session replay), builds the
 // DashboardState in its body so @Observable / playhead changes re-render, and pins the matching
-// bottom bar (RecordBar live, ReplayBar in replay).
+// bottom bar (RecordBar live, ReplayBar in replay). Enters replay via ⌘O (notification) or a
+// dropped .ssrec; exits back to live from the ReplayBar.
 struct DashboardContainer: View {
     let monitor: SiliconScopeMonitor
+    @State private var replay: ReplayController?
+    @State private var loadError: String?
 
     var body: some View {
-        DashboardView(state: DashboardState(live: monitor),
-                      onBenchmark: { Task { await monitor.runBenchmark() } })
-            .safeAreaInset(edge: .bottom, spacing: 0) { RecordBar(monitor: monitor) }
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .openSiliconScopeRecording)) { note in
+                if let url = note.userInfo?["url"] as? URL { open(url) }
+            }
+            .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
+            .alert("Couldn't open recording",
+                   isPresented: Binding(get: { loadError != nil }, set: { if !$0 { loadError = nil } })) {
+                Button("OK") { loadError = nil }
+            } message: { Text(loadError ?? "") }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let replay {
+            DashboardView(state: replay.state, onBenchmark: nil)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    ReplayBar(controller: replay, onExit: { self.replay = nil })
+                }
+        } else {
+            DashboardView(state: DashboardState(live: monitor),
+                          onBenchmark: { Task { await monitor.runBenchmark() } })
+                .safeAreaInset(edge: .bottom, spacing: 0) { RecordBar(monitor: monitor) }
+        }
+    }
+
+    private func open(_ url: URL) {
+        do { replay = ReplayController(recording: try SessionReader.load(url)) }
+        catch { replay = nil; loadError = Self.message(for: error) }
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let p = providers.first(where: { $0.canLoadObject(ofClass: URL.self) }) else { return false }
+        _ = p.loadObject(ofClass: URL.self) { url, _ in
+            guard let url, url.pathExtension == "ssrec" else { return }
+            DispatchQueue.main.async { open(url) }
+        }
+        return true
+    }
+
+    private static func message(for error: Error) -> String {
+        switch error as? SessionReader.LoadError {
+        case .empty:                    return "The file is empty."
+        case .missingMeta:              return "Not a SiliconScope recording (missing header)."
+        case .noFrames:                 return "The recording has no frames."
+        case .unsupportedVersion(let v): return "Recorded by a newer SiliconScope (format v\(v))."
+        case nil:                       return error.localizedDescription
+        }
     }
 }
 
