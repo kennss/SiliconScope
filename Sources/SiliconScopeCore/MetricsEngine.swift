@@ -105,10 +105,27 @@ public final class MetricsEngine {
     }
 
     // MARK: - Computed verdicts (snapshot + path-dependent state)
+    //
+    // The instance properties delegate to pure static functions so the replay path can compute the
+    // EXACT same verdicts from a recorded frame's snapshot + precomputed scalars + rebuilt history.
+
+    public var gpuThrottling: Bool { Self.gpuThrottling(latest: latest, gpuClockPeakMHz: gpuClockPeakMHz) }
+    public var gpuClockDropFraction: Double { Self.gpuClockDropFraction(latest: latest, gpuClockPeakMHz: gpuClockPeakMHz) }
+    public var bandwidthCeilingGBs: Double { Self.bandwidthCeiling(topology: topology, bandwidthPeakGBs: bandwidthPeakGBs) }
+    public var bandwidthPercentOfCeiling: Double {
+        let c = bandwidthCeilingGBs
+        return c > 0 ? min(1, latest.bandwidth.totalGBs / c) : 0
+    }
+    public var bottleneck: Bottleneck {
+        Self.bottleneck(latest: latest, history: history, bandwidthPeakGBs: bandwidthPeakGBs, throttling: gpuThrottling)
+    }
+    public var memoryRisk: MemoryBudget.Risk {
+        Self.memoryRisk(latest: latest, swapOutRate: memorySwapOutRate, compressionRate: memoryCompressionRate)
+    }
 
     /// True when the GPU clock is held well below its rolling peak while the GPU is active and
     /// thermal pressure has risen above nominal — i.e. thermal throttling.
-    public var gpuThrottling: Bool {
+    public static func gpuThrottling(latest: SystemSnapshot, gpuClockPeakMHz: Double) -> Bool {
         guard gpuClockPeakMHz > 0 else { return false }
         return latest.gpu.usage > 0.3
             && latest.thermal.pressure != .nominal
@@ -116,40 +133,35 @@ public final class MetricsEngine {
     }
 
     /// How far the current GPU clock sits below its rolling peak (0...1; 0 when at/above).
-    public var gpuClockDropFraction: Double {
+    public static func gpuClockDropFraction(latest: SystemSnapshot, gpuClockPeakMHz: Double) -> Double {
         guard gpuClockPeakMHz > 0, latest.gpu.freqMHz < gpuClockPeakMHz else { return 0 }
         return 1 - latest.gpu.freqMHz / gpuClockPeakMHz
     }
 
     /// Unified-memory bandwidth ceiling (GB/s): the per-chip spec value, raised to the observed
     /// peak if traffic ever exceeds it (so it never under-reports and works on unlisted chips).
-    public var bandwidthCeilingGBs: Double {
+    public static func bandwidthCeiling(topology: CPUTopology?, bandwidthPeakGBs: Double) -> Double {
         let spec = topology.map { Bottleneck.bandwidthCeilingGBs(chipName: $0.chipName, pCoreCount: $0.pCoreCount) } ?? 0
         return max(spec, bandwidthPeakGBs)
     }
 
-    /// Current total unified-memory bandwidth as a fraction of the ceiling (0...1).
-    public var bandwidthPercentOfCeiling: Double {
-        let ceiling = bandwidthCeilingGBs
-        return ceiling > 0 ? min(1, latest.bandwidth.totalGBs / ceiling) : 0
-    }
-
-    /// The single dominant AI-workload bottleneck right now. Classified on a short rolling average
-    /// of GPU% and bandwidth so the verdict doesn't flicker sample-to-sample.
-    public var bottleneck: Bottleneck {
+    /// The single dominant AI-workload bottleneck. Classified on a short rolling average of GPU%
+    /// and bandwidth so the verdict doesn't flicker sample-to-sample.
+    public static func bottleneck(latest: SystemSnapshot, history: History,
+                                  bandwidthPeakGBs: Double, throttling: Bool) -> Bottleneck {
         Bottleneck.classify(memoryCritical: latest.memory.pressure == .critical,
-                            gpuUsage: Self.tailAverage(history.gpu, count: 3, fallback: latest.gpu.usage),
-                            bandwidthGBs: Self.tailAverage(history.bandwidth, count: 3, fallback: latest.bandwidth.totalGBs),
+                            gpuUsage: tailAverage(history.gpu, count: 3, fallback: latest.gpu.usage),
+                            bandwidthGBs: tailAverage(history.bandwidth, count: 3, fallback: latest.bandwidth.totalGBs),
                             achievableGBs: bandwidthPeakGBs,
-                            throttling: gpuThrottling)
+                            throttling: throttling)
     }
 
-    /// Refined memory risk: the static budget baseline plus live swap/compression rates.
-    public var memoryRisk: MemoryBudget.Risk {
+    /// Refined memory risk: the static budget baseline plus swap/compression rates.
+    public static func memoryRisk(latest: SystemSnapshot, swapOutRate: Double,
+                                  compressionRate: Double) -> MemoryBudget.Risk {
         let base = latest.memoryBudget.risk
-        if base == .swapping || memorySwapOutRate > 0 { return .swapping }
-        if memoryCompressionRate > Self.compressionRatePagesPerSec
-            && latest.memoryBudget.headroomNowBytes < (1 << 30) {
+        if base == .swapping || swapOutRate > 0 { return .swapping }
+        if compressionRate > compressionRatePagesPerSec && latest.memoryBudget.headroomNowBytes < (1 << 30) {
             return .tight
         }
         return base

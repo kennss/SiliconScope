@@ -49,4 +49,28 @@ struct DashboardState {
         benchmark = m.benchmarkForCurrentModel
         benchmarkError = m.benchmarkError
     }
+
+    /// Replay: reconstruct the dashboard as it stood at frame `index` of a recording, using the
+    /// precomputed peaks/rates + a rebuilt history window, run through the SAME verdict functions.
+    init(replay rec: LoadedRecording, at index: Int) {
+        let i = min(max(index, 0), max(0, rec.count - 1))
+        let s = rec.frames.isEmpty ? SystemSnapshot() : rec.frames[i].snapshot
+        let d = rec.derived.isEmpty ? DerivedScalars() : rec.derived[i]
+        let h = rec.historyWindow(upTo: i)
+        snapshot = s
+        topology = rec.meta.topology
+        history = h
+        bandwidthPeakGBs = d.bandwidthPeakGBs
+        mediaPeakGBs = d.mediaPeakGBs
+        anePeakWatts = d.anePeakWatts
+        let throttling = MetricsEngine.gpuThrottling(latest: s, gpuClockPeakMHz: d.gpuClockPeakMHz)
+        gpuThrottling = throttling
+        gpuClockDropFraction = MetricsEngine.gpuClockDropFraction(latest: s, gpuClockPeakMHz: d.gpuClockPeakMHz)
+        bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: rec.meta.topology, bandwidthPeakGBs: d.bandwidthPeakGBs)
+        bottleneck = MetricsEngine.bottleneck(latest: s, history: h, bandwidthPeakGBs: d.bandwidthPeakGBs, throttling: throttling)
+        memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: d.memorySwapOutRate, compressionRate: d.memoryCompressionRate)
+        isBenchmarking = false
+        benchmark = nil
+        benchmarkError = nil
+    }
 }
