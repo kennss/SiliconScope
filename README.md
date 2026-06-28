@@ -30,11 +30,10 @@ Pin any card to its own menu-bar item — **CPU · GPU · Memory · Network · S
 <p align="center">
   <img src="docs/img/menubar-gpu.png" width="250" alt="GPU / Media / Neural dropdown">
   <img src="docs/img/menubar-sensors.png" width="250" alt="Per-core temperatures">
-  <img src="docs/img/menubar-battery.png" width="250" alt="Battery health and power">
   <img src="docs/img/menubar-cockpit.png" width="250" alt="Combined SS cockpit — workload, all engines, trends, top processes">
 </p>
 
-*The four richest dropdowns. **GPU / Media / Neural** — GPU, GPU memory, ANE and Media as live meters plus a four-line 60-second trend. **Sensors** — per-unit temperatures from real **E-Core / P-Core / GPU / Memory** sensors (curated SMC keys per chip generation, M1–M5; HID fallback elsewhere). **Battery** — health, cycle count, condition, the SoC power breakdown, and the energy-hungry apps. **SS cockpit** — the whole machine in one dropdown: workload verdict, every engine, 60-second trends, and the top processes.*
+*The richest dropdowns. **GPU / Media / Neural** — GPU, GPU memory, ANE and Media as live meters plus a four-line 60-second trend. **Sensors** — per-unit temperatures from real **E-Core / P-Core / GPU / Memory** sensors (curated SMC keys per chip generation, M1–M5; HID fallback elsewhere). **SS cockpit** — the whole machine in one dropdown: workload verdict, every engine, 60-second trends, and the top processes.*
 
 ![Measuring a local model's speed and efficiency](docs/img/benchmark.png)
 

@@ -30,11 +30,10 @@
 <p align="center">
   <img src="docs/img/menubar-gpu.png" width="250" alt="GPU / Media / Neural 下拉選單">
   <img src="docs/img/menubar-sensors.png" width="250" alt="每核溫度">
-  <img src="docs/img/menubar-battery.png" width="250" alt="電池健康與功耗">
   <img src="docs/img/menubar-cockpit.png" width="250" alt="合併的 SS 駕駛艙 —— 工作負載、全部引擎、趨勢、置頂程序">
 </p>
 
-*資訊最豐富的四個下拉面板。**GPU / Media / Neural** —— 以即時儀表 + 4 線 60 秒趨勢顯示 GPU、GPU 記憶體、ANE 與 Media。**感測器** —— 各單元溫度，來自真實的 **E-Core / P-Core / GPU / Memory** 感測器（依晶片世代精選的 SMC 鍵，M1–M5，其餘後備至 HID）。**電池** —— 健康、循環次數、狀態、SoC 功耗細分，以及耗電較多的 App。**SS 駕駛艙** —— 一個下拉看整機：工作負載判定、每個引擎、60 秒趨勢與置頂程序。*
+*資訊最豐富的下拉面板。**GPU / Media / Neural** —— 以即時儀表 + 4 線 60 秒趨勢顯示 GPU、GPU 記憶體、ANE 與 Media。**感測器** —— 各單元溫度，來自真實的 **E-Core / P-Core / GPU / Memory** 感測器（依晶片世代精選的 SMC 鍵，M1–M5，其餘後備至 HID）。**SS 駕駛艙** —— 一個下拉看整機：工作負載判定、每個引擎、60 秒趨勢與置頂程序。*
 
 ![測量本地模型的速度與能效](docs/img/benchmark.png)
 

@@ -30,11 +30,10 @@
 <p align="center">
   <img src="docs/img/menubar-gpu.png" width="250" alt="GPU / Media / Neural 下拉面板">
   <img src="docs/img/menubar-sensors.png" width="250" alt="每核温度">
-  <img src="docs/img/menubar-battery.png" width="250" alt="电池健康与功耗">
   <img src="docs/img/menubar-cockpit.png" width="250" alt="合并的 SS 驾驶舱 —— 工作负载、全部引擎、趋势、置顶进程">
 </p>
 
-*信息最丰富的四个下拉面板。**GPU / Media / Neural** —— 以实时仪表 + 4 线 60 秒趋势展示 GPU、GPU 显存、ANE 与 Media。**传感器** —— 按单元温度，来自真实的 **E-Core / P-Core / GPU / Memory** 传感器（按芯片世代精选的 SMC 键，M1–M5，其余回退到 HID）。**电池** —— 健康、循环次数、状态、SoC 功耗细分，以及耗电较多的 App。**SS 驾驶舱** —— 一个下拉里看整机：工作负载判定、每个引擎、60 秒趋势与置顶进程。*
+*信息最丰富的下拉面板。**GPU / Media / Neural** —— 以实时仪表 + 4 线 60 秒趋势展示 GPU、GPU 显存、ANE 与 Media。**传感器** —— 按单元温度，来自真实的 **E-Core / P-Core / GPU / Memory** 传感器（按芯片世代精选的 SMC 键，M1–M5，其余回退到 HID）。**SS 驾驶舱** —— 一个下拉里看整机：工作负载判定、每个引擎、60 秒趋势与置顶进程。*
 
 ![测量本地模型的速度与能效](docs/img/benchmark.png)
 

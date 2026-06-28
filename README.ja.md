@@ -30,11 +30,10 @@
 <p align="center">
   <img src="docs/img/menubar-gpu.png" width="250" alt="GPU / Media / Neural ドロップダウン">
   <img src="docs/img/menubar-sensors.png" width="250" alt="コア別温度">
-  <img src="docs/img/menubar-battery.png" width="250" alt="バッテリーの状態と電力">
   <img src="docs/img/menubar-cockpit.png" width="250" alt="統合 SS コックピット — ワークロード・全エンジン・トレンド・上位プロセス">
 </p>
 
-*最も情報量の多い 4 つのドロップダウン。**GPU / Media / Neural** — GPU・GPU メモリ・ANE・Media をライブメーター + 4 本線の 60 秒トレンドで。**センサー** — ユニット別温度、実際の **E-Core / P-Core / GPU / Memory** センサー（チップ世代ごとに厳選した SMC キー、M1–M5、その他は HID フォールバック）。**バッテリー** — 健全性・サイクル数・状態、SoC 電力の内訳、電力を多く消費するアプリ。**SS コックピット** — マシン全体を 1 つのドロップダウンに: ワークロード判定、すべてのエンジン、60 秒トレンド、上位プロセス。*
+*最も情報量の多いドロップダウン。**GPU / Media / Neural** — GPU・GPU メモリ・ANE・Media をライブメーター + 4 本線の 60 秒トレンドで。**センサー** — ユニット別温度、実際の **E-Core / P-Core / GPU / Memory** センサー（チップ世代ごとに厳選した SMC キー、M1–M5、その他は HID フォールバック）。**SS コックピット** — マシン全体を 1 つのドロップダウンに: ワークロード判定、すべてのエンジン、60 秒トレンド、上位プロセス。*
 
 ![ローカルモデルの速度と効率を測定](docs/img/benchmark.png)
 

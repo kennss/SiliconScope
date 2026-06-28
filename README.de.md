@@ -32,11 +32,10 @@ Pinne jede Karte als eigenständiges Menüleisten-Element an — **CPU · GPU ·
 <p align="center">
   <img src="docs/img/menubar-gpu.png" width="250" alt="GPU- / Media- / Neural-Dropdown">
   <img src="docs/img/menubar-sensors.png" width="250" alt="Temperaturen pro Kern">
-  <img src="docs/img/menubar-battery.png" width="250" alt="Akkuzustand und Leistung">
   <img src="docs/img/menubar-cockpit.png" width="250" alt="Kombiniertes SS-Cockpit — Workload, alle Engines, Trends, Top-Prozesse">
 </p>
 
-*Die vier informationsreichsten Dropdowns. **GPU / Media / Neural** — GPU, GPU-Speicher, ANE und Media als Live-Anzeigen + 60-Sekunden-Trend mit 4 Linien. **Sensoren** — Temperaturen pro Einheit aus echten **E-Core- / P-Core- / GPU- / Memory**-Sensoren (pro Chip-Generation kuratierte SMC-Schlüssel, M1–M5, sonst HID-Fallback). **Akku** — Gesundheit, Ladezyklen und Zustand, Aufschlüsselung der SoC-Leistung, die stromhungrigsten Apps. **SS-Cockpit** — die ganze Maschine in einem Dropdown: Workload-Urteil, jede Engine, 60-Sekunden-Trends und die Top-Prozesse.*
+*Die informationsreichsten Dropdowns. **GPU / Media / Neural** — GPU, GPU-Speicher, ANE und Media als Live-Anzeigen + 60-Sekunden-Trend mit 4 Linien. **Sensoren** — Temperaturen pro Einheit aus echten **E-Core- / P-Core- / GPU- / Memory**-Sensoren (pro Chip-Generation kuratierte SMC-Schlüssel, M1–M5, sonst HID-Fallback). **SS-Cockpit** — die ganze Maschine in einem Dropdown: Workload-Urteil, jede Engine, 60-Sekunden-Trends und die Top-Prozesse.*
 
 ![Geschwindigkeit und Effizienz lokaler Modelle messen](docs/img/benchmark.png)
 
