@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.0.2 — 2026-06-30
+
+- **Run as a pure menu-bar utility (optional).** A new **Show Dock icon** setting (default on):
+  turn it off and the Dock icon disappears — SiliconScope lives entirely in the menu bar, and the
+  dashboard still opens from any menu-bar item's dropdown. Idea from **@zhangchen456**
+  ([#17](https://github.com/kennss/SiliconScope/pull/17)).
+
 ## v3.0.1 — 2026-06-30
 
 **Stability & UI polish.**
