@@ -38,8 +38,36 @@ private struct SettingsOpenerBridge: View {
     }
 }
 
+/// Prevents the app from quitting when the last window is closed.
+/// The menu-bar items stay alive so the user can reopen the dashboard at any time.
+/// When the last window closes, hides the Dock icon (switches to .accessory policy).
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidClose(_:)),
+            name: NSWindow.willCloseNotification, object: nil)
+    }
+
+    @objc private func windowDidClose(_ note: Notification) {
+        // Delay slightly so the window array updates after close completes.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let visibleWindows = NSApplication.shared.windows.filter {
+                $0.isVisible && !($0.className.contains("StatusBar"))
+            }
+            if visibleWindows.isEmpty {
+                NSApplication.shared.setActivationPolicy(.accessory)
+            }
+        }
+    }
+}
+
 @main
 struct SiliconScopeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var monitor = SiliconScopeMonitor()
 
     // The combined "SS" menu-bar item and all per-metric items are AppKit NSStatusItems managed
