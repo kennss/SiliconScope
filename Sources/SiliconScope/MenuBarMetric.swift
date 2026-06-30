@@ -333,7 +333,7 @@ struct MenuMeterRow: View {
 /// Brings the main dashboard window forward from AppKit (the per-metric popovers are hosted
 /// outside the SwiftUI scene, so @Environment(\.openWindow) isn't available there).
 @MainActor func openMainDashboard() {
-    NSApplication.shared.setActivationPolicy(.regular)
+    applyDockIconPolicy()   // respect the "Show Dock icon" setting (window opens either way)
     NSApplication.shared.activate(ignoringOtherApps: true)
     if let w = NSApplication.shared.windows.first(where: { $0.identifier?.rawValue == "siliconscope-main" }) {
         w.makeKeyAndOrderFront(nil)
@@ -350,7 +350,7 @@ struct MenuMeterRow: View {
 /// actually surface the window. Posts a notification that `SettingsOpenerBridge` (a hidden view
 /// in the dashboard scene) acts on via SwiftUI's own `openSettings` — the mechanism that works.
 @MainActor func openAppSettings() {
-    NSApplication.shared.setActivationPolicy(.regular)
+    applyDockIconPolicy()   // respect the "Show Dock icon" setting
     NSApplication.shared.activate(ignoringOtherApps: true)
     NotificationCenter.default.post(name: .openSiliconScopeSettings, object: nil)
 }

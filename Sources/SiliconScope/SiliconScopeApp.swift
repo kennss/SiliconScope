@@ -49,6 +49,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Sets the Dock-icon presence from the user's "Show Dock icon" setting (default on). Off =
+/// `.accessory` — a pure menu-bar utility with no Dock icon (the dashboard still opens from any
+/// menu-bar dropdown). A single stable policy, not a per-window toggle, so the icon never flickers.
+@MainActor func applyDockIconPolicy() {
+    let showDock = UserDefaults.standard.object(forKey: "showDockIcon") as? Bool ?? true
+    NSApplication.shared.setActivationPolicy(showDock ? .regular : .accessory)
+}
+
 @main
 struct SiliconScopeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -70,7 +78,7 @@ struct SiliconScopeApp: App {
                 .frame(minWidth: 640, minHeight: 600)
                 .background(SettingsOpenerBridge())   // routes dropdown "Settings" → openSettings()
                 .onAppear {
-                    NSApplication.shared.setActivationPolicy(.regular)
+                    applyDockIconPolicy()
                     if let icon = Self.loadAppIcon() {
                         NSApplication.shared.applicationIconImage = icon
                     }

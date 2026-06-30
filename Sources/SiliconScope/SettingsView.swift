@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage("refreshInterval") private var refreshInterval = 1.0
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     @AppStorage("compactGPUMode") private var compactGPU = false
+    @AppStorage("showDockIcon") private var showDockIcon = true
     @AppStorage("aiRuntimeAPIEnabled") private var aiRuntimeAPIEnabled = false
     @AppStorage("aiRuntimeOllamaPort") private var ollamaPort = 11434
     @AppStorage("aiRuntimeLMStudioPort") private var lmStudioPort = 1234
@@ -48,6 +49,10 @@ struct SettingsView: View {
                     Text("Fahrenheit (°F)").tag(true)
                 }
                 Toggle("Compact GPU mode (menu bar)", isOn: $compactGPU)
+                Toggle("Show Dock icon", isOn: $showDockIcon)
+                    .onChange(of: showDockIcon) { _, _ in applyDockIconPolicy() }
+            } footer: {
+                Text("Turn off the Dock icon to run SiliconScope as a pure menu-bar utility — the dashboard still opens from any menu-bar item's dropdown.")
             }
 
             Section {
