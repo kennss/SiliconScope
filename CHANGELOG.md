@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.0.1 — 2026-06-30
+
+**Stability & UI polish.**
+
+- **Closing the window no longer quits the app.** SiliconScope is a menu-bar-resident monitor, so
+  closing the dashboard now just hides it — the app stays live in the menu bar, and "Open
+  Dashboard" (or a Dock-icon click) brings it right back.
+- **Warning hints no longer shove the layout around.** Memory-pressure and GPU-throttle alerts used
+  to be inserted inline at the top, pushing every card down (and back up) as the condition came and
+  went. They now float as a dismissible overlay (✕ to close) while the condition holds, so the
+  cards stay put. Thanks **@muescha** ([#16](https://github.com/kennss/SiliconScope/issues/16)).
+- **Lighter when it's not on screen.** The live charts now pause rendering while the window is
+  minimized or fully covered (the data sampling itself was already negligible).
+- **AI Workload reads better under throttling.** When the GPU is thermal-throttled the card now
+  shows the clock value — e.g. *580 MHz (−55% vs peak)* — in red next to the verdict, instead of a
+  prose blurb that got truncated in the half-width card.
+
 ## v3.0.0 — 2026-06-26
 
 **A new way to observe your Mac: rewind time, and zoom into one process.** The 3.x line adds
