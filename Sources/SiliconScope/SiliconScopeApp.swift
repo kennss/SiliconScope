@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeApp.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-25
+//  Updated:   2026-06-30
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App entry point. Shows a full dashboard Window and a MenuBarExtra (with a
 //             live 5-bar MenuBarIcon glyph), both backed by one shared SiliconScopeMonitor.
@@ -38,8 +38,20 @@ private struct SettingsOpenerBridge: View {
     }
 }
 
+/// Keeps the app alive when the dashboard window is closed — it lives on in the menu bar — instead
+/// of quitting the whole app (the macOS default for the last-window-closed). Reopens the dashboard
+/// on a Dock-icon click. This is the right behavior for a menu-bar-resident monitor (issue #13).
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
+    func applicationShouldHandleReopen(_ app: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { MainActor.assumeIsolated { openMainDashboard() } }
+        return true
+    }
+}
+
 @main
 struct SiliconScopeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var monitor = SiliconScopeMonitor()
 
     // The combined "SS" menu-bar item and all per-metric items are AppKit NSStatusItems managed
@@ -63,6 +75,12 @@ struct SiliconScopeApp: App {
                         NSApplication.shared.applicationIconImage = icon
                     }
                     NSApplication.shared.activate(ignoringOtherApps: true)
+                    // Closing the dashboard hides it (we stay in the menu bar) rather than destroying
+                    // it, so openMainDashboard() can bring the same window back. Pairs with the
+                    // AppDelegate's terminate-after-last-window = false.
+                    NSApplication.shared.windows
+                        .first { $0.identifier?.rawValue == "siliconscope-main" }?
+                        .isReleasedWhenClosed = false
                     monitor.start()
                 }
         }
