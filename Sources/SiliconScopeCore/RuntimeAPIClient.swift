@@ -1,12 +1,13 @@
 //
 //  File:      RuntimeAPIClient.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-14
+//  Updated:   2026-07-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Opt-in probes of local AI runtime HTTP APIs, keyed by the detected runtime.
 //             Ollama /api/ps gives the authoritative model size + GPU/CPU split (size_vram
 //             / size); llama.cpp /metrics gives real tokens/sec; LM Studio reports the
-//             loaded model id + quant + context. All sudoless, localhost-only (LocalHTTP).
+//             loaded model id + quant + context; exo/Rapid-MLX expose an OpenAI-compatible
+//             /v1/models. All sudoless, localhost-only (LocalHTTP).
 //  Notes:     Every JSON field is optional (version drift tolerant). A non-answer maps to
 //             runningNoServer / apiNotApplicable / unreachable — never a crash. tokens/sec
 //             is left nil unless the runtime actually reports it.
@@ -25,6 +26,7 @@ public struct RuntimeAPIClient: Sendable {
         case .lmStudio: return await probeLMStudio(port: lmStudioPort)
         case .llamaCpp: return await probeLlamaCpp(port: ollamaEmbeddedPort ?? 8080)
         case .rapidMLX: return await probeOpenAI(port: 8000, source: .rapidMLX)   // OpenAI-compatible
+        case .exo:      return await probeOpenAI(port: 52415, source: .exo)       // OpenAI-compatible cluster
         case .some:                                   // mlx / jan / gpt4all / vllm
             var s = RuntimeAPISample(); s.status = .runningNoServer; return s
         case .none:

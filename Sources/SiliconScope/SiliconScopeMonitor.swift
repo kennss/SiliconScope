@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-25
+//  Updated:   2026-07-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -315,6 +315,7 @@ final class SiliconScopeMonitor {
         switch kind {
         case .lmStudio: return Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234)
         case .rapidMLX: return 8000
+        case .exo:      return 52415
         case .llamaCpp: return snapshot.aiRuntime.ollamaEmbeddedPort ?? 8080
         default:        return Self.port(forKey: "aiRuntimeOllamaPort", default: 11434)
         }

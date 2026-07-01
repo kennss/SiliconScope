@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-24
+//  Updated:   2026-07-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -116,7 +116,7 @@ if CommandLine.arguments.contains("--bench") {
         primaryKind: kind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
         ollamaPort: 11434, lmStudioPort: 1234)
     if let kind, let model = api.loadedModels.first?.name {
-        let port = switch kind { case .lmStudio: 1234; case .rapidMLX: 8000; default: 11434 }
+        let port = switch kind { case .lmStudio: 1234; case .rapidMLX: 8000; case .exo: 52415; default: 11434 }
         print("\nbenchmark: \(kind.displayName) · \(model) — generating…")
         if let r = await BenchmarkClient().run(kind: kind, port: port, model: model) {
             print(String(format: "  decode: %.1f tok/s  (%d tokens)", r.tokensPerSec, r.tokenCount))

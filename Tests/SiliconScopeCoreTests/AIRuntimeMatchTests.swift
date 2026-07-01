@@ -1,11 +1,12 @@
 //
 //  File:      AIRuntimeMatchTests.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-14
+//  Updated:   2026-07-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Adversarial tests for AIRuntimeKind.match — the bundle-first, two-stage
 //             classifier. Locks in the cases that must NOT regress (Ollama runner is not
-//             llama.cpp; generic server/main are not runtimes; empty path never crashes).
+//             llama.cpp; generic server/main are not runtimes; empty path never crashes;
+//             the short "exo" substring never false-positives on hexo/Plexos/nexo).
 //  Notes:     argv strings are REPRESENTATIVE, not pinned from a live run (the runner's
 //             --port is dynamic). The logic under test is pure (path/name/args -> kind),
 //             so synthetic inputs exercise it deterministically.
@@ -81,6 +82,29 @@ final class AIRuntimeMatchTests: XCTestCase {
         // Must NOT be misclassified as bare MLX even with no argv.
         XCTAssertNotEqual(AIRuntimeKind.match(path: "/Users/x/.local/bin/rapid-mlx",
                                               name: "rapid-mlx", args: nil), .mlx)
+    }
+
+    // exo (exo-explore/exo) — OpenAI-compatible cluster server on :52415. Matches its console
+    // entry point / module file / source path across the three ways it's launched.
+    func testExoMatch() {
+        // Installed console script (`exo` command, e.g. from a venv/uv/pipx install).
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Users/x/.venv/bin/exo",
+                                           name: "exo", args: "exo run llama-3.2-3b"), .exo)
+        // Module invocation via python — argv carries `-m exo.main`.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                           args: "python -m exo.main --inference-engine mlx"), .exo)
+        // Running the source file directly.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                           args: "python /Users/x/exo/exo/main.py"), .exo)
+    }
+
+    // The short "exo" substring must NOT false-positive on unrelated tools that merely contain it.
+    func testExoDoesNotFalsePositive() {
+        // hexo — a Node static-site generator (basename + path share "exo").
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/hexo",
+                                         name: "hexo", args: "node /opt/homebrew/bin/hexo generate"))
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/x/Plexos/bin/plexos", name: "plexos", args: nil))
+        XCTAssertNil(AIRuntimeKind.match(path: "/usr/local/bin/nexo", name: "nexo", args: "nexo serve"))
     }
 
     // primaryKind ranks by grouped RSS; the Ollama group (parent+runner) outweighs a small llama.cpp.

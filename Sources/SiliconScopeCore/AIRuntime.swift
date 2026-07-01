@@ -1,11 +1,11 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-25
+//  Updated:   2026-07-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
-//             MLX, Rapid-MLX, Jan, GPT4All, vLLM). Pure logic — no syscalls; consumes the
-//             path/args that ProcessSampler already resolved.
+//             MLX, Rapid-MLX, Jan, GPT4All, vLLM, exo). Pure logic — no syscalls; consumes
+//             the path/args that ProcessSampler already resolved.
 //  Notes:     proc_name truncates to 15 chars, so the executable PATH is the primary
 //             signal and BUNDLE identity overrides basename — the Ollama runner is a
 //             llama-server child, so basename alone would misclassify it as llama.cpp.
@@ -15,7 +15,7 @@
 import Foundation
 
 public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
-    case ollama, llamaCpp, lmStudio, mlx, rapidMLX, jan, gpt4all, vllm
+    case ollama, llamaCpp, lmStudio, mlx, rapidMLX, jan, gpt4all, vllm, exo
 
     public var displayName: String {
         switch self {
@@ -27,6 +27,7 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         case .jan:      return "Jan"
         case .gpt4all:  return "GPT4All"
         case .vllm:     return "vLLM"
+        case .exo:      return "exo"
         }
     }
 
@@ -53,6 +54,12 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if a.contains("mlx_lm.server") || a.contains("mlx_lm.generate") || a.contains("mlx_lm") { return .mlx }
         if base == "lms" || p.contains("LM Studio") || a.contains("LM Studio") { return .lmStudio }
         if a.contains("vllm") || p.contains("vllm") { return .vllm }
+        // exo (exo-explore/exo) — OpenAI-compatible cluster inference server on :52415. Match the
+        // installed console entry point (basename `exo`), the source module file, or a `-m exo.main`
+        // invocation. Every signal is bounded by a path separator or a leading space so unrelated
+        // names (hexo, Plexos, nexo) can't false-positive on the short "exo" substring.
+        if base == "exo" || p.contains("/exo/main.py")
+            || a.contains("/exo/main.py") || a.contains("/bin/exo") || a.contains(" exo.main") { return .exo }
 
         return nil
     }
