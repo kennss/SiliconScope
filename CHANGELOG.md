@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.0.4 — 2026-07-02
+
+**Dashboard graphs + a new runtime.**
+
+- **Memory usage over time.** The Memory & Bandwidth card now plots memory-used as a labelled
+  sparkline stacked alongside the bandwidth trend (in the bandwidth column, like the Network & Disk
+  card's two graphs) — so you can see how memory has evolved across the session, not just the
+  current split. Thanks **@Thoralf-M** ([#20](https://github.com/kennss/SiliconScope/issues/20)).
+- **exo is now a recognized AI runtime.** SiliconScope detects
+  [exo](https://github.com/exo-explore/exo) and reads its loaded model over the OpenAI-compatible
+  API on `127.0.0.1:52415` (opt-in, localhost only). Thanks **@nickalexej**
+  ([#21](https://github.com/kennss/SiliconScope/issues/21)).
+- **Quieter, clearer warnings.** Memory-pressure / GPU-throttle warnings no longer flicker on and
+  off every second — they linger briefly then clear once, the affected card's border tints
+  amber/red so you can see *which* metric tripped, and the whole banner is now toggleable in
+  Settings. Thanks **@muescha** ([#18](https://github.com/kennss/SiliconScope/issues/18)).
+
 ## v3.0.3 — 2026-07-02
 
 Full support for the **base M1** (MacBook Air M1 / Mac mini / iMac) — two fixes that only
