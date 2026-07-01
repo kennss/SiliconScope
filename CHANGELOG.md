@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.0.3 — 2026-07-02
+
+Full support for the **base M1** (MacBook Air M1 / Mac mini / iMac) — two fixes that only
+affected the non-Pro/Max M1:
+
+- **Sensor names now map correctly.** The Sensors panel showed raw HID labels
+  (`eACC/pACC/SOC MTR Temp Sensor`) on base M1; they now read **E-Core / P-Core / GPU / ANE /
+  SoC** like every other chip.
+- **Per-component power now reads.** CPU (E/P), GPU, ANE, and DRAM power showed **0 W** on base
+  M1 — those rails live in a different IOReport group there (`PMP`), which SiliconScope now reads.
+  On-device **Whisper / Core ML** ANE draw now shows up on a MacBook Air.
+
 ## v3.0.2 — 2026-06-30
 
 - **Run as a pure menu-bar utility (optional).** A new **Show Dock icon** setting (default on):
