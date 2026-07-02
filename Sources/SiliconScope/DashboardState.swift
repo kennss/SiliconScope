@@ -27,6 +27,7 @@ struct DashboardState {
     let gpuClockDropFraction: Double
     let gpuThrottling: Bool
     let memoryRisk: MemoryBudget.Risk
+    let healthVerdict: HealthVerdict
     // Live-only display (nil/false in replay).
     let isBenchmarking: Bool
     let benchmark: BenchmarkRecord?
@@ -45,6 +46,7 @@ struct DashboardState {
         gpuClockDropFraction = m.gpuClockDropFraction
         gpuThrottling = m.gpuThrottling
         memoryRisk = m.memoryRisk
+        healthVerdict = m.healthVerdict
         isBenchmarking = m.isBenchmarking
         benchmark = m.benchmarkForCurrentModel
         benchmarkError = m.benchmarkError
@@ -69,6 +71,7 @@ struct DashboardState {
         bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: rec.meta.topology, bandwidthPeakGBs: d.bandwidthPeakGBs)
         bottleneck = MetricsEngine.bottleneck(latest: s, history: h, bandwidthPeakGBs: d.bandwidthPeakGBs, throttling: throttling)
         memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: d.memorySwapOutRate, compressionRate: d.memoryCompressionRate)
+        healthVerdict = MetricsEngine.healthVerdict(latest: s, topology: rec.meta.topology, swapOutRate: d.memorySwapOutRate)
         isBenchmarking = false
         benchmark = nil
         benchmarkError = nil

@@ -122,6 +122,9 @@ public final class MetricsEngine {
     public var memoryRisk: MemoryBudget.Risk {
         Self.memoryRisk(latest: latest, swapOutRate: memorySwapOutRate, compressionRate: memoryCompressionRate)
     }
+    public var healthVerdict: HealthVerdict {
+        Self.healthVerdict(latest: latest, topology: topology, swapOutRate: memorySwapOutRate)
+    }
 
     /// True when the GPU clock is held well below its rolling peak while the GPU is active and
     /// thermal pressure has risen above nominal — i.e. thermal throttling.
@@ -165,6 +168,22 @@ public final class MetricsEngine {
             return .tight
         }
         return base
+    }
+
+    /// System health classification: CPU overload detection + top offenders + suggestions.
+    public static func healthVerdict(latest: SystemSnapshot, topology: CPUTopology?,
+                                     swapOutRate: Double) -> HealthVerdict {
+        var loadAvg = [Double](repeating: 0, count: 3)
+        _ = getloadavg(&loadAvg, 3)
+        let coreCount = (topology?.eCoreCount ?? 0) + (topology?.pCoreCount ?? 0)
+        return SystemHealthAdvisor.classify(
+            processes: latest.processes,
+            loadAverage: loadAvg[0],
+            coreCount: coreCount > 0 ? coreCount : 8,
+            memoryPressure: latest.memory.pressure,
+            memoryFreeBytes: latest.memory.freeBytes,
+            swapOutRate: swapOutRate
+        )
     }
 
     private static func tailAverage(_ values: [Double], count: Int, fallback: Double) -> Double {

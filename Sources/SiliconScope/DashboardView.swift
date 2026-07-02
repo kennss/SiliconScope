@@ -142,6 +142,7 @@ struct DashboardView: View {
     @State private var shownWarnings: [SystemSnapshot.Warning] = []   // DEBOUNCED (lingering) set actually displayed
     @State private var warningClearTask: Task<Void, Never>? = nil     // pending "hide after linger" task
     @AppStorage("showWarningBanner") private var showWarningBanner = true   // #18: let sysmon users opt out of the banner
+    @State private var healthBannerDismissed = false   // user-dismissed health banner (resets when level changes)
 
     var body: some View {
         let s = state
@@ -226,6 +227,22 @@ struct DashboardView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: visibleWarnings.isEmpty)
+        // Health Advisor banner: overlays below the warning banner when the system is stressed/overloaded.
+        .overlay(alignment: .top) {
+            if showWarningBanner && s.healthVerdict.level != .healthy && !healthBannerDismissed {
+                HealthBannerView(verdict: s.healthVerdict, onDismiss: { healthBannerDismissed = true })
+                    .padding(.horizontal, 10)
+                    .padding(.top, visibleWarnings.isEmpty ? 6 : 52)
+                    .frame(maxWidth: 620)
+                    .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: s.healthVerdict.level)
+        // Reset health banner dismissal when the level changes (e.g. overloaded → healthy → stressed again).
+        .onChange(of: s.healthVerdict.level) { _, newLevel in
+            if newLevel == .healthy { healthBannerDismissed = false }
+        }
         // Debounce (#18): keep the banner up while active; when the condition clears, linger 4 s before
         // hiding so a brief oscillation doesn't respawn it — a recurrence within the window cancels the
         // hide. Replaces the old "forget the dismissal the instant it clears", which caused the flicker.

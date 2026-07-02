@@ -387,6 +387,7 @@ struct CPUMenuDropdown: View {
             }
             kv("Temperature", formatTemperature(s.temperature.cpuCelsius, fahrenheit: fahrenheit))
             kv("Load avg", SystemInfo.loadAverageString())
+            healthStatusRow(monitor.healthVerdict)
             kv("Uptime", SystemInfo.uptimeString())
             Divider()
             MenuSectionHeader("Top Processes")
@@ -429,6 +430,29 @@ struct CPUMenuDropdown: View {
             Text(label).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
             Spacer()
             Text(value).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
+        }
+    }
+
+    private func healthStatusRow(_ verdict: HealthVerdict) -> some View {
+        HStack {
+            Text("System").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            Spacer()
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(healthColor(verdict.level))
+                    .frame(width: 6, height: 6)
+                Text(verdict.label)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(healthColor(verdict.level))
+            }
+        }
+    }
+
+    private func healthColor(_ level: HealthVerdict.Level) -> Color {
+        switch level {
+        case .healthy:    return Theme.heat(0.2)   // green
+        case .stressed:   return Theme.heat(0.7)   // amber
+        case .overloaded: return Theme.heat(1.0)   // red
         }
     }
 }

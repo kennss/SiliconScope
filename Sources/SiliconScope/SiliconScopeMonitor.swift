@@ -38,6 +38,7 @@ final class SiliconScopeMonitor {
     var bandwidthPercentOfCeiling: Double { engine.bandwidthPercentOfCeiling }
     var bottleneck: Bottleneck { engine.bottleneck }
     var memoryRisk: MemoryBudget.Risk { engine.memoryRisk }
+    var healthVerdict: HealthVerdict { engine.healthVerdict }
     var memoryPageInRate: Double { engine.memoryPageInRate }
     var memoryPageOutRate: Double { engine.memoryPageOutRate }
     var memorySwapInRate: Double { engine.memorySwapInRate }
@@ -352,6 +353,10 @@ final class SiliconScopeMonitor {
                 "Unified memory is full — swapping is limiting throughput."))
         } else if snapshot.memory.pressure == .critical {
             active.append(("mempressure", "Memory pressure: critical", "Free up memory to avoid swapping."))
+        }
+        if healthVerdict.level == .overloaded {
+            let body = healthVerdict.suggestion ?? "System overloaded — close unused apps to recover."
+            active.append(("cpuoverload", "System Overloaded", body))
         }
         let now = Date()
         for a in active where !notifiedConditions.contains(a.key) {
