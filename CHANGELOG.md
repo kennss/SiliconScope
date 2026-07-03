@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.1.1 — 2026-07-03
+
+- **Fixed: the header could be overlapped by the cards below it.** On some macOS versions (reported
+  on macOS 15.7) the title / chip / power-battery row was partly covered by the top cards. Dashboard
+  rows now grow to fit their content instead of using a fixed height, so nothing overflows into the
+  header — on any macOS version. Thanks **@blueinkgz** ([#23](https://github.com/kennss/SiliconScope/issues/23)).
+
 ## v3.1.0 — 2026-07-03
 
 **A workload-state cockpit, CPU throttling, and one-click process kill.**

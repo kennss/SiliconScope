@@ -179,7 +179,7 @@ struct DashboardView: View {
                                   onBenchmark: onBenchmark ?? {},
                                   allowBenchmark: onBenchmark != nil)
                 }
-                .frame(height: 108)
+                .frame(minHeight: 108)
 
                 HStack(spacing: 6) {
                     CPUCard(cpu: snapshot.cpu, topology: s.topology,
@@ -191,7 +191,7 @@ struct DashboardView: View {
                                     mediaHistory: s.history.media, aneHistory: s.history.ane,
                                     throttling: s.gpuThrottling)
                 }
-                .frame(height: 166)
+                .frame(minHeight: 166)
 
                 HStack(alignment: .top, spacing: 6) {
                     MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
@@ -201,12 +201,14 @@ struct DashboardView: View {
                                     downHistory: s.history.netDown, upHistory: s.history.netUp,
                                     readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
                 }
-                .frame(height: 176)
+                .frame(minHeight: 176)
 
                 HStack(spacing: 6) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
                     ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect)
                 }
+                // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
+                // needs a bounded height — minHeight lets the whole list expand and balloons the window.
                 .frame(height: 196)
             }
             .padding(8)
