@@ -1,5 +1,24 @@
 # Changelog
 
+## v3.1.0 — 2026-07-03
+
+**A workload-state cockpit, CPU throttling, and one-click process kill.**
+
+- **The AI Workload card is now a live state summary.** Instead of repeating the bandwidth /
+  GPU numbers already shown in their own cards, the top-left card reads out *what the workload
+  is and where it lands*: a headline verdict (**LLM (GPU/Metal)** / **ANE (CoreML)** / GPU active
+  / Idle) over three colour-coded engine states — **CPU** (with its top process), **GPU / Media /
+  ANE**, and **Memory** — plus the signature **Mem BW % of ceiling** gauge (how close token
+  generation is to the memory-bandwidth wall). It describes the silicon; it never advises.
+- **CPU thermal throttling.** The throttle story used to be GPU-only. Now the **CPU card turns its
+  border red and shows a "P ceiling" line** (e.g. *1765 / 3228 MHz · −45% thermal*) when the
+  performance cores are held below the chip's top clock by heat — symmetric to the GPU card.
+- **Kill a process where you already see it.** A hover **Kill** on any Processes row, right-click
+  **Kill / Force Kill** on the AI Workload card's top process (tap it to open the Inspector), and
+  **Kill / Force Kill** buttons in the Inspector itself. Systems vocabulary (SIGTERM / SIGKILL),
+  always user-initiated behind a confirm — never a suggestion. Idea sparked by **@zhangchen456**
+  ([#22](https://github.com/kennss/SiliconScope/pull/22)).
+
 ## v3.0.4 — 2026-07-02
 
 **Dashboard graphs + a new runtime.**
