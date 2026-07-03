@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-02
+//  Updated:   2026-07-03
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -157,13 +157,16 @@ struct DashboardView: View {
                 // AI cockpit pair, side by side (matches the rest of the 2-column grid and
                 // saves a stacked row of vertical space).
                 HStack(alignment: .top, spacing: 6) {
-                    AIWorkloadCard(bottleneck: s.bottleneck,
-                                   gpu: snapshot.gpu,
-                                   bandwidth: snapshot.bandwidth,
+                    AIWorkloadCard(snapshot: snapshot,
+                                   bottleneck: s.bottleneck,
                                    ceilingGBs: s.bandwidthCeilingGBs,
-                                   chipName: s.topology?.chipName ?? "",
-                                   engineHint: snapshot.likelyAIEngine,
-                                   clockDropFraction: s.gpuClockDropFraction)
+                                   cpuThrottling: s.cpuThrottling,
+                                   cpuClockDrop: s.cpuClockDropFraction,
+                                   gpuThrottling: s.gpuThrottling,
+                                   gpuClockDrop: s.gpuClockDropFraction,
+                                   memoryRisk: s.memoryRisk,
+                                   onInspect: onInspect,
+                                   allowKill: onBenchmark != nil)
                     AIRuntimeCard(runtime: snapshot.aiRuntime,
                                   api: snapshot.runtimeAPI,
                                   budget: snapshot.memoryBudget,
@@ -180,7 +183,8 @@ struct DashboardView: View {
 
                 HStack(spacing: 6) {
                     CPUCard(cpu: snapshot.cpu, topology: s.topology,
-                            eHistory: s.history.eCPU, pHistory: s.history.pCPU)
+                            eHistory: s.history.eCPU, pHistory: s.history.pCPU,
+                            throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
                     AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth,
                                     anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
                                     gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
@@ -341,57 +345,178 @@ private struct WarningBanner: View {
 
 // MARK: - AI Workload (hero)
 
-/// The hero card: the dominant bottleneck verdict plus a "% of ceiling" bandwidth gauge.
-/// "Where does the AI workload actually run, and what limits it right now?"
+/// The hero card: a per-engine STATE summary — "where is the work landing, and what limits it?"
+/// Replaces the old repeated raw numbers (Mem BW / GPU %, already shown in their own cards) with
+/// three descriptive, colour-coded states (CPU / GPU-Media-ANE / Memory) built from existing verdicts.
+/// Keeps the AI-workload lens: the GPU line surfaces ANE / Media activity, not just a GPU percent.
 private struct AIWorkloadCard: View {
+    let snapshot: SystemSnapshot
     let bottleneck: Bottleneck
-    let gpu: GPUSample
-    let bandwidth: BandwidthSample
     let ceilingGBs: Double
-    let chipName: String
-    let engineHint: String
-    let clockDropFraction: Double
+    let cpuThrottling: Bool
+    let cpuClockDrop: Double
+    let gpuThrottling: Bool
+    let gpuClockDrop: Double
+    let memoryRisk: MemoryBudget.Risk
+    var onInspect: ((ProcessRow) -> Void)? = nil   // tap the top process → focus it in the Inspector
+    var allowKill = false                           // false in replay — recorded PIDs are stale
+    @State private var pendingKill: ProcessRow?
+    @State private var pendingForce = false
 
-    private var bwFraction: Double { ceilingGBs > 0 ? min(1, bandwidth.totalGBs / ceilingGBs) : 0 }
-    private var shortChip: String { chipName.replacingOccurrences(of: "Apple ", with: "") }
+    private let alertColor  = Color(red: 0.88, green: 0.37, blue: 0.37)   // red — throttle / swapping
+    private let amberColor  = Color(red: 0.87, green: 0.66, blue: 0.28)   // amber — pressure
+    private var activeColor: Color { MetricPalette.gpuC }    // green — busy/normal-active
+    private var aneColor: Color    { MetricPalette.aneC }    // purple — ANE
+    private var mediaColor: Color  { MetricPalette.mediaC }  // orange — media engine
+
+    private var topProcess: ProcessRow? { snapshot.processes.max(by: { $0.cpuPercent < $1.cpuPercent }) }
+
+    // The card's headline: a semantic read of what the AI workload actually is (ANE/CoreML vs an LLM
+    // on Metal vs GPU+video vs idle). Uses GENUINE-compute thresholds (aneWatts / aiModelActive /
+    // gpuComputeBusy), NOT likelyAIEngine's loose 0.25 GPU hint — so it never contradicts the GPU row
+    // below (light desktop GPU at ~idle watts must read Idle here, exactly as it does there).
+    private var aiVerdict: (Color, String) {
+        if snapshot.power.aneWatts > 1.5 { return (aneColor, "ANE (CoreML)") }
+        if snapshot.aiModelActive        { return (activeColor, "LLM (GPU/Metal)") }
+        if snapshot.gpuComputeBusy {
+            return (activeColor, snapshot.bandwidth.mediaGBs > 0.5 ? "GPU active — incl. video" : "GPU active")
+        }
+        return (Theme.dim, "Idle")
+    }
+
+    // CPU: throttled > active > idle. The top process is rendered separately (cpuRow) as an ACTIONABLE
+    // element — describe the driver, and let the user act on it if they choose (never judge/suggest).
+    private var cpuState: (Color, String) {
+        if cpuThrottling { return (alertColor, "Throttled") }
+        if snapshot.cpu.pUsage > 0.5 || snapshot.cpu.eUsage > 0.7 { return (activeColor, "Active") }
+        return (Theme.dim, "Idle")
+    }
+
+    // GPU/Media/ANE (the AI-workload lens): throttled > ANE > media > GPU compute > idle.
+    private var gpuState: (Color, String, String) {
+        if gpuThrottling {
+            return (alertColor, "Throttled",
+                    String(format: "%.0f MHz · −%.0f%%", snapshot.gpu.freqMHz, gpuClockDrop * 100))
+        }
+        if snapshot.power.aneWatts > 1.5 {
+            return (aneColor, "ANE active", String(format: "%.1f W", snapshot.power.aneWatts))
+        }
+        if snapshot.bandwidth.mediaGBs > 1.0 {
+            return (mediaColor, "Media", String(format: "%.1f GB/s decode", snapshot.bandwidth.mediaGBs))
+        }
+        if snapshot.gpu.usage > 0.4 {
+            let sub = bottleneck == .computeBound ? "compute-bound"
+                    : bottleneck == .bandwidthBound ? "bandwidth-bound" : "GPU compute"
+            return (activeColor, "GPU active", sub)
+        }
+        return (Theme.dim, "Idle", "")
+    }
+
+    private var bwFraction: Double { ceilingGBs > 0 ? min(1, snapshot.bandwidth.totalGBs / ceilingGBs) : 0 }
+
+    // Memory STATE: swapping > pressure > bandwidth-bound > normal. Bandwidth magnitude lives in the
+    // dedicated "% of ceiling" bar below, so this line describes the memory side — including sticky
+    // swap, which is *shown* (not alarmed) per instrument-not-nanny.
+    private var memState: (Color, String, String) {
+        switch memoryRisk {
+        case .swapping:
+            return (alertColor, "Swapping", String(format: "pressure %.0f%%", snapshot.memory.pressurePercent))
+        case .tight:
+            return (amberColor, "Pressure", String(format: "%.0f%%", snapshot.memory.pressurePercent))
+        case .ok:
+            if bwFraction > 0.7 {
+                return (activeColor, "Bandwidth-bound", "near memory-BW ceiling")
+            }
+            let swapGB = Double(snapshot.memory.swapUsedBytes) / 1_073_741_824
+            return (Theme.dim, "Normal", swapGB >= 0.5 ? String(format: "swap %.1f GB", swapGB) : "")
+        }
+    }
 
     var body: some View {
         Card(title: "AI Workload") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 7) {
+                // Headline: what the workload IS (semantic), above the per-engine breakdown.
                 HStack(spacing: 8) {
-                    Circle().fill(bottleneck.color).frame(width: 9, height: 9)
-                    // Keep the verdict on ONE line (shrink slightly before wrapping) so a long
-                    // label like "Thermal-throttled" doesn't wrap and crush the half-width card.
-                    Text(bottleneck.label)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(bottleneck.color)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    // The key value beside the verdict — for throttle the live clock + drop, else
-                    // the engine hint. Short enough to sit inline (the old prose detail was not).
-                    if bottleneck != .idle {
-                        Text(bottleneck == .thermalThrottled
-                             ? String(format: "%.0f MHz (-%.0f%% vs peak)", gpu.freqMHz, clockDropFraction * 100)
-                             : engineHint)
-                            .font(.system(size: 10.5, design: .monospaced))
-                            // Red for the throttle clock value (it's an alarm value); dim otherwise.
-                            .foregroundStyle(bottleneck == .thermalThrottled ? bottleneck.color : Theme.dim)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    }
+                    Circle().fill(aiVerdict.0).frame(width: 8, height: 8)
+                    Text(aiVerdict.1)
+                        .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(aiVerdict.0)
+                        .lineLimit(1).minimumScaleFactor(0.8)
                     Spacer(minLength: 0)
                 }
-                Bar(label: "Mem BW % of ceiling",
-                    value: bwFraction,
+                cpuRow()
+                stateRow("GPU", gpuState)
+                stateRow("Mem", memState)
+                // Signature AI-workload gauge (unique to this card): live memory bandwidth vs the
+                // per-chip ceiling — the wall that bounds LLM token generation (bandwidth-bound).
+                Bar(label: "Mem BW % of ceiling", value: bwFraction,
                     detail: String(format: "%.0f%% · %.0f / %.0f GB/s",
-                                   bwFraction * 100, bandwidth.totalGBs, ceilingGBs))
-                HStack(spacing: 6) {
-                    Text(String(format: "GPU %.0f%%", gpu.usagePercent))
-                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Theme.text)
-                    Spacer(minLength: 0)
-                }
+                                   bwFraction * 100, snapshot.bandwidth.totalGBs, ceilingGBs))
+                    .padding(.top, 1)
             }
+        }
+        .confirmationDialog(
+            pendingKill.map { "\(pendingForce ? "Force kill" : "Kill") \($0.name)  (pid \($0.pid))?" } ?? "",
+            isPresented: Binding(get: { pendingKill != nil }, set: { if !$0 { pendingKill = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(pendingForce ? "Force Kill" : "Kill", role: .destructive) {
+                if let p = pendingKill {
+                    if pendingForce { ProcessControl.forceKill(pid: p.pid) } else { ProcessControl.terminate(pid: p.pid) }
+                }
+                pendingKill = nil
+            }
+            Button("Cancel", role: .cancel) { pendingKill = nil }
+        }
+    }
+
+    // CPU row with an ACTIONABLE top process: tap → Inspector, right-click → Quit / Force Quit. Same
+    // affordance as the Processes card — a fact you can act on, not a suggestion the tool pushes.
+    private func cpuRow() -> some View {
+        HStack(spacing: 8) {
+            Text("CPU")
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.faint).frame(width: 30, alignment: .leading)
+            Circle().fill(cpuState.0).frame(width: 7, height: 7)
+            Text(cpuState.1)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(cpuState.0).lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 6)
+            if let top = topProcess {
+                Text("top: \(top.name) \(Int(top.cpuPercent.rounded()))%")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(onInspect != nil ? Theme.text : Theme.dim)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onInspect?(top) }
+                    .contextMenu {
+                        if onInspect != nil { Button("Inspect \(top.name)") { onInspect?(top) } }
+                        if allowKill {
+                            Button("Kill \(top.name)") { pendingKill = top; pendingForce = false }
+                            Button("Force Kill \(top.name)", role: .destructive) { pendingKill = top; pendingForce = true }
+                        }
+                    }
+                    .help(onInspect != nil ? "Tap to inspect · right-click for actions" : "")
+            }
+        }
+    }
+
+    private func stateRow(_ label: String, _ s: (Color, String, String)) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.faint)
+                .frame(width: 30, alignment: .leading)
+            Circle().fill(s.0).frame(width: 7, height: 7)
+            Text(s.1)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(s.0)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 6)
+            Text(s.2)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+                .lineLimit(1).minimumScaleFactor(0.7)
         }
     }
 }
@@ -608,17 +733,32 @@ private struct CPUCard: View {
     let topology: CPUTopology?
     let eHistory: [Double]
     let pHistory: [Double]
+    let throttling: Bool             // cpuThrottling: P-cluster held below its DVFS ceiling under thermal pressure
+    let clockDrop: Double            // cpuClockDropFraction: how far the P-clock sits below the chip's top step
     @AppStorage("menubar.cpu") private var cpuMB = false
 
     private let eColor = Color(nsColor: MetricPalette.eCPU)   // amber
     private let pColor = Color(nsColor: MetricPalette.pCPU)   // blue
+    private let alertColor = Color(red: 0.88, green: 0.37, blue: 0.37)
+
+    private var pMaxMHz: Double { topology?.pFreqsMHz.max() ?? 0 }
 
     var body: some View {
-        Card(title: "CPU", menuBarPin: $cpuMB) {
+        // When the P-cluster is thermally throttled: a red card border (consistent with the GPU card's
+        // throttle treatment) flags it, and a dim "P ceiling" line states the fact — clock vs the chip's
+        // DVFS ceiling. Border = salience, line = the instrument reading.
+        Card(title: "CPU", menuBarPin: $cpuMB, alert: throttling ? alertColor : nil) {
             Bar(label: "E-cores", value: cpu.eUsage,
                 detail: String(format: "%.0f%%  %.0f MHz", cpu.eUsagePercent, cpu.eFreqMHz), color: eColor)
             Bar(label: "P-cores", value: cpu.pUsage,
                 detail: String(format: "%.0f%%  %.0f MHz", cpu.pUsagePercent, cpu.pFreqMHz), color: pColor)
+
+            if throttling {
+                Bar(label: "P ceiling", value: pMaxMHz > 0 ? cpu.pFreqMHz / pMaxMHz : 0,
+                    detail: String(format: "%.0f / %.0f MHz · −%.0f%% (thermal)",
+                                   cpu.pFreqMHz, pMaxMHz, clockDrop * 100),
+                    color: Theme.dim)
+            }
         } graph: {
             ZStack {
                 Sparkline(values: eHistory, color: eColor, height: 24, yDomain: 0...1)
@@ -969,6 +1109,7 @@ private struct ProcessCard: View {
     @State private var filter: String = ""
     @State private var pendingKill: ProcessRow?
     @State private var pendingForce = false
+    @State private var hoveredPID: Int32?   // row under the cursor → reveal its Quit affordance
 
     private var rows: [ProcessRow] {
         let base = filter.isEmpty
@@ -1020,17 +1161,35 @@ private struct ProcessCard: View {
                                 Text(String(format: "%.0f MB", process.memoryMB))
                                     .frame(width: 84, alignment: .trailing).foregroundStyle(Theme.dim)
                                 Text(process.name).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
+                                // Trailing Quit affordance — reveals on row hover so the (already
+                                // existing) kill is discoverable without cluttering the table. Sends
+                                // SIGTERM via the shared confirm dialog; Force Quit stays in the menu.
+                                Group {
+                                    if allowKill && hoveredPID == process.pid {
+                                        Button { pendingKill = process; pendingForce = false } label: {
+                                            Image(systemName: "xmark.circle.fill").font(.system(size: 11))
+                                                .foregroundStyle(Color(red: 0.88, green: 0.37, blue: 0.37))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Kill \(process.name)")
+                                    }
+                                }
+                                .frame(width: 16)
                             }
                             .font(.system(size: 11, design: .monospaced))
                             .contentShape(Rectangle())
                             .onTapGesture { onInspect?(process) }
+                            .onHover { hovering in
+                                if hovering { hoveredPID = process.pid }
+                                else if hoveredPID == process.pid { hoveredPID = nil }
+                            }
                             .contextMenu {
                                 if let onInspect {
                                     Button("Inspect \(process.name)") { onInspect(process) }
                                 }
                                 if allowKill {
-                                    Button("Quit \(process.name)") { pendingKill = process; pendingForce = false }
-                                    Button("Force Quit \(process.name)", role: .destructive) {
+                                    Button("Kill \(process.name)") { pendingKill = process; pendingForce = false }
+                                    Button("Force Kill \(process.name)", role: .destructive) {
                                         pendingKill = process; pendingForce = true
                                     }
                                 }
@@ -1042,11 +1201,11 @@ private struct ProcessCard: View {
             }
         }
         .confirmationDialog(
-            pendingKill.map { "\(pendingForce ? "Force quit" : "Quit") \($0.name)  (pid \($0.pid))?" } ?? "",
+            pendingKill.map { "\(pendingForce ? "Force kill" : "Kill") \($0.name)  (pid \($0.pid))?" } ?? "",
             isPresented: Binding(get: { pendingKill != nil }, set: { if !$0 { pendingKill = nil } }),
             titleVisibility: .visible
         ) {
-            Button(pendingForce ? "Force Quit" : "Quit", role: .destructive) {
+            Button(pendingForce ? "Force Kill" : "Kill", role: .destructive) {
                 if let process = pendingKill {
                     if pendingForce { ProcessControl.forceKill(pid: process.pid) }
                     else { ProcessControl.terminate(pid: process.pid) }

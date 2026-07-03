@@ -1,7 +1,7 @@
 //
 //  File:      InspectorView.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-07-03
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Single-process Inspector sheet: every per-process metric for the focused pid —
 //             CPU (+ P/E split), Compute (IPC / instructions / cycles), Energy (power + wakeups),
@@ -18,6 +18,7 @@ import SiliconScopeCore
 struct InspectorView: View {
     let monitor: SiliconScopeMonitor
     @Environment(\.dismiss) private var dismiss
+    @State private var pendingForce: Bool? = nil   // nil = no dialog; true = Force Quit, false = graceful Quit
 
     var body: some View {
         let d = monitor.focusedDetail
@@ -47,6 +48,20 @@ struct InspectorView: View {
         .frame(width: 460, height: 640)
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
+        .confirmationDialog(
+            pendingForce.map { "\($0 ? "Force kill" : "Kill") \(monitor.focusedDetail?.name ?? "this process")?" } ?? "",
+            isPresented: Binding(get: { pendingForce != nil }, set: { if !$0 { pendingForce = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let force = pendingForce, let pid = monitor.focusedPID {
+                Button(force ? "Force Kill" : "Kill", role: .destructive) {
+                    if force { ProcessControl.forceKill(pid: pid) } else { ProcessControl.terminate(pid: pid) }
+                    pendingForce = nil
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingForce = nil }
+        }
     }
 
     private func header(_ d: ProcessDetail?) -> some View {
@@ -74,6 +89,14 @@ struct InspectorView: View {
                 }
             }
             Spacer()
+            // Kill affordances — only for a running process you own (you can't signal others' pids).
+            // Graceful SIGTERM + destructive SIGKILL, both behind a confirm; not a suggestion, an action.
+            if let d, d.isOwn, !monitor.focusEnded {
+                Button("Kill") { pendingForce = false }
+                    .help("Kill — SIGTERM (graceful)")
+                Button("Force Kill", role: .destructive) { pendingForce = true }
+                    .help("Force Kill — SIGKILL")
+            }
             Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
         }
         .padding(12)
