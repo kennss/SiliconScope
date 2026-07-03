@@ -1,7 +1,7 @@
 //
 //  File:      MetricsEngine.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-07-03
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The path-dependent derivation that turns a stream of SystemSnapshots into the
 //             values the dashboard reads beyond the raw snapshot: rolling sparkline History,
@@ -111,6 +111,8 @@ public final class MetricsEngine {
 
     public var gpuThrottling: Bool { Self.gpuThrottling(latest: latest, gpuClockPeakMHz: gpuClockPeakMHz) }
     public var gpuClockDropFraction: Double { Self.gpuClockDropFraction(latest: latest, gpuClockPeakMHz: gpuClockPeakMHz) }
+    public var cpuThrottling: Bool { Self.cpuThrottling(latest: latest, topology: topology) }
+    public var cpuClockDropFraction: Double { Self.cpuClockDropFraction(latest: latest, topology: topology) }
     public var bandwidthCeilingGBs: Double { Self.bandwidthCeiling(topology: topology, bandwidthPeakGBs: bandwidthPeakGBs) }
     public var bandwidthPercentOfCeiling: Double {
         let c = bandwidthCeilingGBs
@@ -136,6 +138,23 @@ public final class MetricsEngine {
     public static func gpuClockDropFraction(latest: SystemSnapshot, gpuClockPeakMHz: Double) -> Double {
         guard gpuClockPeakMHz > 0, latest.gpu.freqMHz < gpuClockPeakMHz else { return 0 }
         return 1 - latest.gpu.freqMHz / gpuClockPeakMHz
+    }
+
+    /// True when the P-cluster clock is held well below the chip's top DVFS step while the P-cores are
+    /// busy and thermal pressure has risen above nominal — i.e. CPU thermal throttling. Symmetric to
+    /// gpuThrottling, but ceilinged on the per-chip DVFS max (topology.pFreqsMHz) rather than an
+    /// observed peak, so the verdict is identical on live and replay (topology travels in the recording).
+    public static func cpuThrottling(latest: SystemSnapshot, topology: CPUTopology?) -> Bool {
+        guard let pMax = topology?.pFreqsMHz.max(), pMax > 0 else { return false }
+        return latest.cpu.pUsage > 0.3
+            && latest.thermal.pressure != .nominal
+            && latest.cpu.pFreqMHz < 0.85 * pMax
+    }
+
+    /// How far the current P-cluster clock sits below the chip's top DVFS step (0...1; 0 when at/above).
+    public static func cpuClockDropFraction(latest: SystemSnapshot, topology: CPUTopology?) -> Double {
+        guard let pMax = topology?.pFreqsMHz.max(), pMax > 0, latest.cpu.pFreqMHz < pMax else { return 0 }
+        return 1 - latest.cpu.pFreqMHz / pMax
     }
 
     /// Unified-memory bandwidth ceiling (GB/s): the per-chip spec value, raised to the observed

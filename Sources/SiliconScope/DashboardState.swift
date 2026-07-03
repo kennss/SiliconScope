@@ -1,7 +1,7 @@
 //
 //  File:      DashboardState.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-07-03
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The exact set of values DashboardView renders — built either from the live monitor
 //             or from a replayed recording frame. Making it one value struct (rather than a
@@ -26,6 +26,8 @@ struct DashboardState {
     let anePeakWatts: Double
     let gpuClockDropFraction: Double
     let gpuThrottling: Bool
+    let cpuClockDropFraction: Double
+    let cpuThrottling: Bool
     let memoryRisk: MemoryBudget.Risk
     // Live-only display (nil/false in replay).
     let isBenchmarking: Bool
@@ -44,6 +46,8 @@ struct DashboardState {
         anePeakWatts = m.anePeakWatts
         gpuClockDropFraction = m.gpuClockDropFraction
         gpuThrottling = m.gpuThrottling
+        cpuClockDropFraction = m.cpuClockDropFraction
+        cpuThrottling = m.cpuThrottling
         memoryRisk = m.memoryRisk
         isBenchmarking = m.isBenchmarking
         benchmark = m.benchmarkForCurrentModel
@@ -66,6 +70,8 @@ struct DashboardState {
         let throttling = MetricsEngine.gpuThrottling(latest: s, gpuClockPeakMHz: d.gpuClockPeakMHz)
         gpuThrottling = throttling
         gpuClockDropFraction = MetricsEngine.gpuClockDropFraction(latest: s, gpuClockPeakMHz: d.gpuClockPeakMHz)
+        cpuThrottling = MetricsEngine.cpuThrottling(latest: s, topology: rec.meta.topology)
+        cpuClockDropFraction = MetricsEngine.cpuClockDropFraction(latest: s, topology: rec.meta.topology)
         bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: rec.meta.topology, bandwidthPeakGBs: d.bandwidthPeakGBs)
         bottleneck = MetricsEngine.bottleneck(latest: s, history: h, bandwidthPeakGBs: d.bandwidthPeakGBs, throttling: throttling)
         memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: d.memorySwapOutRate, compressionRate: d.memoryCompressionRate)

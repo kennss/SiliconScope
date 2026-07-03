@@ -34,6 +34,8 @@ final class SiliconScopeMonitor {
     var gpuClockPeakMHz: Double { engine.gpuClockPeakMHz }
     var gpuThrottling: Bool { engine.gpuThrottling }
     var gpuClockDropFraction: Double { engine.gpuClockDropFraction }
+    var cpuThrottling: Bool { engine.cpuThrottling }
+    var cpuClockDropFraction: Double { engine.cpuClockDropFraction }
     var bandwidthCeilingGBs: Double { engine.bandwidthCeilingGBs }
     var bandwidthPercentOfCeiling: Double { engine.bandwidthPercentOfCeiling }
     var bottleneck: Bottleneck { engine.bottleneck }
