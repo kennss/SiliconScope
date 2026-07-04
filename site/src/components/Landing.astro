@@ -3,6 +3,8 @@ import { STRINGS, REPO, RELEASES_LATEST, SPECTALO, type Lang } from '../i18n';
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const t = STRINGS[lang];
+const stars = 619;               // GitHub stargazers — bump when refreshing the site
+const v = 305;                   // asset cache-bust version (Cloudflare serves images immutable for 1y)
 const alt = lang === 'ko' ? { href: '/', label: 'EN' } : { href: '/ko/', label: '한국어' };
 const self = lang === 'ko' ? 'KO' : 'EN';
 ---
@@ -31,8 +33,14 @@ const self = lang === 'ko' ? 'KO' : 'EN';
       <a class="btn primary" href={RELEASES_LATEST}>{t.hero.download}</a>
       <a class="btn secondary" href={REPO}>{t.hero.github}</a>
     </div>
+    <a class="stars" href={`${REPO}/stargazers`}>
+      <span class="star">★</span>
+      {lang === 'ko'
+        ? <span>GitHub 스타 <b>{stars}</b>개 · 고맙습니다</span>
+        : <span><b>{stars}</b> stars on GitHub · thank you</span>}
+    </a>
     <div class="badges">{t.hero.badges.map((b) => <span>{b}</span>)}</div>
-    <div class="hero-shot"><img src="/img/dashboard.png?v=220" alt="SiliconScope dashboard" loading="eager" /></div>
+    <div class="hero-shot"><img src={`/img/dashboard.png?v=${v}`} alt="SiliconScope dashboard" loading="eager" /></div>
   </section>
 
   <section class="section" id="features">
@@ -44,7 +52,7 @@ const self = lang === 'ko' ? 'KO' : 'EN';
             <h2>{f.title}</h2>
             <p>{f.body}</p>
           </div>
-          <div class="feat-shot"><img src={f.img} alt={f.title} loading="lazy" /></div>
+          <div class="feat-shot"><img src={`${f.img}?v=${v}`} alt={f.title} loading="lazy" /></div>
         </div>
       ))}
     </div>
@@ -57,7 +65,7 @@ const self = lang === 'ko' ? 'KO' : 'EN';
       <div class="gallery-grid">
         {t.gallery.items.map((g) => (
           <figure class="gcard">
-            <img src={g.img} alt={g.label} loading="lazy" />
+            <img src={`${g.img}?v=${v}`} alt={g.label} loading="lazy" />
             <figcaption>{g.label}</figcaption>
           </figure>
         ))}

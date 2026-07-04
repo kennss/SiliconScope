@@ -16,10 +16,21 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Pretendard",
+  /* Body: Inter, with Korean + system fallbacks (Latin fonts don't cover Hangul). */
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Pretendard",
     "Apple SD Gothic Neo", system-ui, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Display type: Bricolage Grotesque (headings, wordmark), Inter/Korean fallback. */
+.brand,
+.hero h1,
+.feat-text h2,
+.gallery-title,
+.privacy h2,
+.download h2 {
+  font-family: "Bricolage Grotesque", "Inter", "Pretendard", "Apple SD Gothic Neo", system-ui, sans-serif;
 }
 
 a { color: inherit; text-decoration: none; }
@@ -55,6 +66,14 @@ a { color: inherit; text-decoration: none; }
 .badges { display: flex; gap: 10px 18px; justify-content: center; flex-wrap: wrap; margin-top: 28px; color: var(--faint); font-size: 13px; }
 .badges span::before { content: "● "; color: var(--accent); font-size: 9px; vertical-align: middle; }
 
+/* GitHub star count pill — links to the stargazers page. */
+.stars { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; padding: 8px 16px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--panel);
+  color: var(--dim); font-size: 14px; font-weight: 500; }
+.stars:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.18); }
+.stars .star { color: #f5b731; font-size: 15px; }
+.stars b { color: var(--text); font-weight: 600; }
+
 .hero-shot { margin: 52px auto 0; text-align: center; }
 .hero-shot img { max-height: 540px; max-width: 100%; width: auto; border-radius: 14px;
   border: 1px solid var(--border); display: inline-block; }
@@ -75,6 +94,8 @@ a { color: inherit; text-decoration: none; }
 .gallery-title { text-align: center; font-size: clamp(24px, 3.5vw, 32px); letter-spacing: -0.015em; }
 .gallery-sub { text-align: center; color: var(--dim); max-width: 660px; margin: 14px auto 0; }
 .gallery-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 26px; margin-top: 44px; }
+/* A lone trailing card (odd item count) spans both columns so it stays centered, not orphaned left. */
+.gallery-grid > .gcard:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .gcard { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 24px 20px; text-align: center; }
 .gcard img { max-height: 300px; max-width: 100%; width: auto; border-radius: 10px; border: 1px solid var(--border); display: inline-block; }
 .gcard figcaption { color: var(--dim); font-size: 13px; margin-top: 16px; }
