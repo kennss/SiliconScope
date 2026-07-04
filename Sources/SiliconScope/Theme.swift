@@ -1,7 +1,7 @@
 //
 //  File:      Theme.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-02
+//  Updated:   2026-07-04
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline,
 //             PopoverButtonStyle).
@@ -112,11 +112,10 @@ struct Card<Content: View, Graph: View>: View {
     var menuBarPin: Binding<Bool>? = nil   // when set, a switch in the title promotes the card to the menu bar
     var alert: Color? = nil                // non-nil → warning state: colored border (memory pressure / GPU throttle)
     @ViewBuilder var content: Content
-    /// Optional graph pinned to the card's bottom edge. It is drawn as a bottom OVERLAY, i.e.
-    /// out of the normal layout flow: it cannot push the flowing content taller (that is what
-    /// caused the old Spacer + maxHeight overflow that spilled the graph behind the next card),
-    /// and because sibling cards in a fixed-height row share the same bounds, their graphs land
-    /// on the SAME baseline regardless of how many Bars sit above. Graphless cards omit it.
+    /// Optional graph that fills the card's spare space BELOW the content (in-flow, fill: true), so a
+    /// card with few Bars uses its full lower area instead of leaving a gap (#24). It sits in a
+    /// FIXED-height row, so it absorbs content changes by shrinking/growing rather than resizing the
+    /// card. Graphless cards pass EmptyView (collapses; content stays top-aligned).
     @ViewBuilder var graph: Graph
 
     init(title: String, menuBarPin: Binding<Bool>? = nil, alert: Color? = nil,
@@ -139,20 +138,18 @@ struct Card<Content: View, Graph: View>: View {
                 Spacer(minLength: 0)
                 if let pin = menuBarPin { MenuBarPin(isOn: pin) }
             }
-            // Rows flow top-down at natural height. Any trailing graph is NOT in this stack —
-            // it is the bottom overlay below — so it can never grow content past the row height.
+            // Rows flow top-down at natural height, then the graph (when present) fills the space
+            // BELOW them — so a card with few Bars (e.g. CPU) uses its full lower area instead of
+            // leaving a gap above a short bottom-pinned chart (#24). Graphless cards pass EmptyView,
+            // which collapses; the row's minHeight + clip keep a tall graph from spilling past the card.
             content
+            graph
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 14)   // breathing room between the last Bar and the chart (~one Bar tall)
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        // Bottom-pinned graph: full width, fixed (Sparkline) height, lifted 6pt off the edge.
-        .overlay(alignment: .bottom) {
-            graph
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 9)
-                .padding(.bottom, 6)
-        }
         .background(Theme.panel, in: RoundedRectangle(cornerRadius: 9))
         // In a warning state the card border is tinted (amber = elevated, red = critical) so the
         // user can see AT A GLANCE which metric is under pressure — not just a global banner (#18).
@@ -257,6 +254,11 @@ struct Sparkline: View {
     /// vary). Set it (e.g. 0...1) for near-constant series like memory usage, where
     /// auto-scaling amplifies a flat line to fill the whole height.
     var yDomain: ClosedRange<Double>? = nil
+    /// Expand to fill the available space instead of a fixed height — so a card with few Bars
+    /// (e.g. CPU) uses its full lower area rather than leaving a gap above a short chart (#24).
+    var fill: Bool = false
+    /// Dotted horizontal gridlines behind the trace, for easier reading of the level (#24).
+    var grid: Bool = false
 
     var body: some View {
         let chart = Chart(Array(values.enumerated()), id: \.offset) { index, value in
@@ -269,15 +271,33 @@ struct Sparkline: View {
                 .interpolationMethod(.monotone)
         }
         .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
+        .chartYAxis {
+            if grid {
+                AxisMarks(values: .automatic(desiredCount: 4)) {
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [1, 3]))
+                        .foregroundStyle(Theme.faint.opacity(0.35))
+                }
+            }
+        }
         .chartLegend(.hidden)
-        .frame(height: height)
+        .modifier(SparkSize(fill: fill, height: height))
 
         if let yDomain {
             chart.chartYScale(domain: yDomain)
         } else {
             chart
         }
+    }
+}
+
+/// Sizes a Sparkline: fill the available space (bottom-anchored charts that grow into the card's
+/// spare area) or a fixed height (inline sparklines in a column).
+private struct SparkSize: ViewModifier {
+    let fill: Bool
+    let height: CGFloat
+    func body(content: Content) -> some View {
+        if fill { content.frame(maxWidth: .infinity, maxHeight: .infinity) }
+        else    { content.frame(height: height) }
     }
 }
 

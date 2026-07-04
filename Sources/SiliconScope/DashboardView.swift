@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-03
+//  Updated:   2026-07-04
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -191,7 +191,7 @@ struct DashboardView: View {
                                     mediaHistory: s.history.media, aneHistory: s.history.ane,
                                     throttling: s.gpuThrottling)
                 }
-                .frame(minHeight: 166)
+                .frame(height: 166)   // fixed: the fill-graph absorbs content changes (shrinks/grows) so the card size stays put
 
                 HStack(alignment: .top, spacing: 6) {
                     MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
@@ -201,7 +201,7 @@ struct DashboardView: View {
                                     downHistory: s.history.netDown, upHistory: s.history.netUp,
                                     readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
                 }
-                .frame(minHeight: 176)
+                .frame(height: 176)
 
                 HStack(spacing: 6) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
@@ -394,24 +394,30 @@ private struct AIWorkloadCard: View {
         return (Theme.dim, "Idle")
     }
 
-    // GPU/Media/ANE (the AI-workload lens): throttled > ANE > media > GPU compute > idle.
-    private var gpuState: (Color, String, String) {
+    // The accelerator cluster is shown as three EXPLICIT engine rows (GPU / ANE / Media) so each is
+    // honestly labelled — no "ANE active" sitting under a "GPU" label. Each dot is coloured when its
+    // engine does genuine work, dim when idle. This is the AI-workload lens: at a glance you see WHICH
+    // engine a workload lands on (e.g. CoreML ASR → ANE active while the GPU stays idle).
+    private var gpuEngine: (Color, String, String) {
         if gpuThrottling {
-            return (alertColor, "Throttled",
+            return (alertColor, "throttled",
                     String(format: "%.0f MHz · −%.0f%%", snapshot.gpu.freqMHz, gpuClockDrop * 100))
         }
-        if snapshot.power.aneWatts > 1.5 {
-            return (aneColor, "ANE active", String(format: "%.1f W", snapshot.power.aneWatts))
+        if snapshot.gpuComputeBusy {
+            return (activeColor, "active",
+                    String(format: "%.0f%% · %.1f W", snapshot.gpu.usagePercent, snapshot.power.gpuWatts))
         }
-        if snapshot.bandwidth.mediaGBs > 1.0 {
-            return (mediaColor, "Media", String(format: "%.1f GB/s decode", snapshot.bandwidth.mediaGBs))
-        }
-        if snapshot.gpu.usage > 0.4 {
-            let sub = bottleneck == .computeBound ? "compute-bound"
-                    : bottleneck == .bandwidthBound ? "bandwidth-bound" : "GPU compute"
-            return (activeColor, "GPU active", sub)
-        }
-        return (Theme.dim, "Idle", "")
+        return (Theme.dim, "idle", "")
+    }
+    private var aneEngine: (Color, String, String) {
+        snapshot.power.aneWatts > 0.5
+            ? (aneColor, "active", String(format: "%.1f W", snapshot.power.aneWatts))
+            : (Theme.dim, "idle", "")
+    }
+    private var mediaEngine: (Color, String, String) {
+        snapshot.bandwidth.mediaGBs > 0.1
+            ? (mediaColor, "active", String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs))
+            : (Theme.dim, "idle", "")
     }
 
     private var bwFraction: Double { ceilingGBs > 0 ? min(1, snapshot.bandwidth.totalGBs / ceilingGBs) : 0 }
@@ -436,7 +442,7 @@ private struct AIWorkloadCard: View {
 
     var body: some View {
         Card(title: "AI Workload") {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 3) {
                 // Headline: what the workload IS (semantic), above the per-engine breakdown.
                 HStack(spacing: 8) {
                     Circle().fill(aiVerdict.0).frame(width: 8, height: 8)
@@ -447,14 +453,10 @@ private struct AIWorkloadCard: View {
                     Spacer(minLength: 0)
                 }
                 cpuRow()
-                stateRow("GPU", gpuState)
-                stateRow("Mem", memState)
-                // Signature AI-workload gauge (unique to this card): live memory bandwidth vs the
-                // per-chip ceiling — the wall that bounds LLM token generation (bandwidth-bound).
-                Bar(label: "Mem BW % of ceiling", value: bwFraction,
-                    detail: String(format: "%.0f%% · %.0f / %.0f GB/s",
-                                   bwFraction * 100, snapshot.bandwidth.totalGBs, ceilingGBs))
-                    .padding(.top, 1)
+                stateRow("GPU",   gpuEngine)
+                stateRow("ANE",   aneEngine)
+                stateRow("Media", mediaEngine)
+                stateRow("Mem",   memState)
             }
         }
         .confirmationDialog(
@@ -478,7 +480,7 @@ private struct AIWorkloadCard: View {
         HStack(spacing: 8) {
             Text("CPU")
                 .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.faint).frame(width: 30, alignment: .leading)
+                .foregroundStyle(Theme.faint).frame(width: 42, alignment: .leading)
             Circle().fill(cpuState.0).frame(width: 7, height: 7)
             Text(cpuState.1)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -508,7 +510,7 @@ private struct AIWorkloadCard: View {
             Text(label)
                 .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.faint)
-                .frame(width: 30, alignment: .leading)
+                .frame(width: 42, alignment: .leading)
             Circle().fill(s.0).frame(width: 7, height: 7)
             Text(s.1)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -763,8 +765,8 @@ private struct CPUCard: View {
             }
         } graph: {
             ZStack {
-                Sparkline(values: eHistory, color: eColor, height: 24, yDomain: 0...1)
-                Sparkline(values: pHistory, color: pColor, height: 24, yDomain: 0...1)
+                Sparkline(values: eHistory, color: eColor, yDomain: 0...1, fill: true, grid: true)
+                Sparkline(values: pHistory, color: pColor, yDomain: 0...1, fill: true)
             }
         }
     }
@@ -802,12 +804,12 @@ private struct AcceleratorCard: View {
                 detail: String(format: "%.1f GB/s", bandwidth.mediaGBs), color: mediaColor)
         } graph: {
             ZStack {
-                Sparkline(values: gpuHistory, color: gpuColor, height: 24, yDomain: 0...1)
-                Sparkline(values: gpuMemHistory, color: memColor, height: 24, yDomain: 0...1)
+                Sparkline(values: gpuHistory, color: gpuColor, yDomain: 0...1, fill: true, grid: true)
+                Sparkline(values: gpuMemHistory, color: memColor, yDomain: 0...1, fill: true)
                 Sparkline(values: aneHistory.map { min(1, $0 / max(anePeak, 0.1)) },
-                          color: aneColor, height: 24, yDomain: 0...1)
+                          color: aneColor, yDomain: 0...1, fill: true)
                 Sparkline(values: mediaHistory.map { min(1, $0 / max(mediaPeak, 0.5)) },
-                          color: mediaColor, height: 24, yDomain: 0...1)
+                          color: mediaColor, yDomain: 0...1, fill: true)
             }
         }
     }
