@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.1.2 — 2026-07-04
+
+**Clearer charts + a per-engine accelerator breakdown.**
+
+- **Timeline charts fill the card and get a dotted grid.** The CPU and GPU trend charts now use the
+  card's full height (no more short chart floating above a gap) and sit on a faint dotted grid, so
+  the level reads clearly even at 100%. Thanks **@Borda** ([#24](https://github.com/kennss/SiliconScope/issues/24)).
+- **GPU / ANE / Media are now separate engine rows.** The AI Workload card's accelerator line used to
+  collapse to a single state — so a Neural-Engine workload showed "ANE active" under a "GPU" label.
+  Each engine now has its own honest row, so you see exactly where a workload lands: CoreML ASR →
+  **ANE active** while the GPU stays idle, a local LLM → **GPU active**, video → **Media**.
+
 ## v3.1.1 — 2026-07-03
 
 - **Fixed: the header could be overlapped by the cards below it.** On some macOS versions (reported
