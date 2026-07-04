@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.1.3 — 2026-07-04
+
+- **The chart gridlines are now actually visible.** The dotted grid added in 3.1.2 was too faint to
+  make out; bumped its contrast so it does its job. ([#24](https://github.com/kennss/SiliconScope/issues/24))
+
 ## v3.1.2 — 2026-07-04
 
 **Clearer charts + a per-engine accelerator breakdown.**

@@ -274,8 +274,8 @@ struct Sparkline: View {
         .chartYAxis {
             if grid {
                 AxisMarks(values: .automatic(desiredCount: 4)) {
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [1, 3]))
-                        .foregroundStyle(Theme.faint.opacity(0.35))
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [2, 3]))
+                        .foregroundStyle(Theme.dim.opacity(0.40))
                 }
             }
         }
