@@ -15,7 +15,7 @@
 import Foundation
 
 public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
-    case ollama, llamaCpp, lmStudio, mlx, rapidMLX, jan, gpt4all, vllm, exo
+    case ollama, llamaCpp, lmStudio, mlx, rapidMLX, jan, gpt4all, vllm, exo, omlx
 
     public var displayName: String {
         switch self {
@@ -28,6 +28,7 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         case .gpt4all:  return "GPT4All"
         case .vllm:     return "vLLM"
         case .exo:      return "exo"
+        case .omlx:     return "oMLX"
         }
     }
 
@@ -43,6 +44,7 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if p.contains("/LM Studio.app/") { return .lmStudio }
         if p.contains("/Jan.app/") || p.contains("/jan/") { return .jan }
         if p.contains("/GPT4All.app/") || p.contains("/gpt4all/") { return .gpt4all }
+        if p.contains("/oMLX.app/") || p.contains("/omlx.app/") { return .omlx }
 
         // Stage 2 — basename / args (only reached when Stage 1 found nothing).
         let base = (p as NSString).lastPathComponent
@@ -60,6 +62,7 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         // names (hexo, Plexos, nexo) can't false-positive on the short "exo" substring.
         if base == "exo" || p.contains("/exo/main.py")
             || a.contains("/exo/main.py") || a.contains("/bin/exo") || a.contains(" exo.main") { return .exo }
+        if base == "omlx" || base == "oMLX" || base == "omlx-server" || base == "oMLX-server" { return .omlx }
 
         return nil
     }

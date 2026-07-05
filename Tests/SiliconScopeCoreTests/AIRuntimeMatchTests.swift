@@ -84,6 +84,15 @@ final class AIRuntimeMatchTests: XCTestCase {
                                               name: "rapid-mlx", args: nil), .mlx)
     }
 
+    func testOMLXMatch() {
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Applications/oMLX.app/Contents/MacOS/oMLX", name: "oMLX", args: nil), .omlx)
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Applications/omlx.app/Contents/MacOS/omlx", name: "omlx", args: nil), .omlx)
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/omlx", name: "omlx", args: nil), .omlx)
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/oMLX", name: "oMLX", args: nil), .omlx)
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/omlx-server", name: "omlx-server", args: nil), .omlx)
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/oMLX-server", name: "oMLX-server", args: nil), .omlx)
+    }
+
     // exo (exo-explore/exo) — OpenAI-compatible cluster server on :52415. Matches its console
     // entry point / module file / source path across the three ways it's launched.
     func testExoMatch() {

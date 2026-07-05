@@ -27,11 +27,14 @@ public struct LocalHTTP: Sendable {
     }
 
     /// GET http://127.0.0.1:<port><path>. Returns the body on 2xx; throws otherwise.
-    public func get(port: Int, path: String) async throws -> Data {
+    public func get(port: Int, path: String, headers: [String: String] = [:]) async throws -> Data {
         guard let url = URL(string: "http://127.0.0.1:\(port)\(path)") else { throw HTTPError.badURL }
         return try await withLocalTimeout(seconds: 1.2) {
             var req = URLRequest(url: url)
             req.httpMethod = "GET"
+            for (k, v) in headers {
+                req.setValue(v, forHTTPHeaderField: k)
+            }
             let (data, resp) = try await session.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
             guard (200..<300).contains(code) else { throw HTTPError.badStatus(code) }

@@ -74,10 +74,10 @@ public struct BenchmarkClient: Sendable {
     private static let prompt = "Write three concise sentences explaining why the sky is blue."
 
     /// Runs one bounded generation and returns the decode rate, or nil on any failure.
-    public func run(kind: AIRuntimeKind, port: Int, model: String, numPredict: Int = 128) async -> BenchmarkResult? {
+    public func run(kind: AIRuntimeKind, port: Int, model: String, apiKey: String? = nil, numPredict: Int = 128) async -> BenchmarkResult? {
         switch kind {
         case .ollama: return await runOllama(port: port, model: model, numPredict: numPredict)
-        default:      return await runOpenAI(port: port, model: model, numPredict: numPredict)
+        default:      return await runOpenAI(port: port, model: model, apiKey: apiKey, numPredict: numPredict)
         }
     }
 
@@ -104,14 +104,14 @@ public struct BenchmarkClient: Sendable {
 
     // OpenAI-compatible (LM Studio, llama.cpp server): no pure decode timing, so time the
     // wall clock of a non-streamed completion and divide by completion_tokens.
-    private func runOpenAI(port: Int, model: String, numPredict: Int) async -> BenchmarkResult? {
+    private func runOpenAI(port: Int, model: String, apiKey: String?, numPredict: Int) async -> BenchmarkResult? {
         let body: [String: Any] = [
             "model": model,
             "messages": [["role": "user", "content": Self.prompt]],
             "max_tokens": numPredict, "temperature": 0, "stream": false,
         ]
         let start = Date()
-        guard let data = try? await post(port: port, path: "/v1/chat/completions", body: body) else { return nil }
+        guard let data = try? await post(port: port, path: "/v1/chat/completions", body: body, apiKey: apiKey) else { return nil }
         let elapsed = -start.timeIntervalSinceNow
         guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let usage = obj["usage"] as? [String: Any],
@@ -120,11 +120,14 @@ public struct BenchmarkClient: Sendable {
         return BenchmarkResult(tokensPerSec: Double(completion) / elapsed, tokenCount: completion)
     }
 
-    private func post(port: Int, path: String, body: [String: Any]) async throws -> Data {
+    private func post(port: Int, path: String, body: [String: Any], apiKey: String? = nil) async throws -> Data {
         guard let url = URL(string: "http://127.0.0.1:\(port)\(path)") else { throw LocalHTTP.HTTPError.badURL }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let apiKey = apiKey, !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1

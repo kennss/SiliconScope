@@ -216,6 +216,8 @@ final class SiliconScopeMonitor {
         let ollamaEmbedded: Int?
         let ollamaPort: Int
         let lmStudioPort: Int
+        let omlxPort: Int
+        let omlxApiKey: String
     }
 
     /// Captured under a brief main-actor hold, so the poll task doesn't retain the monitor
@@ -224,7 +226,9 @@ final class SiliconScopeMonitor {
         ProbeInputs(kind: snapshot.aiRuntime.primaryKind,
                     ollamaEmbedded: snapshot.aiRuntime.ollamaEmbeddedPort,
                     ollamaPort: Self.port(forKey: "aiRuntimeOllamaPort", default: 11434),
-                    lmStudioPort: Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234))
+                    lmStudioPort: Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234),
+                    omlxPort: Self.port(forKey: "aiRuntimeOmlxPort", default: 8000),
+                    omlxApiKey: UserDefaults.standard.string(forKey: "aiRuntimeOmlxApiKey") ?? "")
     }
 
     private func startAPIPollingIfNeeded() {
@@ -236,7 +240,9 @@ final class SiliconScopeMonitor {
                 let result = await client.probe(primaryKind: inputs.kind,
                                                 ollamaEmbeddedPort: inputs.ollamaEmbedded,
                                                 ollamaPort: inputs.ollamaPort,
-                                                lmStudioPort: inputs.lmStudioPort)
+                                                lmStudioPort: inputs.lmStudioPort,
+                                                omlxPort: inputs.omlxPort,
+                                                omlxApiKey: inputs.omlxApiKey)
                 self?.runtimeAPI = result
                 try? await Task.sleep(for: .seconds(Self.apiCadenceSeconds))
             }
@@ -289,7 +295,8 @@ final class SiliconScopeMonitor {
         }
         // 256 tokens keeps the decode running long enough that the ~1s power snapshots
         // capture steady-state draw (a 128-token run can finish before power ramps).
-        let result = await BenchmarkClient().run(kind: kind, port: port, model: model, numPredict: 256)
+        let apiKey = kind == .omlx ? (UserDefaults.standard.string(forKey: "aiRuntimeOmlxApiKey") ?? "") : nil
+        let result = await BenchmarkClient().run(kind: kind, port: port, model: model, apiKey: apiKey, numPredict: 256)
         box.done = true
         powerProbe.cancel()
 
@@ -318,6 +325,7 @@ final class SiliconScopeMonitor {
         case .lmStudio: return Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234)
         case .rapidMLX: return 8000
         case .exo:      return 52415
+        case .omlx:     return Self.port(forKey: "aiRuntimeOmlxPort", default: 8000)
         case .llamaCpp: return snapshot.aiRuntime.ollamaEmbeddedPort ?? 8080
         default:        return Self.port(forKey: "aiRuntimeOllamaPort", default: 11434)
         }

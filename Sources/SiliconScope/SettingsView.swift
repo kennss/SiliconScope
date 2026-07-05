@@ -21,6 +21,8 @@ struct SettingsView: View {
     @AppStorage("aiRuntimeAPIEnabled") private var aiRuntimeAPIEnabled = false
     @AppStorage("aiRuntimeOllamaPort") private var ollamaPort = 11434
     @AppStorage("aiRuntimeLMStudioPort") private var lmStudioPort = 1234
+    @AppStorage("aiRuntimeOmlxPort") private var omlxPort = 8000
+    @AppStorage("aiRuntimeOmlxApiKey") private var omlxApiKey = ""
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("showWarningBanner") private var showWarningBanner = true
     // Per-metric menu-bar items — same keys the ⬚ pin on each dashboard card writes, so the
@@ -94,6 +96,8 @@ struct SettingsView: View {
                 if aiRuntimeAPIEnabled {
                     TextField("Ollama port", value: $ollamaPort, format: .number.grouping(.never))
                     TextField("LM Studio port", value: $lmStudioPort, format: .number.grouping(.never))
+                    TextField("oMLX port", value: $omlxPort, format: .number.grouping(.never))
+                    TextField("oMLX API Key (optional)", text: $omlxApiKey)
                 }
             } header: {
                 Text("Local AI runtime API (opt-in)")
@@ -102,7 +106,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400, height: aiRuntimeAPIEnabled ? 720 : 650)
+        .frame(width: 400, height: aiRuntimeAPIEnabled ? 760 : 650)
         .onAppear { autoUpdate = UpdaterController.shared.automaticallyChecks }
     }
 }
