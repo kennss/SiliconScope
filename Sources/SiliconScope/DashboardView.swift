@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-04
+//  Updated:   2026-07-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -201,7 +201,13 @@ struct DashboardView: View {
                                     downHistory: s.history.netDown, upHistory: s.history.netUp,
                                     readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
                 }
-                .frame(height: 176)
+                // minHeight (not fixed height): both cards here are graphless — their trends live
+                // INSIDE the sections (Spacer-pinned), so unlike the CPU/GPU fill-graph row above they
+                // don't need a bounded height. The dense Memory column's intrinsic height (~188pt, a
+                // constant row set) can exceed a fixed 176 by a few points under some macOS versions'
+                // text metrics and spill into the CPU card (#25, a re-run of #23). Growing to fit the
+                // content makes the overflow structurally impossible — same pattern as the row-1 pair.
+                .frame(minHeight: 176)
 
                 HStack(spacing: 6) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)

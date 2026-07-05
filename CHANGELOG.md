@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.1.4 — 2026-07-05
+
+- **Fixed: the Memory & Bandwidth card could overlap the CPU card above it.** The chart work in 3.1.2
+  put a fixed height back on that row, which re-introduced the overflow 3.1.1 had fixed — so on some
+  macOS versions (reported on macOS 15.7) the dense memory column spilled over the card above it. That
+  row now grows to fit its content again, so it can't overflow — on any macOS version. Thanks
+  **@kyrarae** ([#25](https://github.com/kennss/SiliconScope/issues/25)).
+
 ## v3.1.3 — 2026-07-04
 
 - **The chart gridlines are now actually visible.** The dotted grid added in 3.1.2 was too faint to
