@@ -46,7 +46,7 @@ public struct RuntimeModelInfo: Sendable, Equatable, Identifiable, Codable {
 }
 
 public struct RuntimeAPISample: Sendable, Equatable, Codable {
-    public enum Source: String, Sendable, Equatable, Codable { case ollama, llamaCpp, lmStudio, rapidMLX, exo }
+    public enum Source: String, Sendable, Equatable, Codable { case ollama, llamaCpp, lmStudio, rapidMLX, exo, omlx }
     public enum Status: String, Sendable, Equatable, Codable {
         case disabled            // feature off
         case unreachable         // no runtime / port closed / decode failure / stale (C4)

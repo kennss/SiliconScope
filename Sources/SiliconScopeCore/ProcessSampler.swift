@@ -92,7 +92,7 @@ public final class ProcessSampler {
         var pids = [pid_t](repeating: 0, count: Int(count) + 64)
         let byteCount = proc_listallpids(&pids, Int32(pids.count) * Int32(MemoryLayout<pid_t>.size))
         guard byteCount > 0 else { return [] }
-        let actual = Int(byteCount) / MemoryLayout<pid_t>.size
+        let actual = Int(byteCount)
         return Array(pids.prefix(actual))
     }
 

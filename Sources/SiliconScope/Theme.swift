@@ -58,7 +58,7 @@ extension AIRuntimeKind {
         case .mlx:      return "cpu.fill"
         case .rapidMLX: return "hare.fill"
         case .exo:      return "point.3.connected.trianglepath.dotted"   // distributed cluster
-        case .jan, .gpt4all, .vllm: return "brain"
+        case .jan, .gpt4all, .vllm, .omlx: return "brain"
         }
     }
     var color: Color { Theme.accent }

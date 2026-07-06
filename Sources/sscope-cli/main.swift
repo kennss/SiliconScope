@@ -77,7 +77,6 @@ print("\ntop processes by CPU (no sudo):")
 for p in allRows.prefix(8) {
     print(String(format: "  %6d  %6.1f%%  %8.1f MB   %@", p.pid, p.cpuPercent, p.memoryMB, p.name))
 }
-
 let ai = AIRuntimeSampler().sample(from: allRows)
 print("\nAI runtimes detected: \(ai.isActive ? "" : "none")")
 for p in ai.processes {
@@ -94,7 +93,7 @@ if let kind = ai.primaryKind {
 if CommandLine.arguments.contains("--ai") {
     let result = await RuntimeAPIClient().probe(
         primaryKind: ai.primaryKind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
-        ollamaPort: 11434, lmStudioPort: 1234)
+        ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
     let src = result.source.map { " · \($0.rawValue)" } ?? ""
     print("\nruntime API: \(result.status.rawValue)\(src)")
     for m in result.loadedModels {
@@ -114,11 +113,11 @@ if CommandLine.arguments.contains("--bench") {
     let kind = ai.primaryKind
     let api = await RuntimeAPIClient().probe(
         primaryKind: kind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
-        ollamaPort: 11434, lmStudioPort: 1234)
+        ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
     if let kind, let model = api.loadedModels.first?.name {
-        let port = switch kind { case .lmStudio: 1234; case .rapidMLX: 8000; case .exo: 52415; default: 11434 }
+        let port = switch kind { case .lmStudio: 1234; case .rapidMLX: 8000; case .exo: 52415; case .omlx: 8000; default: 11434 }
         print("\nbenchmark: \(kind.displayName) · \(model) — generating…")
-        if let r = await BenchmarkClient().run(kind: kind, port: port, model: model) {
+        if let r = await BenchmarkClient().run(kind: kind, port: port, model: model, apiKey: nil) {
             print(String(format: "  decode: %.1f tok/s  (%d tokens)", r.tokensPerSec, r.tokenCount))
             if let p = r.promptTokensPerSec { print(String(format: "  prefill: %.0f tok/s", p)) }
         } else {

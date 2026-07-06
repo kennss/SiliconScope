@@ -20,13 +20,14 @@ public struct RuntimeAPIClient: Sendable {
 
     /// Probes the runtime that feature ① identified as primary.
     public func probe(primaryKind: AIRuntimeKind?, ollamaEmbeddedPort: Int?,
-                      ollamaPort: Int, lmStudioPort: Int) async -> RuntimeAPISample {
+                      ollamaPort: Int, lmStudioPort: Int, omlxPort: Int, omlxApiKey: String) async -> RuntimeAPISample {
         switch primaryKind {
         case .ollama:   return await probeOllama(port: ollamaPort)
         case .lmStudio: return await probeLMStudio(port: lmStudioPort)
         case .llamaCpp: return await probeLlamaCpp(port: ollamaEmbeddedPort ?? 8080)
-        case .rapidMLX: return await probeOpenAI(port: 8000, source: .rapidMLX)   // OpenAI-compatible
-        case .exo:      return await probeOpenAI(port: 52415, source: .exo)       // OpenAI-compatible cluster
+        case .rapidMLX: return await probeOpenAI(port: 8000, apiKey: nil, source: .rapidMLX)   // OpenAI-compatible
+        case .exo:      return await probeOpenAI(port: 52415, apiKey: nil, source: .exo)       // OpenAI-compatible cluster
+        case .omlx:     return await probeOpenAI(port: omlxPort, apiKey: omlxApiKey, source: .omlx)
         case .some:                                   // mlx / jan / gpt4all / vllm
             var s = RuntimeAPISample(); s.status = .runningNoServer; return s
         case .none:
@@ -91,9 +92,13 @@ public struct RuntimeAPIClient: Sendable {
 
     // MARK: - Generic OpenAI-compatible server (Rapid-MLX :8000, etc.)
 
-    private func probeOpenAI(port: Int, source: RuntimeAPISample.Source) async -> RuntimeAPISample {
+    private func probeOpenAI(port: Int, apiKey: String?, source: RuntimeAPISample.Source) async -> RuntimeAPISample {
         var s = RuntimeAPISample(); s.source = source
-        if let data = try? await http.get(port: port, path: "/v1/models"),
+        var headers: [String: String] = [:]
+        if let apiKey = apiKey, !apiKey.isEmpty {
+            headers["Authorization"] = "Bearer \(apiKey)"
+        }
+        if let data = try? await http.get(port: port, path: "/v1/models", headers: headers),
            let resp = try? JSONDecoder().decode(OpenAIModels.self, from: data) {
             s.status = .ok; s.lastUpdated = Date()
             s.loadedModels = (resp.data ?? []).map {
