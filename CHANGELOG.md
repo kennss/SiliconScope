@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.1.5 — 2026-07-06
+
+- **Fixed: the Processes list was missing most of your processes.** `ProcessSampler` divided the PID
+  count returned by `proc_listallpids` by four, so the process table — and the "top process" the AI
+  Workload card names — was built from only a fraction of what's actually running (verified: 277 of
+  719 samplable processes). It now enumerates the full table, so the process list and top-CPU
+  attribution are complete. Thanks **@Collinw24** ([#26](https://github.com/kennss/SiliconScope/pull/26)).
+- **New runtime: oMLX.** SiliconScope now detects the native Apple Silicon **oMLX** inference server
+  (with optional API-key auth) alongside Ollama, LM Studio, MLX, vLLM, exo, and the rest — so the AI
+  Workload verdict and one-click benchmark cover it too. Also **@Collinw24** ([#26](https://github.com/kennss/SiliconScope/pull/26)).
+
 ## v3.1.4 — 2026-07-05
 
 - **Fixed: the Memory & Bandwidth card could overlap the CPU card above it.** The chart work in 3.1.2
