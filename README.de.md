@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/github/license/kennss/SiliconScope)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20Silicon-111)
 
+[![#2 Swift Repository Of The Day](https://trendshift.io/api/badge/trendshift/repositories/57307/daily?language=Swift)](https://trendshift.io/repositories/57307)
+
 **Ein Apple-Silicon-Systemmonitor ohne sudo** — ein natives SwiftUI-Dashboard **und** eine
 vollständige Menüleisten-Suite — mit erstklassigem Tracking von **ANE (Neural Engine)**,
 **Media Engine** und **Speicherbandbreite**, das die Aktivitätsanzeige und Terminal-Monitore

@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/github/license/kennss/SiliconScope)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20Silicon-111)
 
+[![#2 Swift Repository Of The Day](https://trendshift.io/api/badge/trendshift/repositories/57307/daily?language=Swift)](https://trendshift.io/repositories/57307)
+
 **无需 sudo 的 Apple Silicon 系统监视器** —— 既是原生 SwiftUI 仪表盘，**也是**完整的菜单栏套件，
 一等公民式地追踪 Activity Monitor 和终端类监视器看不到的 **ANE（Neural Engine）**、
 **Media Engine** 和**内存带宽**。

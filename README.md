@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/github/license/kennss/SiliconScope)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20Silicon-111)
 
+[![#2 Swift Repository Of The Day](https://trendshift.io/api/badge/trendshift/repositories/57307/daily?language=Swift)](https://trendshift.io/repositories/57307)
+
 A **sudoless Apple Silicon system monitor** — a native SwiftUI dashboard **and** a full
 menu-bar suite — with first-class **ANE (Neural Engine)**, **Media Engine**, and
 **memory-bandwidth** tracking that Activity Monitor and terminal monitors don't surface.

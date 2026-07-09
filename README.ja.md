@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/github/license/kennss/SiliconScope)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20Silicon-111)
 
+[![#2 Swift Repository Of The Day](https://trendshift.io/api/badge/trendshift/repositories/57307/daily?language=Swift)](https://trendshift.io/repositories/57307)
+
 **sudo 不要の Apple Silicon システムモニター** — ネイティブ SwiftUI ダッシュボード **と**
 本格的なメニューバー一式を備え、Activity Monitor やターミナル系モニターでは見えない
 **ANE（Neural Engine）**・**Media Engine**・**メモリ帯域幅**を一級の指標として追跡します。

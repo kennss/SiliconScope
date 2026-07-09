@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/github/license/kennss/SiliconScope)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20Silicon-111)
 
+[![#2 Swift Repository Of The Day](https://trendshift.io/api/badge/trendshift/repositories/57307/daily?language=Swift)](https://trendshift.io/repositories/57307)
+
 **sudo 없이 동작하는 Apple Silicon 시스템 모니터** — 네이티브 SwiftUI 대시보드 **와** 완전한
 메뉴바 모음을 함께 제공하며, Activity Monitor나 터미널 모니터가 보여주지 않는 **ANE(Neural
 Engine)**, **Media Engine**, **메모리 대역폭**을 일급 지표로 추적합니다.

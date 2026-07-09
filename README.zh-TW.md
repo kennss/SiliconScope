@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/github/license/kennss/SiliconScope)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20Silicon-111)
 
+[![#2 Swift Repository Of The Day](https://trendshift.io/api/badge/trendshift/repositories/57307/daily?language=Swift)](https://trendshift.io/repositories/57307)
+
 **無需 sudo 的 Apple Silicon 系統監視器** —— 既是原生 SwiftUI 儀表板，**也是**完整的選單列套件，
 以一級公民的方式追蹤 Activity Monitor 與終端類監視器看不到的 **ANE（Neural Engine）**、
 **Media Engine** 與**記憶體頻寬**。
