@@ -276,6 +276,19 @@ was born from building it. Free open beta on TestFlight — same ethos: nothing 
 
 <a href="https://spectalo.calidalab.ai/"><img src="docs/img/spectalo-library.jpg" width="520" alt="Spectalo — on-device AI video player with on-device subtitles & translation"></a>
 
+
+### More from Calida Lab
+
+Privacy-first, on-device software — mostly for Apple Silicon:
+
+- **[SpectaLing](https://spectaling.calidalab.ai/)** — on-device transcription + live translation & interpretation (Mac/iPad). A privacy-first MacWhisper alternative.
+- **[SpectArk](https://spectark.calidalab.ai/)** — versioned incremental backup for macOS: snapshots the moment a file changes.
+- **[SnowChat](https://snowchat.calidalab.ai/)** — end-to-end encrypted messenger on our own Signal-protocol library.
+- **[SnowClaw](https://snowclaw.calidalab.ai/)** — a reference architecture for privacy-preserving agentic AI (working paper).
+
+**→ [www.calidalab.ai](https://www.calidalab.ai/)** · [@kennss](https://github.com/kennss)
+
+
 ## Acknowledgements
 
 - IOReport / SMC / HID sensor knowledge referenced from **NeoAsitop** (MIT) and

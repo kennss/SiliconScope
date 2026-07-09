@@ -154,4 +154,17 @@ dieselbe Haltung: nichts verlässt dein Gerät.
 👉 Build-Anleitung, die Funktionsweise ohne sudo (IOReport / SMC / HID) und technische
 Deep-Dives findest du im **[englischen README](README.md)**.
 
+
+### Mehr von Calida Lab
+
+Datenschutzorientierte, geräteinterne Software — hauptsächlich für Apple Silicon:
+
+- **[SpectaLing](https://spectaling.calidalab.ai/)** — geräteinterne Transkription + Live-Übersetzung & Simultandolmetschen (Mac/iPad). Eine datenschutzfreundliche MacWhisper-Alternative.
+- **[SpectArk](https://spectark.calidalab.ai/)** — versionierte inkrementelle Backups für macOS: sichert in dem Moment, in dem sich eine Datei ändert.
+- **[SnowChat](https://snowchat.calidalab.ai/)** — Ende-zu-Ende-verschlüsselter Messenger auf unserer eigenen Signal-Protokoll-Bibliothek.
+- **[SnowClaw](https://snowclaw.calidalab.ai/)** — eine Referenzarchitektur für datenschutzwahrende agentische KI (Arbeitspapier).
+
+**→ [www.calidalab.ai](https://www.calidalab.ai/)** · [@kennss](https://github.com/kennss)
+
+
 Vorschläge zur Verbesserung der Übersetzung sind jederzeit willkommen — bitte einen PR einreichen.
