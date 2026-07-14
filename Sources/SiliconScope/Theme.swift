@@ -12,7 +12,6 @@
 //             Bottleneck.color lives here (UI layer) so SiliconScopeCore stays SwiftUI-free.
 //
 import SwiftUI
-import Charts
 import SiliconScopeCore
 
 enum Theme {
@@ -250,9 +249,9 @@ struct Sparkline: View {
     let values: [Double]
     var color: Color = Theme.accent
     var height: CGFloat = 26
-    /// Fixed Y range. When nil, Swift Charts auto-scales to the data (good for series that
-    /// vary). Set it (e.g. 0...1) for near-constant series like memory usage, where
-    /// auto-scaling amplifies a flat line to fill the whole height.
+    /// Fixed Y range. When nil, the trace auto-scales to the data's own min...max (good for series
+    /// that vary). Set it (e.g. 0...1) for near-constant series like memory usage, where
+    /// auto-scaling would amplify a flat line to fill the whole height.
     var yDomain: ClosedRange<Double>? = nil
     /// Expand to fill the available space instead of a fixed height — so a card with few Bars
     /// (e.g. CPU) uses its full lower area rather than leaving a gap above a short chart (#24).
@@ -260,36 +259,50 @@ struct Sparkline: View {
     /// Dotted horizontal gridlines behind the trace, for easier reading of the level (#24).
     var grid: Bool = false
 
+    // Drawn with a Canvas instead of Swift Charts: ~13 live sparklines rebuilt every tick made
+    // Charts' mark/scale/plot view-graph the dominant energy cost (docs/energy-optimization.md
+    // FIX 1). A Canvas is a single draw closure — same look, far cheaper per redraw.
     var body: some View {
-        let chart = Chart(Array(values.enumerated()), id: \.offset) { index, value in
-            AreaMark(x: .value("t", index), y: .value("v", value))
-                .foregroundStyle(LinearGradient(colors: [color.opacity(0.28), .clear],
-                                                startPoint: .top, endPoint: .bottom))
-            LineMark(x: .value("t", index), y: .value("v", value))
-                .foregroundStyle(color)
-                .lineStyle(StrokeStyle(lineWidth: 1.2))
-                .interpolationMethod(.monotone)
-        }
-        .chartXAxis(.hidden)
-        .chartYAxis {
-            if grid {
-                AxisMarks(values: .automatic(desiredCount: 4)) {
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [2, 3]))
-                        .foregroundStyle(Theme.dim.opacity(0.40))
-                }
+        Canvas(opaque: false, rendersAsynchronously: false) { ctx, size in
+            guard values.count > 1, size.width > 0, size.height > 0 else { return }
+            let lo = yDomain?.lowerBound ?? (values.min() ?? 0)
+            let hi = yDomain?.upperBound ?? (values.max() ?? 1)
+            let span = hi - lo
+            let flat = span <= .ulpOfOne          // degenerate/flat series → center (not floor)
+            let stepX = size.width / CGFloat(values.count - 1)
+            func point(_ i: Int) -> CGPoint {
+                let norm = flat ? 0.5 : (values[i] - lo) / span
+                return CGPoint(x: CGFloat(i) * stepX, y: (1 - CGFloat(norm)) * size.height)
             }
+            // Dotted horizontal gridlines behind the trace (#24): 3 evenly-spaced interior lines.
+            if grid {
+                var g = Path()
+                for k in 1...3 {
+                    let y = size.height * CGFloat(k) / 4
+                    g.move(to: CGPoint(x: 0, y: y)); g.addLine(to: CGPoint(x: size.width, y: y))
+                }
+                ctx.stroke(g, with: .color(Theme.dim.opacity(0.40)),
+                           style: StrokeStyle(lineWidth: 0.6, dash: [2, 3]))
+            }
+            // Line trace.
+            var line = Path()
+            line.move(to: point(0))
+            for i in 1..<values.count { line.addLine(to: point(i)) }
+            // Area = the line closed down to the baseline, filled with a top→bottom gradient.
+            var area = line
+            area.addLine(to: CGPoint(x: size.width, y: size.height))
+            area.addLine(to: CGPoint(x: 0, y: size.height))
+            area.closeSubpath()
+            ctx.fill(area, with: .linearGradient(
+                Gradient(colors: [color.opacity(0.28), .clear]),
+                startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
+            ctx.stroke(line, with: .color(color),
+                       style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
         }
-        .chartLegend(.hidden)
         .modifier(SparkSize(fill: fill, height: height))
         // Decorative trace: hide from accessibility (the numeric value is shown as text on the
         // card). Skips the per-tick SwiftUI accessibility-node recompute on every live sparkline.
         .accessibilityHidden(true)
-
-        if let yDomain {
-            chart.chartYScale(domain: yDomain)
-        } else {
-            chart
-        }
     }
 }
 
