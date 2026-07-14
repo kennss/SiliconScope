@@ -45,6 +45,17 @@ public final class SystemSampler: @unchecked Sendable {
     private var lastPeripheralSample: Date = .distantPast
     private let peripheralInterval: TimeInterval = 5
 
+    // Process enumeration (proc_info over EVERY pid + proc_pidpath/proc_name + the AI-runtime
+    // name/args scan) is the heaviest per-tick work — thousands of proc_info traps/sec on a busy
+    // machine (measured ~23% of a core here, dominating the closed-window/menu-bar-only cost). It
+    // does NOT need per-second freshness, so cache it on a slower cadence and reuse between ticks.
+    // Correctness is safe: ProcessSampler normalizes CPU% by the ACTUAL wall-time delta, so a wider
+    // gap just widens the interval. (See docs/energy-optimization.md FIX 5.)
+    private var cachedProcesses: [ProcessRow] = []
+    private var cachedAIRuntime = AIRuntimeSample()
+    private var lastProcessSample: Date = .distantPast
+    private let processInterval: TimeInterval = 2.5
+
     public init() {
         let topology = cpu?.topology
         gpu = topology.flatMap { GPUSampler(topology: $0) }
@@ -89,8 +100,9 @@ public final class SystemSampler: @unchecked Sendable {
         snapshot.disk = disk.sample()
         snapshot.battery = battery.sample()
         snapshot.peripherals = sampledPeripherals()
-        snapshot.processes = processes.sample()   // full set; UI sorts/filters/limits
-        snapshot.aiRuntime = aiRuntime.sample(from: snapshot.processes)
+        let procs = sampledProcesses()            // cached ~2.5 s (full set; UI sorts/filters/limits)
+        snapshot.processes = procs.rows
+        snapshot.aiRuntime = procs.aiRuntime
         // Budget after detection so the resident runtime's RSS lifts `loadable`
         // (pure arithmetic on the already-taken memory sample — no extra syscalls/sleep).
         snapshot.memoryBudget = MemoryBudget.estimate(
@@ -108,5 +120,18 @@ public final class SystemSampler: @unchecked Sendable {
             cachedPeripherals = peripheralSampler.sample()
         }
         return cachedPeripherals
+    }
+
+    /// Process table + AI-runtime detection on a slow cadence (re-sampled every `processInterval`s,
+    /// reused otherwise) so the per-second tick stays cheap. CPU% stays correct (ProcessSampler
+    /// normalizes by the real wall-time delta). The focused-process Inspector samples separately in
+    /// the monitor loop, so it keeps updating every tick.
+    private func sampledProcesses() -> (rows: [ProcessRow], aiRuntime: AIRuntimeSample) {
+        if Date().timeIntervalSince(lastProcessSample) >= processInterval {
+            lastProcessSample = Date()
+            cachedProcesses = processes.sample()
+            cachedAIRuntime = aiRuntime.sample(from: cachedProcesses)
+        }
+        return (cachedProcesses, cachedAIRuntime)
     }
 }
