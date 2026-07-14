@@ -42,17 +42,28 @@ private struct WindowVisibilityObserver: NSViewRepresentable {
             self.window = window
             self.onChange = onChange
             let nc = NotificationCenter.default
+            // Recompute on occlusion / (de)miniaturize, and on becoming key/main so a re-opened
+            // window (ordered back in) resumes live rendering.
             for name in [NSWindow.didChangeOcclusionStateNotification,
                          NSWindow.didMiniaturizeNotification,
-                         NSWindow.didDeminiaturizeNotification] {
+                         NSWindow.didDeminiaturizeNotification,
+                         NSWindow.didBecomeKeyNotification,
+                         NSWindow.didBecomeMainNotification] {
                 nc.addObserver(self, selector: #selector(report), name: name, object: window)
             }
+            // A CLOSED (ordered-out) window does NOT post an occlusion change and its
+            // occlusionState stays `.visible`, so without this the dashboard keeps re-rendering
+            // full-rate to a hidden window (measured: ~685 Energy Impact with the window closed).
+            nc.addObserver(self, selector: #selector(reportHidden), name: NSWindow.willCloseNotification, object: window)
             report()
         }
         @objc private func report() {
             guard let w = window else { return }
-            onChange?(w.occlusionState.contains(.visible) && !w.isMiniaturized)
+            // isVisible is false for a closed/ordered-out window (occlusionState alone is not enough).
+            onChange?(w.isVisible && w.occlusionState.contains(.visible) && !w.isMiniaturized)
         }
+        // willClose fires before the window leaves screen (isVisible may still be true), so force hidden.
+        @objc private func reportHidden() { onChange?(false) }
         deinit { NotificationCenter.default.removeObserver(self) }
     }
 }
