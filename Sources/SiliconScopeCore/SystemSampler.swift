@@ -1,7 +1,7 @@
 //
 //  File:      SystemSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-25
+//  Updated:   2026-07-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Aggregates every SiliconScopeCore sampler into one SystemSnapshot. Intended
 //             to run on a single background thread driven by the UI's refresh loop.
@@ -35,9 +35,11 @@ public final class SystemSampler: @unchecked Sendable {
     private let processes = ProcessSampler()
     private let aiRuntime = AIRuntimeSampler()
 
-    // Peripheral battery (Magic/AirPods): heavier than a 1 s tick (IORegistry scan + a
-    // ~0.2 s system_profiler), so sample on a short cadence and reuse between ticks. 5 s keeps a
-    // newly-connected device appearing quickly without polling system_profiler every second.
+    // Peripheral battery (Magic/AirPods): heavier than a 1 s tick, so sample on a short cadence
+    // and reuse between ticks. 5 s drives the cheap IORegistry HID scan (Magic Mouse/keyboard, and
+    // where a newly-connected HID first appears — kept fast on purpose); the ~0.2 s system_profiler
+    // (AirPods) is throttled separately to 30 s inside PeripheralBatterySampler (btTTL), so it is
+    // NOT spawned every 5 s. (See docs/energy-optimization.md FIX 4.)
     private let peripheralSampler = PeripheralBatterySampler()
     private var cachedPeripherals: [PeripheralBattery] = []
     private var lastPeripheralSample: Date = .distantPast

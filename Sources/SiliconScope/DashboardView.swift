@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-05
+//  Updated:   2026-07-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -1122,6 +1122,9 @@ private struct ProcessCard: View {
     @State private var hoveredPID: Int32?   // row under the cursor → reveal its Quit affordance
 
     private var rows: [ProcessRow] {
+        // `processes` already arrives sorted by CPU% desc (ProcessSampler pre-sorts; recorded
+        // .ssrec rows preserve that order), so the default CPU view skips a redundant re-sort.
+        if sortKey == .cpu, filter.isEmpty { return Array(processes.prefix(200)) }
         let base = filter.isEmpty
             ? processes
             : processes.filter { $0.name.localizedCaseInsensitiveContains(filter) }

@@ -1,7 +1,7 @@
 //
 //  File:      PeripheralBattery.swift
 //  Created:   2026-06-22
-//  Updated:   2026-06-25
+//  Updated:   2026-07-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Sudoless battery levels for connected peripherals, the way iStat Menus surfaces
 //             accessory batteries in its battery dropdown. Two sources, merged:
@@ -70,7 +70,11 @@ public struct PeripheralBattery: Sendable, Equatable, Identifiable, Codable {
 public final class PeripheralBatterySampler {
     private var btCache: [PeripheralBattery] = []
     private var btCacheTime: Date = .distantPast
-    private let btTTL: TimeInterval = 3   // safety floor under the caller's cadence; system_profiler is ~0.2 s
+    // Throttle the ~0.2 s system_profiler spawn (AirPods L/R/Case). Accessory battery % changes
+    // slowly, so 30 s is plenty; the cheap IORegistry HID scan below stays on the caller's faster
+    // cadence, so new-device latency is unaffected. (Was 3 s — energy: system_profiler was the
+    // heaviest background sampler; see docs/energy-optimization.md FIX 4.)
+    private let btTTL: TimeInterval = 30
 
     public init() {}
 

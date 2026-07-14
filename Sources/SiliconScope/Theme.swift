@@ -1,7 +1,7 @@
 //
 //  File:      Theme.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-04
+//  Updated:   2026-07-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline,
 //             PopoverButtonStyle).
@@ -281,6 +281,9 @@ struct Sparkline: View {
         }
         .chartLegend(.hidden)
         .modifier(SparkSize(fill: fill, height: height))
+        // Decorative trace: hide from accessibility (the numeric value is shown as text on the
+        // card). Skips the per-tick SwiftUI accessibility-node recompute on every live sparkline.
+        .accessibilityHidden(true)
 
         if let yDomain {
             chart.chartYScale(domain: yDomain)
