@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-14
+//  Updated:   2026-07-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -459,7 +459,7 @@ private struct AIWorkloadCard: View {
 
     var body: some View {
         Card(title: "AI Workload") {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 // Headline: what the workload IS (semantic), above the per-engine breakdown.
                 HStack(spacing: 8) {
                     Circle().fill(aiVerdict.0).frame(width: 8, height: 8)
