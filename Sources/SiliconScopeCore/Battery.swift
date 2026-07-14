@@ -1,7 +1,7 @@
 //
 //  File:      Battery.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-25
+//  Updated:   2026-07-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Battery charge/charging state (IOPowerSources) plus health/cycles/condition
 //             read sudolessly from the AppleSmartBattery IORegistry entry. Stateless.
@@ -39,6 +39,18 @@ public struct BatteryInfo: Sendable, Equatable, Codable {
 }
 
 public final class BatterySampler {
+    // Health/cycle-count needs a full AppleSmartBattery property copy (service match + a dict
+    // carrying large nested battery-data blobs) — ~0.5 ms per read. Those values change per
+    // charge cycle, not per second, so refresh every 60 s and reuse between ticks; the cheap
+    // IOPowerSources percent/charging read stays per-tick. (#28 investigation)
+    private struct Health {
+        let cycleCount: Int, designCapacity: Int, maxCapacity: Int
+        let healthPercent: Double, condition: String
+    }
+    private var cachedHealth: Health?
+    private var lastHealthSample: Date = .distantPast
+    private let healthInterval: TimeInterval = 60
+
     public init() {}
 
     public func sample() -> BatteryInfo {
@@ -61,20 +73,35 @@ public final class BatterySampler {
             }
         }
 
-        // Health / cycle count / condition from AppleSmartBattery (sudoless IORegistry read).
-        if info.hasBattery, let props = Self.smartBatteryProperties() {
-            info.cycleCount = props["CycleCount"] as? Int ?? 0
-            info.designCapacity = props["DesignCapacity"] as? Int ?? 0
-            // Health = full-charge / design capacity. Prefer NominalChargeCapacity — the same
-            // value macOS Settings uses for "Maximum Capacity" — then the raw max. (MaxCapacity
-            // is normalized to 100 on Apple Silicon, so it's useless for health.)
-            info.maxCapacity = props["NominalChargeCapacity"] as? Int
-                ?? props["AppleRawMaxCapacity"] as? Int
-                ?? props["MaxCapacity"] as? Int ?? 0
-            info.healthPercent = Self.healthPercent(maxCapacity: info.maxCapacity,
-                                                    designCapacity: info.designCapacity)
-            let failed = (props["PermanentFailureStatus"] as? Int ?? 0) != 0
-            info.condition = Self.condition(healthPercent: info.healthPercent, permanentFailure: failed)
+        // Health / cycle count / condition from AppleSmartBattery (sudoless IORegistry read),
+        // on the slow 60 s cadence.
+        if info.hasBattery {
+            if Date().timeIntervalSince(lastHealthSample) >= healthInterval {
+                lastHealthSample = Date()
+                if let props = Self.smartBatteryProperties() {
+                    let cycle = props["CycleCount"] as? Int ?? 0
+                    let design = props["DesignCapacity"] as? Int ?? 0
+                    // Health = full-charge / design capacity. Prefer NominalChargeCapacity — the
+                    // same value macOS Settings uses for "Maximum Capacity" — then the raw max.
+                    // (MaxCapacity is normalized to 100 on Apple Silicon, useless for health.)
+                    let maxCap = props["NominalChargeCapacity"] as? Int
+                        ?? props["AppleRawMaxCapacity"] as? Int
+                        ?? props["MaxCapacity"] as? Int ?? 0
+                    let health = Self.healthPercent(maxCapacity: maxCap, designCapacity: design)
+                    let failed = (props["PermanentFailureStatus"] as? Int ?? 0) != 0
+                    cachedHealth = Health(cycleCount: cycle, designCapacity: design,
+                                          maxCapacity: maxCap, healthPercent: health,
+                                          condition: Self.condition(healthPercent: health,
+                                                                    permanentFailure: failed))
+                }
+            }
+            if let h = cachedHealth {
+                info.cycleCount = h.cycleCount
+                info.designCapacity = h.designCapacity
+                info.maxCapacity = h.maxCapacity
+                info.healthPercent = h.healthPercent
+                info.condition = h.condition
+            }
         }
         return info
     }

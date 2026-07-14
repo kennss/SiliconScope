@@ -1,7 +1,7 @@
 //
 //  File:      Disk.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-25
+//  Updated:   2026-07-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Disk I/O throughput (read/write bytes per second) and boot-volume
 //             capacity, sampled sudolessly. I/O via IOBlockStorageDriver statistics
@@ -33,6 +33,15 @@ public final class DiskSampler {
     private var previousWrite: UInt64 = 0
     private var previousTimeNs: UInt64 = 0
 
+    // Capacity on a slow cadence: querying volumeAvailableCapacityForImportantUsage triggers
+    // Apple's CacheDelete framework to re-validate EVERY mounted volume's purgeable space
+    // (getattrlist/realpath/APFS-role IOKit storm on in-process queues — profiled at ~4% of a
+    // core when run each tick). Free space doesn't change per-second; 30 s is plenty.
+    // (docs/energy-optimization.md — closed-window cost investigation.)
+    private var cachedCapacity: (total: UInt64, free: UInt64) = (0, 0)
+    private var lastCapacitySample: Date = .distantPast
+    private let capacityInterval: TimeInterval = 30
+
     public init() {}
 
     public func sample() -> DiskSample {
@@ -51,9 +60,12 @@ public final class DiskSampler {
         previousWrite = write
         previousTimeNs = now
 
-        let (total, free) = Self.capacity()
-        result.totalBytes = total
-        result.freeBytes = free
+        if Date().timeIntervalSince(lastCapacitySample) >= capacityInterval {
+            lastCapacitySample = Date()
+            cachedCapacity = Self.capacity()
+        }
+        result.totalBytes = cachedCapacity.total
+        result.freeBytes = cachedCapacity.free
         return result
     }
 

@@ -1,7 +1,7 @@
 //
 //  File:      PeripheralBattery.swift
 //  Created:   2026-06-22
-//  Updated:   2026-07-14
+//  Updated:   2026-07-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Sudoless battery levels for connected peripherals, the way iStat Menus surfaces
 //             accessory batteries in its battery dropdown. Two sources, merged:
@@ -91,14 +91,33 @@ public final class PeripheralBatterySampler {
 
     // MARK: - Source 1: IORegistry BatteryPercent (Apple HID)
 
-    private func ioRegistryDevices() -> [PeripheralBattery] {
-        var iterator: io_iterator_t = 0
-        guard IORegistryCreateIterator(kIOMainPortDefault, kIOServicePlane,
-                                       IOOptionBits(kIORegistryIterateRecursively),
-                                       &iterator) == KERN_SUCCESS else { return [] }
-        defer { IOObjectRelease(iterator) }
+    /// IOKit classes that publish `BatteryPercent` for HID peripherals (Magic Mouse/Trackpad/
+    /// Keyboard on the modern class; the rest are legacy Bluetooth HID). Matching these few
+    /// services replaces the old FULL IOService-plane recursive walk, which serialized every
+    /// registry entry's whole property table (~3,200 entries, ~0.7 s CPU — mostly kernel/sys
+    /// time — per scan ≈ 14% of a core at the 5 s cadence: the app's single largest energy
+    /// cost, found in the #28 investigation). Class matching returns a handful of entries.
+    private static let batteryServiceClasses = [
+        "AppleDeviceManagementHIDEventService",   // modern Magic devices (+ built-in keyboard node)
+        "AppleHSBluetoothDevice",                 // legacy BT HID
+        "BNBMouseDevice",
+        "AppleBluetoothHIDKeyboard",
+    ]
 
+    private func ioRegistryDevices() -> [PeripheralBattery] {
         var byKey: [String: PeripheralBattery] = [:]
+        for cls in Self.batteryServiceClasses {
+            var iterator: io_iterator_t = 0
+            guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(cls),
+                                               &iterator) == KERN_SUCCESS else { continue }
+            defer { IOObjectRelease(iterator) }
+            collectBatteryDevices(from: iterator, into: &byKey)
+        }
+        return Array(byKey.values)
+    }
+
+    private func collectBatteryDevices(from iterator: io_iterator_t,
+                                       into byKey: inout [String: PeripheralBattery]) {
         var entry = IOIteratorNext(iterator)
         while entry != 0 {
             defer { IOObjectRelease(entry); entry = IOIteratorNext(iterator) }
@@ -121,7 +140,6 @@ public final class PeripheralBatterySampler {
                 byKey[key] = PeripheralBattery(name: name, kind: kind, percent: percent, address: address)
             }
         }
-        return Array(byKey.values)
     }
 
     // MARK: - Source 2: system_profiler (AirPods L/R/Case, cached)

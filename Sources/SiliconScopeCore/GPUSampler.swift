@@ -1,7 +1,7 @@
 //
 //  File:      GPUSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-07-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads GPU utilization and average clock sudolessly via IOReport
 //             "GPU Stats". Subscribes once; each sample() diffs two snapshots.
@@ -114,12 +114,15 @@ public final class GPUSampler {
     }
 
     /// GPU unified-memory footprint from IOAccelerator PerformanceStatistics.
+    /// Fetches ONLY the PerformanceStatistics property — copying the accelerator's full
+    /// property table (shader-cache blobs etc.) per tick measured ~2 ms vs ~0.02 ms for the
+    /// single-key fetch (89×). Runs every tick, so this matters. (#28 investigation)
     private func readGPUMemory() -> (inUse: UInt64, alloc: UInt64) {
         guard accelerator != 0 else { return (0, 0) }
-        var props: Unmanaged<CFMutableDictionary>?
-        guard IORegistryEntryCreateCFProperties(accelerator, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-              let d = props?.takeRetainedValue() as? [String: Any],
-              let perf = d["PerformanceStatistics"] as? [String: Any] else { return (0, 0) }
+        guard let perf = IORegistryEntryCreateCFProperty(accelerator,
+                             "PerformanceStatistics" as CFString,
+                             kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any]
+        else { return (0, 0) }
         let inUse = (perf["In use system memory"] as? Int).map { UInt64(max(0, $0)) } ?? 0
         let alloc = (perf["Alloc system memory"] as? Int).map { UInt64(max(0, $0)) } ?? 0
         return (inUse, alloc)
