@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.2.0 — 2026-07-15
+
+- **Much lighter — dramatically lower CPU and energy use.** SiliconScope had been using far more
+  energy than a monitor should (Activity Monitor "Energy Impact" ~836 — comparable to a web
+  browser). A deep profiling pass traced nearly all of it to a handful of samplers doing redundant
+  work every second, the largest by far being the peripheral-battery reader walking the *entire*
+  IORegistry on each scan. Rebuilt across the data layer: **~85% lower Energy Impact** and
+  window-open CPU cut from ~24% to ~10%, with no loss of data or features.
+  ([#28](https://github.com/kennss/SiliconScope/issues/28))
+  - The dashboard now **fully stops rendering when its window is closed** — it had been redrawing at
+    full rate to a hidden window.
+  - Peripheral-battery, disk-capacity, GPU-memory and battery-health reads now refresh on their
+    natural cadence and are reused between ticks; the process table and AI-runtime detection cache too.
+  - Menu-bar glyphs are re-rasterized only when their pixels actually change.
+  - Charts render through a lightweight Canvas instead of Swift Charts.
+- **Tighter AI Workload card** — trimmed the per-engine row spacing.
+
 ## v3.1.5 — 2026-07-06
 
 - **Fixed: the Processes list was missing most of your processes.** `ProcessSampler` divided the PID
