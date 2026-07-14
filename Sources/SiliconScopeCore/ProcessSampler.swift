@@ -1,7 +1,7 @@
 //
 //  File:      ProcessSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-22
+//  Updated:   2026-07-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Builds the process table sudolessly via libproc. Stateful: each
 //             sample() diffs cumulative CPU time against the previous call to derive
@@ -19,6 +19,13 @@ import Foundation
 public final class ProcessSampler {
     private var previousCPU: [pid_t: UInt64] = [:]
     private var previousTimeNs: UInt64 = 0
+
+    // Immutable per-pid metadata (executable path, name, basename) cached across ticks — these
+    // never change for a process's lifetime, so re-resolving them every tick via proc_pidpath /
+    // proc_name over thousands of pids was the enumeration's dominant cost (proc_pidpath alone is
+    // ~24 ms/tick at ~3.4k pids). Only NEW pids pay the lookup; existing ones just re-read CPU.
+    private struct PidInfo { let path: String; let name: String; let base: String }
+    private var infoCache: [pid_t: PidInfo] = [:]
 
     /// proc_taskinfo's pti_total_user/system are mach-absolute-time ticks, NOT nanoseconds.
     /// On Apple Silicon the timebase is 125/3, so a raw tick count read as ns makes CPU%
@@ -52,34 +59,49 @@ public final class ProcessSampler {
             let cpuNs = cpuTicks * UInt64(Self.timebase.numer) / UInt64(Self.timebase.denom)
             currentCPU[pid] = cpuNs
 
+            let prev = previousCPU[pid]
             var cpuPercent = 0.0
-            if let prev = previousCPU[pid], wallDelta > 0, cpuNs >= prev {
+            if let prev, wallDelta > 0, cpuNs >= prev {
                 cpuPercent = Double(cpuNs - prev) / wallDelta * 100.0
             }
 
-            let path = Self.path(pid)
+            // Resolve path/name/basename from the cache (immutable per pid). Cumulative CPU only
+            // ever rises within one process, so cpuNs < prev means the pid was recycled onto a new
+            // process → drop the stale entry and re-resolve.
+            if let prev, cpuNs < prev { infoCache[pid] = nil }
+            let meta: PidInfo
+            if let hit = infoCache[pid] {
+                meta = hit
+            } else {
+                let p = Self.path(pid)
+                meta = PidInfo(path: p, name: Self.name(pid), base: Self.basename(p))
+                infoCache[pid] = meta
+            }
+
             // argv only for AI-runtime candidates (gated by path basename). Python is
             // prefix-matched so versioned interpreters (python3.12 from conda/homebrew,
             // python3.13, …) still qualify — that's how mlx_lm / rapid-mlx args are seen.
-            let base = Self.basename(path)
             var args: String? = nil
-            if Self.argvCandidateBasenames.contains(base) || base.hasPrefix("python"),
+            if Self.argvCandidateBasenames.contains(meta.base) || meta.base.hasPrefix("python"),
                let argv = Self.processArgs(pid), !argv.isEmpty {
                 args = argv.joined(separator: " ")
             }
 
             rows.append(ProcessRow(
                 pid: pid,
-                name: Self.name(pid),
+                name: meta.name,
                 cpuPercent: cpuPercent,
                 memoryBytes: info.pti_resident_size,
-                path: path,
+                path: meta.path,
                 args: args
             ))
         }
 
         previousCPU = currentCPU
         previousTimeNs = nowNs
+        // Drop cached metadata for pids that are gone so the cache can't grow unbounded.
+        let live = Set(currentCPU.keys)
+        infoCache = infoCache.filter { live.contains($0.key) }
 
         return Array(rows.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(count))
     }
