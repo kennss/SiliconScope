@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarIcon.swift
 //  Created:   2026-06-16
-//  Updated:   2026-06-24
+//  Updated:   2026-07-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The live menu-bar glyph used as the MenuBarExtra label: six mini bars —
 //             CPU / GPU / ANE / Media Engine / Memory-usage / Memory-bandwidth — that track
@@ -50,7 +50,9 @@ struct MenuBarIcon: View {
         NSColor(srgbRed: 0.32, green: 0.82, blue: 0.86, alpha: 1),  // Mem BW cyan
     ]
 
-    static func glyph(for monitor: SiliconScopeMonitor, dark: Bool) -> NSImage {
+    /// The 6 bar fractions + alert/blink state that determine the glyph's pixels — shared by
+    /// glyph() and signature() so the two can never drift apart.
+    static func barState(for monitor: SiliconScopeMonitor) -> (values: [Double], alert: Bool, blinkDim: Bool) {
         let s = monitor.snapshot
         let values: [Double] = [
             s.cpu.pUsage,
@@ -65,6 +67,20 @@ struct MenuBarIcon: View {
             || s.memory.pressure == .critical
         // Blink: dim every other sample while alerting (sample count advances each tick).
         let blinkDim = alert && (monitor.history.gpu.count % 2 == 1)
+        return (values, alert, blinkDim)
+    }
+
+    /// Signature of everything that changes the glyph's pixels: quantized bar heights + the
+    /// alert/blink color state + appearance. Unchanged ⇒ identical bitmap ⇒ skip the re-raster.
+    /// (While alerting, blinkDim alternates each tick, so the glyph correctly re-renders to blink.)
+    static func signature(for monitor: SiliconScopeMonitor, dark: Bool) -> String {
+        let st = barState(for: monitor)
+        return MenuBarSignature.bars("ss", st.values, dark: dark,
+                                     extra: (st.alert ? "a" : "n") + (st.blinkDim ? "1" : "0"))
+    }
+
+    static func glyph(for monitor: SiliconScopeMonitor, dark: Bool) -> NSImage {
+        let (values, alert, blinkDim) = barState(for: monitor)
 
         let height: CGFloat = 18
         let barW: CGFloat = 6.5, gap: CGFloat = 2.0   // bar width doubled (was 3.4)
