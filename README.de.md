@@ -99,7 +99,13 @@ Platz einzunehmen.
 
 ## Installation
 
-**[⬇ Neuestes DMG herunterladen](https://github.com/kennss/SiliconScope/releases/latest)** und:
+**Homebrew** — der einfachste Weg:
+
+```sh
+brew install --cask siliconscope
+```
+
+Oder das DMG holen: **[⬇ Neuestes DMG herunterladen](https://github.com/kennss/SiliconScope/releases/latest)** und:
 
 1. Das geladene `SiliconScope-*.dmg` öffnen
 2. **SiliconScope** in den Ordner **Programme** ziehen

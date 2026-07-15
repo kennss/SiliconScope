@@ -92,7 +92,13 @@ macOS がシステム全体でしか報告しないアクセラレータ（GPU /
 
 ## インストール
 
-**[⬇ 最新 DMG をダウンロード](https://github.com/kennss/SiliconScope/releases/latest)** して:
+**Homebrew** — 最も簡単：
+
+```sh
+brew install --cask siliconscope
+```
+
+または DMG を入手: **[⬇ 最新 DMG をダウンロード](https://github.com/kennss/SiliconScope/releases/latest)** して:
 
 1. ダウンロードした `SiliconScope-*.dmg` を開く
 2. **SiliconScope** を **アプリケーション** にドラッグ

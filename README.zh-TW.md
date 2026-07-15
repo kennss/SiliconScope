@@ -86,7 +86,13 @@ Media / 頻寬），都會如實標註 —— 絕不偽造逐程序數字。*
 
 ## 安裝
 
-**[⬇ 下載最新 DMG](https://github.com/kennss/SiliconScope/releases/latest)**，然後：
+**Homebrew** —— 最簡單的方式：
+
+```sh
+brew install --cask siliconscope
+```
+
+或下載 DMG：**[⬇ 下載最新 DMG](https://github.com/kennss/SiliconScope/releases/latest)**，然後：
 
 1. 開啟下載的 `SiliconScope-*.dmg`
 2. 將 **SiliconScope** 拖曳至**應用程式**

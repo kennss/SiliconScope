@@ -95,7 +95,13 @@ own Mac.
 
 ## Install
 
-**[⬇ Download the latest DMG](https://github.com/kennss/SiliconScope/releases/latest)**, then:
+**Homebrew** — the easiest way:
+
+```sh
+brew install --cask siliconscope
+```
+
+Or grab the DMG: **[⬇ Download the latest DMG](https://github.com/kennss/SiliconScope/releases/latest)**, then:
 
 1. Open the downloaded `SiliconScope-*.dmg`
 2. Drag **SiliconScope** into **Applications**

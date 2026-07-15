@@ -110,6 +110,13 @@ a { color: inherit; text-decoration: none; }
 .download h2 { font-size: clamp(26px, 4vw, 38px); letter-spacing: -0.02em; }
 .download .note { color: var(--faint); font-size: 14px; margin-top: 14px; }
 .download .cta { margin-top: 26px; }
+.download .brew { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.download .brew-or { color: var(--faint); font-size: 13px; }
+.download .brew-cmd {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; color: var(--text);
+  background: rgba(127, 127, 127, 0.12); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 16px; user-select: all;
+}
 .download .source { display: inline-block; margin-top: 16px; color: var(--accent); font-size: 14px; }
 
 /* Footer */

@@ -3,7 +3,7 @@ import { STRINGS, REPO, RELEASES_LATEST, SPECTALO, type Lang } from '../i18n';
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const t = STRINGS[lang];
-const stars = 619;               // GitHub stargazers — bump when refreshing the site
+const stars = '700+';            // GitHub stargazers (rounded so it stays accurate as it grows)
 const v = 305;                   // asset cache-bust version (Cloudflare serves images immutable for 1y)
 const alt = lang === 'ko' ? { href: '/', label: 'EN' } : { href: '/ko/', label: '한국어' };
 const self = lang === 'ko' ? 'KO' : 'EN';
@@ -85,6 +85,10 @@ const self = lang === 'ko' ? 'KO' : 'EN';
       <h2>{t.download.title}</h2>
       <p class="note">{t.download.note}</p>
       <div class="cta"><a class="btn primary" href={RELEASES_LATEST}>{t.download.button}</a></div>
+      <div class="brew">
+        <span class="brew-or">{t.download.brew}</span>
+        <code class="brew-cmd">brew install --cask siliconscope</code>
+      </div>
       <a class="source" href={REPO}>{t.download.source}</a>
     </div>
   </section>

@@ -91,7 +91,13 @@ ANE를 쓰고 있고 얼마나 잡고 있는지 한눈에 보입니다.
 
 ## 설치
 
-**[⬇ 최신 DMG 다운로드](https://github.com/kennss/SiliconScope/releases/latest)** 후:
+**Homebrew** — 가장 간단:
+
+```sh
+brew install --cask siliconscope
+```
+
+또는 DMG로: **[⬇ 최신 DMG 다운로드](https://github.com/kennss/SiliconScope/releases/latest)** 후:
 
 1. 받은 `SiliconScope-*.dmg` 를 엽니다
 2. **SiliconScope** 를 **응용 프로그램** 으로 드래그합니다
