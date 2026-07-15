@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-02
+//  Updated:   2026-07-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -202,6 +202,20 @@ if CommandLine.arguments.contains("--smc-all") {
         let v = e.value.map { String(format: "%.3f", $0) } ?? "—"
         print(String(format: "  %-5@ [%-4@] %@", e.key as NSString, e.type as NSString, v as NSString))
     }
+    print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")
+}
+
+// Raw bandwidth-channel dump for verifying / fixing the memory-bandwidth requestor map on a
+// chip/OS combination BandwidthSampler doesn't classify correctly (e.g. 0 GB/s CPU/GPU bandwidth
+// under real load — see github.com/kennss/SiliconScope#14). Run: sscope-cli --bandwidth
+// (run it under a sustained CPU/GPU workload and paste the output into a bandwidth issue).
+if CommandLine.arguments.contains("--bandwidth") {
+    let lines = BandwidthSampler.channelDump()
+    print("\n=== IOReport bandwidth channels (raw inventory) — \(lines.count) ===")
+    print("Run this under sustained CPU/GPU memory traffic. Channels reading \"— (not populated)\"")
+    print("carry the INT64_MIN sentinel instead of real bytes; that's a distinct problem from a")
+    print("channel simply not being classified yet.")
+    for l in lines { print("  \(l)") }
     print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")
 }
 
