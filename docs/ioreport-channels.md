@@ -108,6 +108,31 @@ saturate past 32 GB/s, and `other`/`total` may run persistently elevated because
 fixed in this change; flagged for whoever picks up more precise interpretation of this histogram
 next.
 
+**Follow-up finding, confirming the above against this chip's real spec ceiling:** this M4 Max
+(40-core GPU) has a theoretical unified-memory-bandwidth ceiling of 546 GB/s
+(`Bottleneck.bandwidthCeilingGBs`). Under sustained, genuinely heavy GPU-bound inference (GPU
+100%, 44–58 W GPU power, ~10–12 W DRAM power), the sampled `gpuGBs` topped out at **~28–31
+GB/s — pinned right at the edge of the histogram's labeled 32 GB/s bucket** — while `totalGBs`
+(the naive sum across ~20 requestor channels) climbed to 250–330 GB/s. A GPU that size should be
+able to drive well past 32 GB/s on its own under real compute load, so a value sitting persistently
+just under the top bucket's label is the clearest evidence the clamp theory above is correct for
+`gpuGBs` specifically, not merely plausible. Also checked for a literal ceiling/absolute-bytes
+channel elsewhere in `PMP` as a possible escape hatch: the `DCS Ceiling`/`DCS Floor`/`AFR Floor`/
+`SOC Floor` subgroups exist, but they are DVFS **frequency/voltage**-state residency histograms
+(state names like `F1`..`F6`, `VMIN`..`VOVD`) confirming the memory controller runs at its top
+performance state under load — they do not expose a literal bytes/sec figure, so there is no
+shortcut available to recover the true magnitude once a requestor's traffic exceeds its bucket's
+labeled maximum.
+
+Because of this, `BandwidthSample.isEstimated` is `true` for every reading from this fallback
+path. The app surfaces that honestly rather than silently asserting precision it doesn't have:
+the menu bar's `Workload` line and the dashboard AI Workload card's `Bandwidth-bound` state both
+append `"(est.)"` when the bandwidth-bound verdict is based on an estimated reading — see
+`MenuBarView.workloadLabel(_:)` and `DashboardView.AIWorkloadCard.memState`. Nothing in this
+project currently renders a raw numeric "% of ceiling" gauge (that idea, mentioned in older
+CHANGELOG entries, was superseded by this qualitative state card), so those two labels are the
+full extent of the ceiling-relative UI surface affected.
+
 Verify on your own machine: `xcrun swift run -q sscope-cli --bandwidth` (works whether your
 machine uses the classic `AMC Stats` path or this `PMP`/`DCS BW` fallback — it dumps whichever is
 actually subscribable), plus `sysctl hw.model machdep.cpu.brand_string` and the macOS build
