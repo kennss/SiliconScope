@@ -11,6 +11,9 @@
 //  Notes:     Relies on ProcessSampler having resolved path (all pids) and args (AI
 //             candidates only). Verdicts are keyed by pid and validated against the row's
 //             path, so a recycled pid (same number, new process) re-matches correctly.
+//             Beacon manifests (RuntimeBeaconReader) are merged per scan, uncached —
+//             they cover statically-linked runtimes the path/args probes can't see,
+//             and add self-reported activity (task/phase/step) to matched processes.
 //             100% sudoless, no network.
 //
 import Foundation
@@ -25,9 +28,16 @@ public final class AIRuntimeSampler {
     }
     private var verdicts: [pid_t: Verdict] = [:]
 
-    public init() {}
+    private let beaconReader: RuntimeBeaconReader
+
+    public init(beaconReader: RuntimeBeaconReader = RuntimeBeaconReader()) {
+        self.beaconReader = beaconReader
+    }
 
     public func sample(from rows: [ProcessRow]) -> AIRuntimeSample {
+        // Beacons are per-scan, never cached: they appear and vanish mid-process
+        // (one manifest per heavy operation), unlike the immutable path/args verdict.
+        let beacons = beaconReader.read()
         var sample = AIRuntimeSample()
         var live = Set<pid_t>(minimumCapacity: rows.count)
         for row in rows {
@@ -42,14 +52,22 @@ public final class AIRuntimeSampler {
                                   embeddedPort: kind.flatMap { AIRuntimeKind.servingPort(kind: $0, path: row.path, args: row.args) })
                 verdicts[row.pid] = verdict
             }
-            guard let kind = verdict.kind else { continue }
+            let manifest = beacons[row.pid]
+            guard verdict.kind != nil || manifest != nil else { continue }
+            // Path/bundle identity keeps naming the process when both signals agree
+            // (a beacon adds activity, not a re-classification); the beacon alone
+            // identifies statically-linked frameworks inside arbitrary host apps.
+            let kind = verdict.kind ?? AIRuntimeKind.fromBeaconRuntime(manifest!.runtime)
+            let displayName = verdict.kind?.displayName
+                ?? manifest!.displayName ?? kind.displayName
             sample.processes.append(AIRuntimeProcess(
                 pid: row.pid,
                 kind: kind,
-                displayName: kind.displayName,
+                displayName: displayName,
                 cpuPercent: row.cpuPercent,
                 memoryBytes: row.memoryBytes,
-                embeddedPort: verdict.embeddedPort
+                embeddedPort: verdict.embeddedPort,
+                beacon: manifest.map(BeaconActivity.init(manifest:))
             ))
         }
         // Prune dead pids so the cache tracks the live process set.

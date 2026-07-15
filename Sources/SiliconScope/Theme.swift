@@ -672,6 +672,8 @@ extension AIRuntimeKind {
         // both of these do on the Neural Engine.
         case .spectalo:   return "captions.bubble.fill"
         case .spectaling: return "waveform"
+        case .ltxVideo: return "video.fill"                              // video generation
+        case .beacon:   return "dot.radiowaves.left.and.right"           // self-identified runtime
         case .jan, .gpt4all, .vllm, .omlx, .other: return "brain"
         }
     }

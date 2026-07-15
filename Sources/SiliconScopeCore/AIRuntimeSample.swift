@@ -12,6 +12,39 @@
 //
 import Foundation
 
+/// Live activity self-reported through a beacon manifest (see RuntimeBeaconReader) —
+/// richer than anything inferable from the process table: what the runtime is doing
+/// (task/phase) and how far along it is (step/totalSteps).
+public struct BeaconActivity: Sendable, Equatable, Codable {
+    public let runtime: String
+    public let task: String?
+    public let model: String?
+    public let phase: String?
+    public let step: Int?
+    public let totalSteps: Int?
+
+    public init(runtime: String, task: String? = nil, model: String? = nil,
+                phase: String? = nil, step: Int? = nil, totalSteps: Int? = nil) {
+        self.runtime = runtime
+        self.task = task
+        self.model = model
+        self.phase = phase
+        self.step = step
+        self.totalSteps = totalSteps
+    }
+
+    public init(manifest: BeaconManifest) {
+        self.init(runtime: manifest.runtime, task: manifest.task, model: manifest.model,
+                  phase: manifest.phase, step: manifest.step, totalSteps: manifest.totalSteps)
+    }
+
+    /// Progress fraction 0...1 when the producer reported step counts.
+    public var progress: Double? {
+        guard let step, let totalSteps, totalSteps > 0 else { return nil }
+        return min(1.0, max(0.0, Double(step) / Double(totalSteps)))
+    }
+}
+
 public struct AIRuntimeProcess: Sendable, Equatable, Identifiable, Codable {
     public let pid: Int32
     public let kind: AIRuntimeKind
@@ -19,16 +52,19 @@ public struct AIRuntimeProcess: Sendable, Equatable, Identifiable, Codable {
     public let cpuPercent: Double      // summed across cores (ProcessRow convention)
     public let memoryBytes: UInt64     // RSS
     public let embeddedPort: Int?      // parsed from argv (e.g. Ollama runner --port)
+    public let beacon: BeaconActivity? // self-reported activity, when the runtime opted in
     public var id: Int32 { pid }
 
     public init(pid: Int32, kind: AIRuntimeKind, displayName: String,
-                cpuPercent: Double, memoryBytes: UInt64, embeddedPort: Int?) {
+                cpuPercent: Double, memoryBytes: UInt64, embeddedPort: Int?,
+                beacon: BeaconActivity? = nil) {
         self.pid = pid
         self.kind = kind
         self.displayName = displayName
         self.cpuPercent = cpuPercent
         self.memoryBytes = memoryBytes
         self.embeddedPort = embeddedPort
+        self.beacon = beacon
     }
 }
 

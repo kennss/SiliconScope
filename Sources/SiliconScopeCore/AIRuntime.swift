@@ -4,8 +4,10 @@
 //  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
-//             MLX, Rapid-MLX, mlx-dspark, MTPLX, DS4, Jan, GPT4All, vLLM, exo). Pure logic — no
-//             syscalls; consumes the path/args that ProcessSampler already resolved.
+//             MLX, Rapid-MLX, mlx-dspark, MTPLX, DS4, Jan, GPT4All, vLLM, exo, LTX-Video). Pure
+//             logic — no syscalls; consumes the path/args that ProcessSampler already resolved.
+//             Runtimes may also self-identify via beacon manifests (RuntimeBeaconReader);
+//             fromBeaconRuntime maps their identifier onto this catalog.
 //  Notes:     proc_name truncates to 15 chars, so the executable PATH is the primary
 //             signal and BUNDLE identity overrides basename — the Ollama runner is a
 //             llama-server child, so basename alone would misclassify it as llama.cpp.
@@ -32,6 +34,12 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
     /// returns it. Without it, one unknown raw value fails the whole `SystemSnapshot` and takes a
     /// recording down with it — the same trap `GlyphMode` hit.
     case other
+    /// LTX-Video (ltx-video-swift-mlx): MLX video generation — the `ltx-video` CLI, or the
+    /// framework linked into a host app, which only a beacon manifest can reveal.
+    case ltxVideo
+    /// A runtime that self-identified via a beacon manifest (RuntimeBeaconReader) but has no
+    /// dedicated case yet. Its real name lives in AIRuntimeProcess.displayName.
+    case beacon
 
     public var displayName: String {
         switch self {
@@ -50,7 +58,18 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         case .ds4:      return "DS4"
         case .spectalo:   return "Spectalo"
         case .spectaling: return "SpectaLing"
+        case .ltxVideo:   return "LTX-Video"
+        case .beacon:     return "AI runtime"
         case .other:      return "AI runtime"
+        }
+    }
+
+    /// Maps a beacon manifest's `runtime` identifier to a dedicated case, falling back
+    /// to the generic `.beacon` for producers we don't know by name yet.
+    public static func fromBeaconRuntime(_ runtime: String) -> AIRuntimeKind {
+        switch runtime {
+        case "ltx-video-swift-mlx": return .ltxVideo
+        default:                    return .beacon
         }
     }
 
@@ -62,8 +81,8 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
     /// impossible is worse.
     public var servesAPI: Bool {
         switch self {
-        case .spectalo, .spectaling, .other: return false
-        default:                             return true
+        case .spectalo, .spectaling, .ltxVideo, .beacon, .other: return false
+        default:                                                 return true
         }
     }
 
@@ -162,6 +181,10 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if base == "exo" || p.contains("/exo/main.py")
             || a.contains("/exo/main.py") || a.contains("/bin/exo") || a.contains(" exo.main") { return .exo }
         if base == "omlx" || base == "oMLX" || base == "omlx-server" || base == "oMLX-server" { return .omlx }
+        // LTX-Video (ltx-video-swift-mlx) — MLX video-generation CLI. Exact basename only:
+        // "ltx" is too short a substring to probe paths/args safely. Library embedders are
+        // invisible here (statically linked) and are covered by the beacon path instead.
+        if base == "ltx-video" { return .ltxVideo }
 
         return nil
     }

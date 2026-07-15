@@ -93,6 +93,14 @@ for p in ai.processes {
     let port = p.embeddedPort.map { " :\($0)" } ?? ""
     print(String(format: "  %@%@  pid %d  %.0f%% CPU  %.1f GB",
                  p.displayName, port, p.pid, p.cpuPercent, Double(p.memoryBytes) / 1e9))
+    if let b = p.beacon {
+        var detail = "    beacon: \(b.runtime)"
+        if let task = b.task { detail += " · \(task)" }
+        if let model = b.model { detail += " · \(model)" }
+        if let phase = b.phase { detail += " · \(phase)" }
+        if let progress = b.progress { detail += String(format: " · %d%%", Int(progress * 100)) }
+        print(detail)
+    }
 }
 if let kind = ai.primaryKind {
     print(String(format: "  primary: %@ (RSS %.1f GB) → budget loadable %.1f GB",

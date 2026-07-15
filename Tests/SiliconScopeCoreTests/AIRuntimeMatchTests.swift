@@ -234,6 +234,19 @@ final class AIRuntimeMatchTests: XCTestCase {
                                          args: "python /Users/me/src/vllm/vllm/entrypoints/openai/api_server.py"))
     }
 
+    // LTX-Video (ltx-video-swift-mlx) — exact basename only; "ltx" is too short to probe
+    // substrings safely, and library embedders are handled by the beacon path instead.
+    func testLTXVideoBasenameMatch() {
+        XCTAssertEqual(AIRuntimeKind.match(
+            path: "/Users/x/ltx-video-swift-mlx/.xcodebuild/Build/Products/Release/ltx-video",
+            name: "ltx-video", args: nil), .ltxVideo)
+        // Neither a prefixed basename nor a path mention may match.
+        XCTAssertNil(AIRuntimeKind.match(path: "/usr/local/bin/ltx-video-tools",
+                                         name: "ltx-video-tool", args: nil))
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/x/ltx-video-swift-mlx/scripts/render.sh",
+                                         name: "render.sh", args: nil))
+    }
+
     // primaryKind ranks by grouped RSS; the Ollama group (parent+runner) outweighs a small llama.cpp.
     func testPrimaryKindByGroupedRSS() {
         var s = AIRuntimeSample()
