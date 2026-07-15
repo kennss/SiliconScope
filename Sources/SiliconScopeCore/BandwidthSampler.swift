@@ -293,6 +293,7 @@ public final class BandwidthSampler {
         result.gpuGBs = gpu
         result.mediaGBs = media
         result.otherGBs = other
+        result.isEstimated = true
         // No authoritative chip-wide total in this path — BandwidthSample.totalGBs falls back
         // to summing cpu+gpu+media+other, which is exactly what we want here.
         return result

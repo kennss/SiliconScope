@@ -90,6 +90,16 @@ struct MenuBarView: View {
         Text("·").font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.faint)
     }
 
+    /// "Workload" label, qualified with "(est.)" when the bandwidth-bound verdict rests on an
+    /// estimated reading (BandwidthSampler's PMP-histogram fallback — see BandwidthSample.isEstimated)
+    /// rather than a real per-requestor byte-delta measurement, so the label doesn't overstate
+    /// precision it doesn't have.
+    private func workloadLabel(_ snapshot: SystemSnapshot) -> String {
+        let label = monitor.bottleneck.label
+        guard monitor.bottleneck == .bandwidthBound, snapshot.bandwidth.isEstimated else { return label }
+        return label + " (est.)"
+    }
+
     /// The standard multi-line readout (E/P, memory, GPU, ANE, bandwidth, power, temps).
     @ViewBuilder
     private func fullReadout(_ snapshot: SystemSnapshot) -> some View {
@@ -97,7 +107,7 @@ struct MenuBarView: View {
             .font(.system(size: 13, weight: .bold, design: .monospaced))
             .foregroundStyle(Theme.accent)
 
-        KV(key: "Workload", value: monitor.bottleneck.label, valueColor: monitor.bottleneck.color)
+        KV(key: "Workload", value: workloadLabel(snapshot), valueColor: monitor.bottleneck.color)
 
         Divider()
         KV(key: "GPU", value: String(format: "%.0f%% · %.1f W", snapshot.gpu.usagePercent, snapshot.power.gpuWatts))

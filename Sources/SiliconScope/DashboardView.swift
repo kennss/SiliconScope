@@ -450,7 +450,13 @@ private struct AIWorkloadCard: View {
             return (amberColor, "Pressure", String(format: "%.0f%%", snapshot.memory.pressurePercent))
         case .ok:
             if bwFraction > 0.7 {
-                return (activeColor, "Bandwidth-bound", "near memory-BW ceiling")
+                // BandwidthSampler's PMP-histogram fallback (see its file header) clamps
+                // per-requestor values at a labeled "32GB/s" bucket and sums many requestor
+                // channels into `totalGBs`, so it can read a high fraction of the chip's spec
+                // ceiling without genuinely reflecting it — label it as an estimate rather than
+                // assert precision the reading doesn't have.
+                let label = snapshot.bandwidth.isEstimated ? "Bandwidth-bound (est.)" : "Bandwidth-bound"
+                return (activeColor, label, "near memory-BW ceiling")
             }
             let swapGB = Double(snapshot.memory.swapUsedBytes) / 1_073_741_824
             return (Theme.dim, "Normal", swapGB >= 0.5 ? String(format: "swap %.1f GB", swapGB) : "")
