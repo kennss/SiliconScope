@@ -42,6 +42,9 @@
 
 ## Memory bandwidth — group `AMC Stats`, subgroup `Perf Counters`, format Simple, unit bytes
 
+**Verified on:** M1 Max, macOS 26.5 only. See the M4 Max / macOS 26.5.2 section below for a
+chip/OS combination where this entire group fails to subscribe.
+
 | Channel pattern | Category |
 |---|---|
 | `ECPU DCS RD/WR`, `PCPU0/1 DCS RD/WR` | CPU |
@@ -50,6 +53,65 @@
 | `DISP / ISP / ANS / PCIE LN DCS …` | Other |
 
 `GB/s = (bytes / interval_s) / 1e9`
+
+### macOS 27 beta / M3 Max — channel names restructured (unverified fix, documented upstream)
+
+Not independently re-verified by this project — see
+[github.com/kennss/SiliconScope#14](https://github.com/kennss/SiliconScope/issues/14) (filed by
+the maintainer) for the full, hardware-verified writeup. Summary: on macOS 27.0.0 beta, an M3
+Max still exposes the `AMC Stats`/`Perf Counters` group and its channels subscribe fine, but
+Apple restructured the channel *names* three ways: a leading `DIE0` chip-id/per-core token
+(`ECPU DCS RD` → `DIE0 ECPU0 DCS RD`), the combined `RD/WR` suffix split into separate channels
+with several shapes (`RD/WR`, `RD/WR/RDWR`, `RD/WR + RD/WR`), and ~19 new unclassified requestor
+families (`AVE0/1`, `SCODEC`, `SEP`, `SIO`, `ATC0-3`, `MSR0/1`, `PCIEGE`, `GFXA/B/C`,
+`EXT_DISP0-3`). Separately, the surviving channels were observed reading the `INT64_MIN`
+sentinel instead of real bytes — an open question, not solved by this project. `classify()` in
+`BandwidthSampler.swift` now tolerates the `DIE0` prefix and the additional RD/WR suffix shapes
+(see its `contains(_:unitPrefix:)` and `hasReadWriteToken`/`stripReadWriteSuffix` helpers), which
+should address the naming/classification half of #14 — but this project has no macOS 27 hardware
+to confirm the `INT64_MIN` half against.
+
+### M4 Max / macOS 26.5.2 — "AMC Stats" subscription fails outright; data relocated to `PMP`/"DCS BW"
+
+Verified on this project's own hardware (Apple M4 Max, macOS 26.5.2, Darwin). Distinct failure
+mode from the macOS 27 case above: `IOReportCopyChannelsInGroup("AMC Stats", nil, 0, 0, 0)`
+succeeds and enumerates ~190 channels, but `IOReportCreateSubscription` on that channel set
+returns `nil` — the group is discoverable but not subscribable, regardless of subgroup filter
+(tried both `nil` and `"Perf Counters"` explicitly). This is *not* a naming/classification
+problem; no amount of `classify()` tolerance can fix it, since iteration never begins.
+
+The equivalent per-requestor byte-traffic data is present elsewhere on this machine, under the
+already-subscribable **`PMP`** group (539 channels total), in two subgroups — **`AF BW`**
+(address-fabric-side, pre-cache) and **`DCS BW`** (DRAM-controller-side, the closer analog to
+the old semantics) — encoded very differently: **State format**, not Simple. Each requestor
+channel (e.g. `EACC0 RD+WR`, `PACC0 RD+WR`, `AGX RD+WR`, `JPEG0 RD+WR`) is a 32-state residency
+histogram, with state names that are literally the bucket's GB/s value (`"   1GB/s"` …
+`"  32GB/s"`) and each state's residency the time spent at approximately that bandwidth level
+since the last sample — the same idiom `CPUSampler` already uses for DVFS-frequency residency
+weighting, just applied to bandwidth instead of MHz.
+
+Requestor spellings differ from the classic path too: `EACC0`/`PACC0`/`PACC1` (CPU clusters,
+not `ECPU`/`PCPU`), `AGX` (GPU, not `GFX`), `ISP0`/`JPEG0`/`PRORES1`/`SCODEC0`/`AVE0`/`AVE1`/
+`AVD0` (media). `BandwidthSampler` falls back to this path (`classifyPMPHistogramRequestor`,
+`weightedAverageGBs`, `parseHistogramBucketGBs`) only when the classic `AMC Stats` subscription
+fails, and only reads the combined `<requestor> RD+WR` channel per requestor (the separate
+RD-only/WR-only breakdown channels are not also summed in, to avoid double-counting).
+
+**Known limitation, observed and not solved here:** the top bucket (`"32GB/s"`) is very likely a
+saturating/clamped bin rather than a literal ceiling — under a sustained heavy-GPU workload, the
+`AGX RD+WR` channel showed a real residency spike concentrated in that top bucket (tens of ticks
+out of a few hundred), and the always-on `AMCC` requestor (folded into `other`) was observed
+reading *100% of its residency* in the top bucket continuously, even near-idle — suggesting
+`AMCC`'s counter may not behave like the others. The weighted average is real, non-fabricated,
+and moves correctly with load, but can understate true peak bandwidth for requestors that
+saturate past 32 GB/s, and `other`/`total` may run persistently elevated because of `AMCC`. Not
+fixed in this change; flagged for whoever picks up more precise interpretation of this histogram
+next.
+
+Verify on your own machine: `xcrun swift run -q sscope-cli --bandwidth` (works whether your
+machine uses the classic `AMC Stats` path or this `PMP`/`DCS BW` fallback — it dumps whichever is
+actually subscribable), plus `sysctl hw.model machdep.cpu.brand_string` and the macOS build
+(`sw_vers`).
 
 ## Non-IOReport sources
 

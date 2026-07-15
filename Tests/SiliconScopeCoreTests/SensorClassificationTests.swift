@@ -1,12 +1,14 @@
 //
 //  File:      SensorClassificationTests.swift
 //  Created:   2026-06-20
-//  Updated:   2026-07-01
+//  Updated:   2026-07-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins the pure classification maps: SMC-key → category, raw HID name → friendly
 //             label/category, the per-generation curated key catalog, and the bandwidth
 //             requestor → bucket map (adapted from NeoAsitop). These are exactly the lookups
 //             that silently rot if a prefix is mistyped, so they get regression coverage.
+//             Also pins the DIE0-prefixed / split-RD-WR requestor shape observed on macOS 27
+//             beta (github.com/kennss/SiliconScope#14) alongside the original bare shape.
 //
 import XCTest
 @testable import SiliconScopeCore
@@ -171,5 +173,46 @@ final class SensorClassificationTests: XCTestCase {
         // MSR is explicitly NOT media (matches NeoAsitop); DISP/ANS fall through to other.
         XCTAssertEqual(BandwidthSampler.classify(requestor: "MSR"),  .other)
         XCTAssertEqual(BandwidthSampler.classify(requestor: "DISP"), .other)
+    }
+
+    // MARK: - Bandwidth requestor map, DIE0-prefixed / per-core shape (github.com/kennss/SiliconScope#14)
+
+    func testBandwidthRequestorMapWithDIE0Prefix() {
+        // Apple restructured "AMC Stats" channel names on macOS 27 beta / M3 Max to prepend a
+        // chip-id token ("DIE0") ahead of the requestor, and to give per-core requestors a
+        // numeric suffix. classify() must see past the prefix without exact-matching cores.
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 ECPU0 DCS"), .cpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 ECPU1 DCS"), .cpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 PCPU0 DCS"), .cpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 GFX DCS"),   .gpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 GFXC DCS"),  .gpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 JPEG DCS"),  .media)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 PRORES DCS"), .media)
+        // New macOS 27 requestor families with no chip-id ambiguity still fall through to other.
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 SEP DCS"), .other)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "DIE0 ATC0 DCS"), .other)
+    }
+
+    func testReadWriteSuffixShapes() {
+        // The suffix/DCS guard chain in BandwidthSampler.sample() must accept every RD/WR shape
+        // observed across macOS 26 (bare) and macOS 27 (split/appended) — see #14 — while the
+        // recovered requestor drops exactly the matched suffix, nothing more.
+        let cases: [(name: String, requestor: String)] = [
+            ("ECPU DCS RD",                       "ECPU DCS"),
+            ("ECPU DCS WR",                        "ECPU DCS"),
+            ("DIE0 GFX DCS RD/WR",                 "DIE0 GFX DCS"),
+            ("DIE0 ATC0 DCS RD/WR/RDWR",           "DIE0 ATC0 DCS"),
+            ("DIE0 ECPU0 DCS RD/WR + RD/WR",       "DIE0 ECPU0 DCS"),
+        ]
+        for c in cases {
+            XCTAssertTrue(BandwidthSampler.hasReadWriteToken(c.name), "\(c.name) should be recognized as a byte-traffic channel")
+            XCTAssertEqual(BandwidthSampler.stripReadWriteSuffix(c.name), c.requestor, "\(c.name)")
+        }
+        // Structural counters carry no RD/WR token at all and must be excluded.
+        for structural in ["DCS CAS", "DCS RAS", "DCS PD CYCLES", "DCS PD ENTRIES",
+                            "DCS SR CYCLES", "DCS SR ENTRIES", "DSID 0 HITS", "DSID 0 MISSES",
+                            "PD DURATION(USEC)", "SR DURATION(USEC)"] {
+            XCTAssertFalse(BandwidthSampler.hasReadWriteToken(structural), structural)
+        }
     }
 }
