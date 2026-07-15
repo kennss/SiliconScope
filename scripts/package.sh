@@ -12,12 +12,31 @@
 #             AppIcon.icns. Requires a stored notarytool keychain profile. The profile
 #             name (NOTARY_PROFILE) is a pre-existing local keychain credential kept
 #             as "WhisPlayInfo-notary" so notarization works without re-auth.
-#             Usage: scripts/package.sh [version]
+#             Usage: scripts/package.sh [version] [--critical] [--notes FILE]
+#               --critical    mark this release as a Sparkle critical update (NOT the
+#                             default — most releases are ordinary updates). Users below
+#                             this version then cannot skip it and are prompted promptly.
+#               --notes FILE  Markdown/HTML release notes injected as the appcast
+#                             <description> shown in Sparkle's update dialog. Defaults to
+#                             docs/release-notes/v<version>.md if that file exists.
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${1:-1.0.0}"
+# --- Argument parsing: positional [version] plus optional flags (order-independent) ---
+VERSION=""
+CRITICAL=0
+NOTES_FILE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --critical)      CRITICAL=1; shift ;;
+    --notes)         NOTES_FILE="${2:-}"; shift 2 ;;
+    --notes=*)       NOTES_FILE="${1#*=}"; shift ;;
+    -*)              echo "Unknown flag: $1" >&2; exit 2 ;;
+    *)               [ -z "$VERSION" ] && VERSION="$1" || { echo "Unexpected arg: $1" >&2; exit 2; }; shift ;;
+  esac
+done
+VERSION="${VERSION:-1.0.0}"
 APP="SiliconScope"
 BUNDLE_ID="ai.calidalab.SiliconScope"
 IDENTITY="Developer ID Application: YONG SOO KIM (8677QL77VJ)"
@@ -119,8 +138,19 @@ APPCAST_DIR="$DIST/appcast"; mkdir -p "$APPCAST_DIR"
 cp "$DMG" "$APPCAST_DIR/"
 if [ -x "$GENERATE_APPCAST" ]; then
   "$GENERATE_APPCAST" --download-url-prefix "https://github.com/$REPO/releases/download/v$VERSION/" "$APPCAST_DIR"
+
+  # Default release-notes file if none passed and the conventional one exists.
+  if [ -z "$NOTES_FILE" ] && [ -f "docs/release-notes/v$VERSION.md" ]; then
+    NOTES_FILE="docs/release-notes/v$VERSION.md"
+  fi
+
+  # Post-process: generate_appcast never emits <sparkle:criticalUpdate> or a <description>,
+  # so inject them here — critical ONLY when --critical was passed (most releases are not).
+  VERSION="$VERSION" CRITICAL="$CRITICAL" NOTES_FILE="$NOTES_FILE" \
+    python3 scripts/appcast_annotate.py "$APPCAST_DIR/appcast.xml"
+
   cp "$APPCAST_DIR/appcast.xml" "$DIST/appcast.xml"
-  echo "✓ $DIST/appcast.xml"
+  echo "✓ $DIST/appcast.xml  (critical=$CRITICAL${NOTES_FILE:+, notes=$NOTES_FILE})"
 else
   echo "⚠︎ generate_appcast not found ($GENERATE_APPCAST) — run 'xcrun swift build' first."
 fi
@@ -135,3 +165,8 @@ ls -lh "$DMG"
 echo ""
 echo "Next: upload BOTH to the v$VERSION GitHub release:"
 echo "  gh release create v$VERSION \"$DMG\" \"$DIST/appcast.xml\" --title \"v$VERSION\" --notes-file ..."
+if [ "$CRITICAL" = "1" ]; then
+  echo ""
+  echo "⚠︎ This appcast is marked CRITICAL — users below $VERSION will be prompted promptly"
+  echo "  and cannot skip it. (Ordinary releases: omit --critical.)"
+fi
