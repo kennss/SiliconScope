@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-15
+//  Updated:   2026-07-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Value type holding one unified-memory bandwidth reading (GB/s), split
 //             by requestor. The headline signal for local-LLM throughput (token
@@ -9,6 +9,12 @@
 //  Notes:     cpuGBs = ECPU + PCPU* DCS traffic, gpuGBs = GFX, otherGBs = display /
 //             media / IO / storage. Sum of read + write. `isEstimated` flags readings
 //             from BandwidthSampler's PMP-histogram fallback path (see its file header).
+//             Decoding is hand-written (`init(from:)`) rather than synthesized so that
+//             ADDITIVE fields stay backward-compatible per RecordingFormat.swift's policy:
+//             the synthesized decoder requires every non-optional key, so a field added
+//             later (e.g. `isEstimated`) would throw .keyNotFound on older .ssrec frames and
+//             SessionReader would drop every frame → an old recording opens as `.noFrames`.
+//             decodeIfPresent + the property default keeps pre-existing recordings loading.
 //
 import Foundation
 
@@ -32,6 +38,20 @@ public struct BandwidthSample: Sendable, Equatable, Codable {
     public var isEstimated: Bool = false
 
     public init() {}
+
+    /// Hand-written decoder (see the file header): every key is optional-on-read so that any
+    /// field added in a later version decodes to its default on frames that predate it, instead
+    /// of throwing `.keyNotFound` and making SessionReader discard the whole recording. Encoding
+    /// stays synthesized — new files always carry every key; only reads must tolerate absence.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        cpuGBs = try c.decodeIfPresent(Double.self, forKey: .cpuGBs) ?? 0
+        gpuGBs = try c.decodeIfPresent(Double.self, forKey: .gpuGBs) ?? 0
+        mediaGBs = try c.decodeIfPresent(Double.self, forKey: .mediaGBs) ?? 0
+        otherGBs = try c.decodeIfPresent(Double.self, forKey: .otherGBs) ?? 0
+        measuredTotalGBs = try c.decodeIfPresent(Double.self, forKey: .measuredTotalGBs)
+        isEstimated = try c.decodeIfPresent(Bool.self, forKey: .isEstimated) ?? false
+    }
 
     public var totalGBs: Double { measuredTotalGBs ?? (cpuGBs + gpuGBs + mediaGBs + otherGBs) }
 }
