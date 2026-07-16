@@ -679,10 +679,43 @@ private struct AIRuntimeCard: View {
         Card(title: "AI Runtime") {
             VStack(alignment: .leading, spacing: Space.tight) {
                 header
+                beaconLine
                 if modelPresent { engineLine }
                 modelLine
                 budgetLine
                 benchmarkLine
+            }
+        }
+    }
+
+    // Self-reported activity from beacon manifests (task/model/phase/progress) —
+    // richer than anything inferable from the process table, shown when a runtime
+    // opted in (e.g. ltx-video --beacon). One row PER beacon-carrying process:
+    // concurrent inferences/trainings each get their own line (pid disambiguates
+    // when several share a display name).
+    @ViewBuilder private var beaconLine: some View {
+        let beaconed = runtime.processes.filter { $0.beacon != nil }
+        ForEach(beaconed) { proc in
+            if let b = proc.beacon {
+                HStack(spacing: 6) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .font(.system(size: 9.5)).foregroundStyle(Theme.accent)
+                    Text([b.task, b.model, b.phase].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                        .lineLimit(1)
+                    if beaconed.count > 1 {
+                        Text("pid \(proc.pid)")
+                            .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                    }
+                    if let progress = b.progress {
+                        ProgressView(value: progress)
+                            .controlSize(.small).frame(width: 60)
+                        Text("\(Int(progress * 100))%")
+                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.text)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
         }
     }
