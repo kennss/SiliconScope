@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-02
+//  Updated:   2026-07-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -37,7 +37,6 @@ final class SiliconScopeMonitor {
     var cpuThrottling: Bool { engine.cpuThrottling }
     var cpuClockDropFraction: Double { engine.cpuClockDropFraction }
     var bandwidthCeilingGBs: Double { engine.bandwidthCeilingGBs }
-    var bandwidthPercentOfCeiling: Double { engine.bandwidthPercentOfCeiling }
     var bottleneck: Bottleneck { engine.bottleneck }
     var memoryRisk: MemoryBudget.Risk { engine.memoryRisk }
     var memoryPageInRate: Double { engine.memoryPageInRate }

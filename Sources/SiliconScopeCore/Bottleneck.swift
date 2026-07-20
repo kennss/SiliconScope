@@ -1,12 +1,12 @@
 //
 //  File:      Bottleneck.swift
 //  Created:   2026-06-12
-//  Updated:   2026-06-21
+//  Updated:   2026-07-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The AI-workload bottleneck classifier (hero feature). Given a snapshot,
 //             the unified-memory-bandwidth ceiling, and whether the GPU is throttling,
 //             it returns the single dominant bottleneck. Also holds the per-chip
-//             bandwidth ceiling table used for the "% of ceiling" gauge.
+//             bandwidth ceiling table behind the "Bandwidth-bound" verdict.
 //  Notes:     Pure value logic, no UI. Color mapping lives in the UI layer (Theme).
 //             Ceilings are theoretical unified-memory bandwidth (GB/s) from Apple's
 //             specs; callers should take max(ceiling, observedPeak) so the figure

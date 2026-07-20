@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-15
+//  Updated:   2026-07-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -439,9 +439,10 @@ private struct AIWorkloadCard: View {
 
     private var bwFraction: Double { ceilingGBs > 0 ? min(1, snapshot.bandwidth.totalGBs / ceilingGBs) : 0 }
 
-    // Memory STATE: swapping > pressure > bandwidth-bound > normal. Bandwidth magnitude lives in the
-    // dedicated "% of ceiling" bar below, so this line describes the memory side — including sticky
-    // swap, which is *shown* (not alarmed) per instrument-not-nanny.
+    // Memory STATE: swapping > pressure > bandwidth-bound > normal. This row IS the bandwidth-vs-
+    // ceiling read — surfaced as the qualitative "Bandwidth-bound" verdict below when traffic nears
+    // the chip's spec ceiling (there is no separate numeric gauge) — plus sticky swap, which is
+    // *shown* (not alarmed) per instrument-not-nanny.
     private var memState: (Color, String, String) {
         switch memoryRisk {
         case .swapping:

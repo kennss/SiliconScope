@@ -116,7 +116,7 @@ Apple Silicon** 필요. 이후로는 **스스로 업데이트**(Sparkle)하니, 
 - **기록 & 재생** *(3.0 신규)* — 모든 지표를 `.ssrec` 파일로 기록하고 대시보드를 **재생 /
   일시정지 / 스크럽 / 배속**으로 재생 — DVR처럼
 - **AI Workload 뷰** — 병목 분류기(*bandwidth-bound* / *compute-bound* / *thermal-throttled* /
-  *memory-pressured*)와 칩별 **"% of ceiling"** 대역폭 게이지 — "지금 내 로컬 LLM을 무엇이
+  *memory-pressured*)가 칩별 대역폭 스펙 한계에 비추어 "지금 내 로컬 LLM을 무엇이
   발목 잡는가?"에 답합니다.
 - **E-코어 / P-코어 구분** — 클러스터별 사용률 + 실제 DVFS 주파수
 - **GPU** — 사용률, 전력, 주파수

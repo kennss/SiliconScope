@@ -120,8 +120,8 @@ Prefer to build it yourself? See [Build & run](#build--run).
 - **Record & Replay** *(new in 3.0)* — record every metric to a `.ssrec` file and replay the
   dashboard with **play / pause / scrub / speed**, like a DVR
 - **AI Workload view** — a bottleneck classifier (*bandwidth-bound* / *compute-bound* /
-  *thermal-throttled* / *memory-pressured*) with a per-chip **"% of ceiling"** bandwidth
-  gauge — answers "what's limiting my local LLM right now?"
+  *thermal-throttled* / *memory-pressured*), judged against each chip's spec bandwidth
+  ceiling — answers "what's limiting my local LLM right now?"
 - **E-core / P-core split** — per-cluster utilization + real DVFS frequency
 - **GPU** — utilization, power, frequency
 - **ANE & Media Engine** — Neural-Engine power and media-codec bandwidth (the differentiators)

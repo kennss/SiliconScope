@@ -1,7 +1,7 @@
 //
 //  File:      MetricsEngine.swift
 //  Created:   2026-06-25
-//  Updated:   2026-07-03
+//  Updated:   2026-07-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The path-dependent derivation that turns a stream of SystemSnapshots into the
 //             values the dashboard reads beyond the raw snapshot: rolling sparkline History,
@@ -114,10 +114,6 @@ public final class MetricsEngine {
     public var cpuThrottling: Bool { Self.cpuThrottling(latest: latest, topology: topology) }
     public var cpuClockDropFraction: Double { Self.cpuClockDropFraction(latest: latest, topology: topology) }
     public var bandwidthCeilingGBs: Double { Self.bandwidthCeiling(topology: topology, bandwidthPeakGBs: bandwidthPeakGBs) }
-    public var bandwidthPercentOfCeiling: Double {
-        let c = bandwidthCeilingGBs
-        return c > 0 ? min(1, latest.bandwidth.totalGBs / c) : 0
-    }
     public var bottleneck: Bottleneck {
         Self.bottleneck(latest: latest, history: history, bandwidthPeakGBs: bandwidthPeakGBs, throttling: gpuThrottling)
     }

@@ -124,8 +124,8 @@ Wenn du selbst bauen willst, siehe [Build & run](README.md#build--run) im englis
 - **Aufzeichnen & Abspielen** *(neu in 3.0)* — zeichne jede Metrik in eine `.ssrec`-Datei auf und
   spiele das Dashboard mit **Play / Pause / Scrub / Geschwindigkeit** ab, wie ein DVR
 - **AI-Workload-Ansicht** — ein Engpass-Klassifikator (*bandwidth-bound* / *compute-bound* /
-  *thermal-throttled* / *memory-pressured*) plus eine **„% of ceiling"**-Bandbreitenanzeige pro
-  Chip — beantwortet: „Was bremst mein lokales LLM gerade?"
+  *thermal-throttled* / *memory-pressured*), gemessen an der Speicherbandbreiten-Obergrenze
+  des jeweiligen Chips — beantwortet: „Was bremst mein lokales LLM gerade?"
 - **E-Kern- / P-Kern-Trennung** — Auslastung pro Cluster + echte DVFS-Frequenzen
 - **GPU** — Auslastung, Leistung, Frequenz
 - **ANE & Media Engine** — Neural-Engine-Leistung und Medien-Codec-Bandbreite (das

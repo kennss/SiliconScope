@@ -23,7 +23,7 @@ export const STRINGS = {
         body: 'First-class Neural Engine and Media Engine power, plus unified-memory bandwidth with the CPU / GPU / Media split — the real bottleneck signal for on-device AI and video.',
         img: '/img/menubar-gpu.png' },
       { tag: 'AI workload', title: 'Bandwidth-bound or compute-bound?',
-        body: 'A live verdict for your local LLM, a “% of your chip’s bandwidth ceiling” gauge, and a one-click tokens/sec + tokens-per-watt benchmark.',
+        body: 'A live verdict for your local LLM — bandwidth-bound or compute-bound — read against your chip’s spec bandwidth ceiling, plus a one-click tokens/sec + tokens-per-watt benchmark.',
         img: '/img/benchmark.png' },
     ],
     gallery: {
@@ -63,7 +63,7 @@ export const STRINGS = {
         body: 'Neural Engine과 미디어 엔진의 전력, 그리고 CPU·GPU·미디어로 나뉜 통합 메모리 대역폭까지 — 온디바이스 AI와 영상 작업의 진짜 병목을 짚어 냅니다.',
         img: '/img/menubar-gpu.png' },
       { tag: 'AI 워크로드', title: '대역폭에 묶였나, 연산에 묶였나',
-        body: '로컬 LLM이 지금 무엇에 묶여 있는지 실시간으로 가려내고, 칩의 대역폭 한계 대비 몇 퍼센트에 닿았는지 보여 줍니다. 버튼 한 번이면 초당 토큰 수와 와트당 토큰 효율까지 재어 줍니다.',
+        body: '로컬 LLM이 지금 대역폭에 묶였는지 연산에 묶였는지, 칩의 대역폭 스펙 한계에 비추어 실시간으로 가려냅니다. 버튼 한 번이면 초당 토큰 수와 와트당 토큰 효율까지 재어 줍니다.',
         img: '/img/benchmark.png' },
     ],
     gallery: {
