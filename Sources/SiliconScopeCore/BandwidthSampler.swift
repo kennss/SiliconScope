@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-15
+//  Updated:   2026-07-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly. Three read strategies,
 //             tried in order at init and locked in for the sampler's lifetime:
@@ -13,11 +13,12 @@
 //                 "AMC Stats" subscription itself fails outright (confirmed on an Apple M4
 //                 Max, macOS 26.5.2 — IOReportCopyChannelsInGroup finds ~190 channels but
 //                 IOReportCreateSubscription returns nil for the group), the same
-//                 per-requestor byte counters live instead under IOReport "PMP", subgroup
-//                 "DCS BW", as State-format residency histograms named "1GB/s".."32GB/s"
-//                 per requestor (e.g. "EACC0 RD+WR", "AGX RD+WR") — the same
-//                 residency-weighting idiom CPUSampler already uses for DVFS frequency,
-//                 applied to bandwidth buckets instead of MHz.
+//                 per-requestor byte counters live instead under IOReport "PMP" (renamed
+//                 "PMP0" on M5 Max/macOS 26.5.2, github.com/kennss/SiliconScope#30 — resolved
+//                 across the "PMP"/"PMP0"/"PMP1" family), subgroup "DCS BW", as State-format
+//                 residency histograms named "1GB/s".."32GB/s" per requestor (e.g. "EACC0
+//                 RD+WR" / "MACC0 RD+WR", "AGX RD+WR") — the same residency-weighting idiom
+//                 CPUSampler already uses for DVFS frequency, applied to bandwidth buckets.
 //  Notes:     Requestor map (classic path): ECPU/PCPU* -> CPU, GFX -> GPU,
 //             ISP/VENC/VDEC/PRORES/CODEC/JPEG -> Media, "DCS" is the chip-wide aggregate
 //             (= total); other = total - the above. MSR is intentionally NOT media (matches
@@ -78,9 +79,9 @@ public final class BandwidthSampler {
         // channels but IOReportCreateSubscription itself returns nil for "AMC Stats" — not a
         // naming/classification issue, the group is simply not subscribable). Fall back to the
         // PMP "DCS BW" histogram, which carries the same per-requestor byte-traffic information
-        // in a different (State/residency) shape.
-        if let channels = IOReportCopyChannelsInGroup("PMP" as CFString, "DCS BW" as CFString, 0, 0, 0)?.takeRetainedValue(),
-           let (sub, subscribed) = Self.subscribe(to: channels) {
+        // in a different (State/residency) shape. The PMP group is name-versioned across chips
+        // ("PMP" → "PMP0" on M5 Max/macOS 26.5.2, #30), so resolve it across the PMP family.
+        if let (sub, subscribed, _) = Self.subscribePMPHistogram() {
             mode = .pmpHistogram
             subscription = sub
             subscribedChannels = subscribed
@@ -96,6 +97,26 @@ public final class BandwidthSampler {
               let subscribed = subbed?.takeRetainedValue()
         else { return nil }
         return (sub, subscribed)
+    }
+
+    /// PMP group-name family for the "DCS BW" residency-histogram fallback. Apple renames this
+    /// group across chip generations: "PMP" (Apple Silicon through M4) → "PMP0" (M5 Max, macOS
+    /// 26.5.2 — github.com/kennss/SiliconScope#30). "PMP1" covers a hypothetical second die on a
+    /// future multi-die part. Mirrors the reporter's suggested `^PMP\d*$` intent without
+    /// enumerating every channel; the first subscribable one wins. (Simultaneous multi-die
+    /// aggregation across PMP0+PMP1 is a documented future refinement, not needed for M5 Max.)
+    private static let pmpGroupCandidates = ["PMP", "PMP0", "PMP1"]
+
+    /// Finds the first PMP-family group whose "DCS BW" histogram subgroup is subscribable.
+    /// Returns the subscription, its channel dictionary, and the group name that worked.
+    private static func subscribePMPHistogram() -> (IOReportSubscriptionRef, CFMutableDictionary, String)? {
+        for group in pmpGroupCandidates {
+            if let channels = IOReportCopyChannelsInGroup(group as CFString, "DCS BW" as CFString, 0, 0, 0)?.takeRetainedValue(),
+               let (sub, subscribed) = subscribe(to: channels) {
+                return (sub, subscribed, group)
+            }
+        }
+        return nil
     }
 
     public func sample(interval: TimeInterval = 0.2) -> BandwidthSample {
@@ -242,13 +263,14 @@ public final class BandwidthSampler {
     /// aggregate, so this never returns `.total`.
     static func classifyPMPHistogramRequestor(_ name: String) -> Requestor {
         let upper = name.uppercased()
-        if upper.hasPrefix("EACC") || upper.hasPrefix("PACC") { return .cpu }
+        // CPU cluster requestors: "EACC*"/"PACC*" (M1–M4), "MACC*" (M5 Max — #30).
+        if upper.hasPrefix("EACC") || upper.hasPrefix("PACC") || upper.hasPrefix("MACC") { return .cpu }
         if upper.hasPrefix("AGX") { return .gpu }
         if upper.hasPrefix("ISP") || upper.hasPrefix("JPEG") || upper.hasPrefix("PRORES")
             || upper.hasPrefix("SCODEC") || upper.hasPrefix("AVE") || upper.hasPrefix("AVD") {
             return .media
         }
-        return .other   // ANE0, ANS, ATC0-3, DISPEXT0-3, DISPINT, MSR0/1, AMCC, …
+        return .other   // ANE(L0/L1), ANS, ATC0-3, DISPEXT0-3, DISPINT, MSR0/1, AMCC, …
     }
 
     private static func samplePMPHistogram(delta: CFDictionary) -> BandwidthSample {
@@ -352,14 +374,13 @@ public final class BandwidthSampler {
             return ["=== \"\(groupName)\" subscription OK — \(lines.count) channels ==="] + lines.sorted()
         }
 
-        // Classic path unavailable — fall back to the PMP "DCS BW" histogram (see samplePMPHistogram).
-        var out = ["\"\(groupName)\" subscription unavailable — falling back to PMP \"DCS BW\" histogram dump:"]
-        guard let pmp = IOReportCopyChannelsInGroup("PMP" as CFString, "DCS BW" as CFString, 0, 0, 0)?.takeRetainedValue(),
-              let (pmpSub, pmpChannels) = subscribe(to: pmp)
-        else {
-            out.append("PMP \"DCS BW\" subgroup also unavailable on this machine")
-            return out
+        // Classic path unavailable — fall back to the PMP "DCS BW" histogram (see samplePMPHistogram),
+        // resolving the group across the "PMP"/"PMP0"/"PMP1" family like sample() does (#30).
+        guard let (pmpSub, pmpChannels, pmpGroup) = subscribePMPHistogram() else {
+            return ["\"\(groupName)\" subscription unavailable — and no subscribable "
+                    + "\"DCS BW\" histogram in the PMP family (\(pmpGroupCandidates.joined(separator: "/"))) on this machine"]
         }
+        var out = ["\"\(groupName)\" subscription unavailable — falling back to \(pmpGroup) \"DCS BW\" histogram dump:"]
         let first = IOReportCreateSamples(pmpSub, pmpChannels, nil)
         Thread.sleep(forTimeInterval: interval)
         let second = IOReportCreateSamples(pmpSub, pmpChannels, nil)
@@ -404,12 +425,16 @@ public final class BandwidthSampler {
 
     static func classify(requestor: String) -> Requestor {
         if requestor == "DCS" { return .total }
-        if Self.contains(requestor, unitPrefix: "ECPU") || Self.contains(requestor, unitPrefix: "PCPU") {
+        // CPU clusters: "ECPU"/"PCPU" (M1–M4), "MCPU" (M5 — #30). contains() tolerates a leading
+        // "DIE0 "/"PRIM " chip-id token, so "PRIM MCPU0 DCS" still matches.
+        if Self.contains(requestor, unitPrefix: "ECPU") || Self.contains(requestor, unitPrefix: "PCPU")
+            || Self.contains(requestor, unitPrefix: "MCPU") {
             return .cpu
         }
         if Self.contains(requestor, unitPrefix: "GFX") { return .gpu }
-        // Media Engine = isp + strm codec + prores + vdec + venc + jpeg + jpg. MSR is NOT media.
+        // Media Engine = isp + strm/s-codec + prores + vdec/venc (M5: "AVD"/"AVE") + jpeg. MSR NOT media.
         if Self.contains(requestor, unitPrefix: "VENC") || Self.contains(requestor, unitPrefix: "VDEC")
+            || Self.contains(requestor, unitPrefix: "AVD") || Self.contains(requestor, unitPrefix: "AVE")
             || Self.contains(requestor, unitPrefix: "ISP") || Self.contains(requestor, unitPrefix: "JPG")
             || Self.contains(requestor, unitPrefix: "JPEG") || requestor.contains("PRORES")
             || requestor.contains("CODEC") {

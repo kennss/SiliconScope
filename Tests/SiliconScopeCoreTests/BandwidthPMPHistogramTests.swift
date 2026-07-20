@@ -95,4 +95,22 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         // Never .total — this path has no chip-wide aggregate channel.
         XCTAssertNotEqual(BandwidthSampler.classifyPMPHistogramRequestor("EACC0"), .total)
     }
+
+    // MARK: - M5 Max PMP-histogram requestor names (github.com/kennss/SiliconScope#30)
+
+    func testClassifyPMPHistogramRequestorM5MaxNames() {
+        // M5 Max ("PMP0" / "DCS BW") CPU clusters are "MACC*" (were "EACC*"/"PACC*" on M1–M4).
+        XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor("MACC0"), .cpu)
+        XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor("MACC1"), .cpu)
+        XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor("PACC"),  .cpu)
+        XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor("AGX"),   .gpu)
+        // Video engines on M5 are "AVD"/"AVE"; "SCODEC"/"PRORES"/"ISP" unchanged.
+        for media in ["AVD", "SCODEC", "SCODEC RT", "PRORES", "ISP", "ISP RT"] {
+            XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(media), .media, media)
+        }
+        // M5 ANE is "ANE L0"/"ANE L1" (was "ANE0") — still folds into other (no ANE bandwidth bucket).
+        for other in ["ANE L0", "ANE L1", "MSR0", "MSR1", "DISPINT", "DISPEXT0"] {
+            XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(other), .other, other)
+        }
+    }
 }

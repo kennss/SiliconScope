@@ -215,4 +215,23 @@ final class SensorClassificationTests: XCTestCase {
             XCTAssertFalse(BandwidthSampler.hasReadWriteToken(structural), structural)
         }
     }
+
+    // MARK: - Bandwidth requestor map, M5 Max "AMC Stats" names (github.com/kennss/SiliconScope#30)
+
+    func testBandwidthRequestorMapM5MaxNames() {
+        // On M5 Max the (currently unsubscribable) "AMC Stats" names gained a "PRIM " prefix and
+        // renamed units: CPU "MCPU*"/"PCPU*", video "AVD"/"AVE*" (were VDEC/VENC), "SCODEC" (was
+        // STRM CODEC). classify() must see past "PRIM " and map the new units — for whenever
+        // "AMC Stats" subscribes again on some chip/OS.
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM MCPU0 DCS"),   .cpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM MCPU1 DCS"),   .cpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM PCPU0 DCS"),   .cpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM GFX DCS"),     .gpu)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM GFXC DCS"),    .gpu)
+        for media in ["PRIM AVD DCS", "PRIM AVE0 DCS", "PRIM AVE1 DCS", "PRIM SCODEC DCS", "PRIM PRORES1 DCS"] {
+            XCTAssertEqual(BandwidthSampler.classify(requestor: media), .media, media)
+        }
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM ANE DCS"),     .other)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM DISPINT DCS"), .other)
+    }
 }
