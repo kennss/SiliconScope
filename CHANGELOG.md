@@ -1,5 +1,26 @@
 # Changelog
 
+## v3.2.1 — 2026-07-21
+
+- **Memory bandwidth & Media Engine now report on M4 Max and M5 Max.** On recent Apple Silicon +
+  macOS 26 the classic "AMC Stats" IOReport group became unsubscribable, so bandwidth and the Media
+  Engine read 0 on these chips. SiliconScope now falls back to the PMP residency-histogram source and
+  resolves its group name across chip generations ("PMP" → "PMP0" on M5 Max), restoring the Bandwidth
+  / Media rows and the AI Workload bandwidth-bound verdict.
+  ([#14](https://github.com/kennss/SiliconScope/issues/14),
+  [#29](https://github.com/kennss/SiliconScope/pull/29),
+  [#30](https://github.com/kennss/SiliconScope/issues/30) — thanks to the reporters for
+  hardware-verified diagnoses on M4 Max and M5 Max)
+  - The `AMCC` memory-controller aggregate is excluded from the per-requestor sum, so it no longer
+    inflates "other" / total on the histogram path.
+  - New `sscope-cli --bandwidth` diagnostic dumps the raw bandwidth-channel inventory, so a new
+    chip/OS layout can be reported quickly.
+- **Older recordings keep loading.** Fixed a regression where `.ssrec` files recorded before these
+  bandwidth changes failed to decode and opened empty.
+- **Honest AI Workload copy.** The docs and site described a numeric "% of ceiling" gauge that isn't
+  rendered — the bandwidth-vs-ceiling read surfaces as the qualitative "Bandwidth-bound" verdict; the
+  copy now matches.
+
 ## v3.2.0 — 2026-07-15
 
 - **Much lighter — dramatically lower CPU and energy use.** SiliconScope had been using far more
