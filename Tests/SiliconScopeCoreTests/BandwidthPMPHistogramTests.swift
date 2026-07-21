@@ -113,4 +113,17 @@ final class BandwidthPMPHistogramTests: XCTestCase {
             XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(other), .other, other)
         }
     }
+
+    // MARK: - AMCC exclusion from the PMP-histogram sum (github.com/kennss/SiliconScope#30)
+
+    func testPMPHistogramExcludesAMCCNotMACC() {
+        // AMCC = memory-controller aggregate (buckets start at 32GB/s) → excluded from the sum.
+        XCTAssertTrue(BandwidthSampler.isPMPHistogramExcluded("AMCC"))
+        XCTAssertTrue(BandwidthSampler.isPMPHistogramExcluded("AMCC0"))
+        // The M5 CPU cluster "MACC*" must NOT be caught by the AMCC exclusion (prefix distinct).
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("MACC0"))
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("MACC1"))
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("AGX"))
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("PACC"))
+    }
 }

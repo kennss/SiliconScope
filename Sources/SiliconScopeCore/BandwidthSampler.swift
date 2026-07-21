@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-20
+//  Updated:   2026-07-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly. Three read strategies,
 //             tried in order at init and locked in for the sampler's lifetime:
@@ -270,7 +270,16 @@ public final class BandwidthSampler {
             || upper.hasPrefix("SCODEC") || upper.hasPrefix("AVE") || upper.hasPrefix("AVD") {
             return .media
         }
-        return .other   // ANE(L0/L1), ANS, ATC0-3, DISPEXT0-3, DISPINT, MSR0/1, AMCC, …
+        return .other   // ANE(L0/L1), ANS, ATC0-3, DISPEXT0-3, DISPINT, MSR0/1, …
+    }
+
+    /// Requestors excluded from the PMP-histogram per-requestor sum. `AMCC` is the
+    /// memory-controller aggregate whose histogram buckets start at "32GB/s" (32..224), so its
+    /// residency-weighted average never reads below ~32 GB/s — it inflates other/total even at
+    /// idle and is not an additive per-requestor lane (measured on M5 Max, #30). Note `AMCC`
+    /// (prefix) is distinct from the M5 CPU cluster `MACC*`, which is NOT excluded.
+    static func isPMPHistogramExcluded(_ requestor: String) -> Bool {
+        requestor.uppercased().hasPrefix("AMCC")
     }
 
     private static func samplePMPHistogram(delta: CFDictionary) -> BandwidthSample {
@@ -289,6 +298,9 @@ public final class BandwidthSampler {
             // breakdown channels would double-count if also summed in.
             guard name.uppercased().hasSuffix(" RD+WR") else { return Int32(kKtopIOReportIterOk) }
             let requestor = String(name.dropLast(6))   // strip " RD+WR"
+            // Skip the AMCC memory-controller aggregate — its buckets start at 32GB/s so it
+            // never reads below ~32 and inflates other/total (M5 Max, #30). Not additive.
+            if Self.isPMPHistogramExcluded(requestor) { return Int32(kKtopIOReportIterOk) }
 
             let stateCount = Int(IOReportStateGetCount(channel))
             var buckets: [(gbs: Double, residency: UInt64)] = []
