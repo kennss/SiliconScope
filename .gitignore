@@ -11,6 +11,9 @@ design_handoff_app_icon/build/
 # Packaging output (.app / .dmg) — distributed via GitHub Releases, not git
 dist/
 
+# Local fleet-agent build binary (produced by `go build` / scripts/build-agent.sh)
+agent/sscope-agent
+
 # Reference sources (cloned, not part of this project)
 reference/
 
