@@ -2,7 +2,7 @@
 #
 #  File:      build-app.sh
 #  Created:   2026-06-12
-#  Updated:   2026-06-21
+#  Updated:   2026-07-21
 #  Overview:  Builds a local SiliconScope.app bundle from the SwiftPM executable.
 #  Notes:     This is for development/local install. It does not notarize or create
 #             a DMG; use scripts/package.sh for Developer ID distribution.
@@ -16,6 +16,12 @@ VERSION="${1:-1.0.0}"
 APP="SiliconScope"
 BUNDLE_ID="${BUNDLE_ID:-ai.calidalab.SiliconScope}"
 CONFIG="${CONFIG:-release}"
+# Signing identity. Default is ad-hoc ("-") for a throwaway local install. For features gated by
+# macOS Local Network / TCC privacy (the Fleet view's mDNS + HTTP), ad-hoc signatures have an
+# unstable designated requirement that TCC won't track — set SIGN_ID to a Developer ID Application
+# identity so the app gets a stable identity and the Local Network prompt actually appears:
+#   SIGN_ID="Developer ID Application: YONG SOO KIM (8677QL77VJ)" scripts/build-app.sh
+SIGN_ID="${SIGN_ID:--}"
 DIST="${DIST:-dist}"
 APPDIR="$DIST/$APP.app"
 ICON="Sources/$APP/Resources/AppIcon.icns"
@@ -54,6 +60,9 @@ cat > "$APPDIR/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSLocalNetworkUsageDescription</key><string>SiliconScope discovers monitoring agents on your local network to show remote machines (e.g. a Linux GPU box) in the Fleet view.</string>
+  <key>NSBonjourServices</key>
+  <array><string>_sscope-agent._tcp</string></array>
 </dict>
 </plist>
 PLIST
@@ -64,7 +73,7 @@ cp -R "$BIN_DIR/Sparkle.framework" "$APPDIR/Contents/Frameworks/"
 # The SPM binary links @rpath/Sparkle.framework; point rpath at the bundle's Frameworks.
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APPDIR/Contents/MacOS/$APP" 2>/dev/null || true
 
-echo "Ad-hoc signing..."
+echo "Signing (identity: $SIGN_ID)..."
 # Sparkle: sign nested helpers (deep -> shallow), then the framework, then the app last.
 SPARKLE_FW="$APPDIR/Contents/Frameworks/Sparkle.framework"
 SPV="$SPARKLE_FW/Versions/$(ls "$SPARKLE_FW/Versions" | grep -v Current | head -1)"
@@ -73,10 +82,10 @@ for nested in \
   "$SPV/XPCServices/Downloader.xpc" \
   "$SPV/Autoupdate" \
   "$SPV/Updater.app"; do
-  [ -e "$nested" ] && codesign --force --sign - --timestamp=none "$nested"
+  [ -e "$nested" ] && codesign --force --sign "$SIGN_ID" --timestamp=none "$nested"
 done
-codesign --force --sign - --timestamp=none "$SPARKLE_FW"
-codesign --force --sign - --timestamp=none "$APPDIR"
+codesign --force --sign "$SIGN_ID" --timestamp=none "$SPARKLE_FW"
+codesign --force --sign "$SIGN_ID" --timestamp=none "$APPDIR"
 codesign --verify --strict --verbose=2 "$APPDIR"
 
 echo "Built $APPDIR"

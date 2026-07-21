@@ -15,6 +15,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import SiliconScopeCore
 
 extension Notification.Name {
     /// Posted by menu-bar dropdowns to open Settings; handled by SettingsOpenerBridge.
@@ -57,25 +58,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     NSApplication.shared.setActivationPolicy(showDock ? .regular : .accessory)
 }
 
+/// Dropdown content for the menu-bar fleet glyph: This Mac + one summary line per machine, each
+/// selecting that device in the main window (deep-linking via the shared selection binding).
+private struct FleetMenuContent: View {
+    let fleet: FleetMonitor
+    @Binding var selection: DeviceSelection?
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("This Mac") { open(.thisMac) }
+        Divider()
+        if fleet.entries.isEmpty {
+            Text("Searching for agents…")
+        } else {
+            ForEach(fleet.entries) { e in
+                Button(fleetLine(e)) { open(.remote(e.id)) }
+            }
+        }
+        Divider()
+        Button("Open SiliconScope") { openWindow(id: "siliconscope-main") }
+    }
+
+    private func open(_ sel: DeviceSelection) {
+        selection = sel
+        openWindow(id: "siliconscope-main")
+    }
+
+    private func fleetLine(_ e: FleetMonitor.Entry) -> String {
+        let name = e.metrics?.hostname ?? e.source.label
+        if e.needsPairing { return "\(name) — pairing required" }
+        guard let m = e.metrics else { return "\(name) — connecting…" }
+        if let g = m.gpus.first {
+            return "\(name) — GPU \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W · \(Int(g.temperatureC))°C"
+        }
+        return "\(name) — CPU \(Int(m.cpu.usagePercent))%"
+    }
+}
+
 @main
 struct SiliconScopeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var monitor = SiliconScopeMonitor()
+    // Fleet — machines are discovered automatically via mDNS ("_sscope-agent._tcp"); no hardcoded
+    // endpoints. FleetMonitor owns discovery + polling behind the MachineMetrics boundary.
+    @State private var fleet = FleetMonitor()
+    // Which device the single window's detail pane shows. A Binding so the menu-bar glyph can
+    // deep-link to a specific machine. Optional to satisfy List(selection:).
+    @State private var deviceSelection: DeviceSelection? = .thisMac
 
     // The combined "SS" menu-bar item and all per-metric items are AppKit NSStatusItems managed
     // by MetricBarController (driven from the monitor loop), so each can be toggled — including
     // hiding the combined SS on notch-limited menu bars. (SwiftUI's MenuBarExtra can't: its
     // isInserted: init has no custom-label form for the live glyph, and toggling it loops the
-    // main menu.) The monitor is started from the dashboard window's onAppear at launch.
+    // main menu.) The monitor is started from the main window's onAppear at launch.
     var body: some Scene {
-        dashboardWindow
+        mainWindow
+        fleetMenuExtra
         Settings { SettingsView() }
     }
 
-    private var dashboardWindow: some Scene {
+    /// Menu-bar fleet glyph: a compact per-machine summary that deep-links into the main window.
+    /// FleetMonitor runs from launch (see mainWindow onAppear) so this stays live even when the
+    /// window is closed.
+    private var fleetMenuExtra: some Scene {
+        MenuBarExtra("Fleet", systemImage: "server.rack") {
+            FleetMenuContent(fleet: fleet, selection: $deviceSelection)
+        }
+    }
+
+    /// The single app window: a Devices sidebar (This Mac + discovered fleet agents) driving a
+    /// detail dashboard. Replaces the old separate dashboard + ⌘⇧F Fleet windows.
+    private var mainWindow: some Scene {
         Window("SiliconScope", id: "siliconscope-main") {
-            DashboardContainer(monitor: monitor)
-                .frame(minWidth: 640, minHeight: 600)
+            SiliconScopeRootView(monitor: monitor, fleet: fleet, selection: $deviceSelection)
                 .background(SettingsOpenerBridge())   // routes dropdown "Settings" → openSettings()
                 .onAppear {
                     applyDockIconPolicy()
@@ -83,17 +138,18 @@ struct SiliconScopeApp: App {
                         NSApplication.shared.applicationIconImage = icon
                     }
                     NSApplication.shared.activate(ignoringOtherApps: true)
-                    // Closing the dashboard hides it (we stay in the menu bar) rather than destroying
+                    // Closing the window hides it (we stay in the menu bar) rather than destroying
                     // it, so openMainDashboard() can bring the same window back. Pairs with the
                     // AppDelegate's terminate-after-last-window = false.
                     NSApplication.shared.windows
                         .first { $0.identifier?.rawValue == "siliconscope-main" }?
                         .isReleasedWhenClosed = false
                     monitor.start()
+                    fleet.start()   // run fleet discovery from launch so the menu-bar glyph stays live
                 }
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 700, height: 740)
+        .defaultSize(width: 940, height: 760)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { UpdaterController.shared.checkForUpdates() }

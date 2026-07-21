@@ -84,6 +84,9 @@ cat > "$APPDIR/Contents/Info.plist" <<PLIST
   <key>SUFeedURL</key><string>$SU_FEED_URL</string>
   <key>SUPublicEDKey</key><string>$SU_PUBLIC_KEY</string>
   <key>SUEnableAutomaticChecks</key><true/>
+  <key>NSLocalNetworkUsageDescription</key><string>SiliconScope discovers monitoring agents on your local network to show remote machines (e.g. a Linux GPU box) in the Fleet view.</string>
+  <key>NSBonjourServices</key>
+  <array><string>_sscope-agent._tcp</string></array>
 </dict>
 </plist>
 PLIST
