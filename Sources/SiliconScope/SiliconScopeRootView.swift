@@ -11,7 +11,8 @@
 //  Notes:     `selection` is a Binding owned by the App so the menu-bar glyph can deep-link to a
 //             specific machine. Sidebar is collapsible, so viewing only This Mac keeps the full-size
 //             dashboard exactly as before. Devices are secure (https) agents; the lock reflects
-//             pairing state.
+//             pairing state. "Add machine…" registers an off-LAN endpoint (Tailscale / VPN / cloud)
+//             that mDNS can't auto-discover; manual rows can be removed from their context menu.
 //
 import SwiftUI
 import SiliconScopeCore
@@ -27,6 +28,7 @@ struct SiliconScopeRootView: View {
     let monitor: SiliconScopeMonitor
     let fleet: FleetMonitor
     @Binding var selection: DeviceSelection?
+    @State private var showAddMachine = false
 
     var body: some View {
         NavigationSplitView {
@@ -37,19 +39,37 @@ struct SiliconScopeRootView: View {
                     Label("This Mac", systemImage: "laptopcomputer")
                         .tag(DeviceSelection.thisMac)
                     ForEach(fleet.entries) { entry in
-                        DeviceSidebarRow(entry: entry) { fleet.unpair(name: $0) }
-                            .tag(DeviceSelection.remote(entry.id))
+                        DeviceSidebarRow(
+                            entry: entry,
+                            isManual: entry.id.hasPrefix("manual:"),
+                            onUnpair: { fleet.unpair(name: $0) },
+                            onRemove: { fleet.removeManual(id: String(entry.id.dropFirst("manual:".count)),
+                                                           name: entry.source.label) }
+                        )
+                        .tag(DeviceSelection.remote(entry.id))
                     }
                 }
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
             .safeAreaInset(edge: .bottom) {
-                if fleet.entries.isEmpty {
-                    Label("Searching for agents…", systemImage: "antenna.radiowaves.left.and.right")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12).padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 6) {
+                    if fleet.entries.isEmpty {
+                        Label("Searching for agents…", systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button { showAddMachine = true } label: {
+                        Label("Add machine…", systemImage: "plus")
+                            .font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .help("Add an off-LAN machine (Tailscale / VPN / cloud) that isn't auto-discovered")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12).padding(.bottom, 8)
+            }
+            .sheet(isPresented: $showAddMachine) {
+                AddMachineSheet { name, host, port in fleet.addManual(name: name, host: host, port: port) }
             }
         } detail: {
             switch selection ?? .thisMac {
@@ -71,7 +91,9 @@ struct SiliconScopeRootView: View {
 /// metric summary. Right-click to forget the pairing.
 private struct DeviceSidebarRow: View {
     let entry: FleetMonitor.Entry
+    let isManual: Bool
     let onUnpair: (String) -> Void
+    let onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: 7) {
@@ -93,6 +115,9 @@ private struct DeviceSidebarRow: View {
         .contextMenu {
             if !entry.needsPairing {
                 Button("Forget pairing", role: .destructive) { onUnpair(entry.source.label) }
+            }
+            if isManual {
+                Button("Remove machine", role: .destructive) { onRemove() }
             }
         }
     }

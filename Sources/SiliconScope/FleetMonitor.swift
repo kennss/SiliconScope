@@ -107,6 +107,23 @@ final class FleetMonitor {
         discovery?.rebuild()
     }
 
+    /// Add a manually-entered off-LAN endpoint (Tailscale / VPN / cloud, which mDNS can't reach) and
+    /// re-poll now. It appears alongside discovered machines and pairs the same way (token + TOFU).
+    func addManual(name: String, host: String, port: Int) {
+        FleetManualStore.add(ManualEndpoint(name: name, host: host, port: port))
+        discovery?.rebuild()
+        Task { await pollAll() }
+    }
+
+    /// Remove a manually-added endpoint and forget its pairing token + cert pin (clean re-add later).
+    func removeManual(id: String, name: String) {
+        FleetManualStore.remove(id: id)
+        FleetPairingStore.removeToken(for: name)
+        FleetPairingStore.removeFingerprint(for: name)
+        history["manual:\(id)"] = nil
+        discovery?.rebuild()
+    }
+
     private func pollAll() async {
         let sources = entries.map(\.source)
         await withTaskGroup(of: (String, Result<MachineMetrics, Error>).self) { group in

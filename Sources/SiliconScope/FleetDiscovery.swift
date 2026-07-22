@@ -5,9 +5,11 @@
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  mDNS/Bonjour auto-discovery of fleet agents on the LAN. Browses "_sscope-agent._tcp",
 //             resolves each service to host:port, and hands FleetMonitor an https HTTPFleetSource
-//             per machine — no hardcoded IP/port. Security is layered on top: the stored bearer token
-//             and TOFU cert pin (keyed by instance name) are injected on every (re)build, and the
-//             first-seen cert is remembered via the source's onObservedFingerprint callback.
+//             per machine — no hardcoded IP/port. It ALSO folds in manually-added off-LAN endpoints
+//             (FleetManualStore: Tailscale / VPN / cloud, which mDNS can't reach), so the source list
+//             is the union of discovered + manual. Security is layered on top identically for both:
+//             the stored bearer token and TOFU cert pin (keyed by display name) are injected on every
+//             (re)build, and the first-seen cert is remembered via onObservedFingerprint.
 //  Notes:     macOS 14+ gates local-network access behind a privacy prompt; the packaged app declares
 //             NSLocalNetworkUsageDescription + NSBonjourServices (see package.sh). Resolution forces
 //             IPv4 (see resolve()) because Bonjour otherwise yields a zone-less IPv6 link-local that
@@ -56,6 +58,7 @@ final class FleetDiscovery {
         }
         b.start(queue: .main)
         browser = b
+        emit()   // surface manual endpoints immediately, before any mDNS result arrives
     }
 
     func stop() {
@@ -82,26 +85,37 @@ final class FleetDiscovery {
         emit()
     }
 
-    /// Build https FleetSources from cached agents, injecting the stored token + TOFU pin each time
-    /// and wiring the first-connect callback that remembers the cert.
+    /// Build https FleetSources — mDNS-discovered agents PLUS manually-added off-LAN endpoints —
+    /// injecting the stored token + TOFU pin each time and wiring the first-connect cert callback.
     private func emit() {
-        let sources: [any FleetSource] = cache.values.compactMap { a in
-            let hostForURL = a.host.contains(":") ? "[\(a.host)]" : a.host   // bracket IPv6
-            guard let url = URL(string: "https://\(hostForURL):\(a.port)/metrics") else { return nil }
-            let name = a.name
-            return HTTPFleetSource(
-                id: "mdns:\(name)", label: name, endpoint: url,
-                token: FleetPairingStore.token(for: name),
-                pinnedFingerprint: FleetPairingStore.fingerprint(for: name),
-                onObservedFingerprint: { [weak self] fp in
-                    Task { @MainActor in
-                        FleetPairingStore.setFingerprint(fp, for: name)
-                        self?.rebuild()   // re-emit so the pin is enforced from now on
-                    }
-                }
-            )
+        var sources: [any FleetSource] = cache.values.compactMap {
+            httpSource(id: "mdns:\($0.name)", label: $0.name, host: $0.host, port: $0.port, key: $0.name)
+        }
+        // Manual off-LAN endpoints (Tailscale / VPN / cloud) — same transport + security, no discovery.
+        for e in FleetManualStore.all() {
+            if let s = httpSource(id: "manual:\(e.id)", label: e.name, host: e.host, port: e.port, key: e.name) {
+                sources.append(s)
+            }
         }
         onChange(sources)
+    }
+
+    /// One https source for a host:port, with token + TOFU pin keyed by `key` (the display name).
+    /// `key` also anchors the first-connect callback that remembers the served cert.
+    private func httpSource(id: String, label: String, host: String, port: Int, key: String) -> (any FleetSource)? {
+        let hostForURL = (host.contains(":") && !host.hasPrefix("[")) ? "[\(host)]" : host   // bracket bare IPv6
+        guard let url = URL(string: "https://\(hostForURL):\(port)/metrics") else { return nil }
+        return HTTPFleetSource(
+            id: id, label: label, endpoint: url,
+            token: FleetPairingStore.token(for: key),
+            pinnedFingerprint: FleetPairingStore.fingerprint(for: key),
+            onObservedFingerprint: { [weak self] fp in
+                Task { @MainActor in
+                    FleetPairingStore.setFingerprint(fp, for: key)
+                    self?.rebuild()   // re-emit so the pin is enforced from now on
+                }
+            }
+        )
     }
 
     /// Resolve a Bonjour service endpoint to a concrete host:port by briefly connecting to it

@@ -5,8 +5,9 @@
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-machine Fleet security state. The bearer token (secret) lives in the Keychain; the
 //             TOFU TLS cert fingerprint (public — just a hash) lives in UserDefaults. Both are keyed
-//             by the agent's mDNS instance name and injected into the HTTPFleetSource on every
-//             (re)build, so authenticated, encrypted, MITM-resistant polling survives across launches.
+//             by the machine's display name (mDNS instance name, or the label of a manually-added
+//             off-LAN endpoint) and injected into the HTTPFleetSource on every (re)build, so
+//             authenticated, encrypted, MITM-resistant polling survives across launches.
 //  Notes:     Token: generic-password items under one service; account = mDNS instance name (display
 //             label). Keychain APIs are thread-safe, so these are plain nonisolated statics.
 //             Accessible AfterFirstUnlock so background polling works when the screen is locked.
@@ -26,6 +27,10 @@ enum FleetPairingStore {
 
     static func setFingerprint(_ fingerprint: String, for name: String) {
         UserDefaults.standard.set(fingerprint, forKey: "ai.calidalab.SiliconScope.fleet-fp.\(name)")
+    }
+
+    static func removeFingerprint(for name: String) {
+        UserDefaults.standard.removeObject(forKey: "ai.calidalab.SiliconScope.fleet-fp.\(name)")
     }
 
     // MARK: - Bearer token (secret → Keychain)
