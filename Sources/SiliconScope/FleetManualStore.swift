@@ -12,6 +12,7 @@
 //  Notes:     Stored as a JSON array in UserDefaults (public host:port only — the token lives in the
 //             Keychain via FleetPairingStore, keyed by `name`). `id` = "host:port" (dedup key); `name`
 //             is the display label AND the pairing key, so keep it stable/unique per machine.
+//             The pasted one-line handoff itself is `PairingLink` (Core), shared with the agents.
 //
 import Foundation
 

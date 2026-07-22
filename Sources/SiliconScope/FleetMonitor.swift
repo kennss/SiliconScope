@@ -115,6 +115,20 @@ final class FleetMonitor {
         Task { await pollAll() }
     }
 
+    /// Apply a pairing link from an agent installer: store its token under the machine's own name, so
+    /// a machine already found by mDNS pairs on the spot. Only when it ISN'T discovered (off-LAN —
+    /// Tailscale / VPN / cloud) do we also register the address manually, which avoids listing the
+    /// same box twice.
+    func applyPairingLink(_ link: PairingLink) {
+        FleetPairingStore.setToken(link.token, for: link.name)
+        let alreadyDiscovered = entries.contains { $0.source.label == link.name }
+        if !alreadyDiscovered {
+            FleetManualStore.add(ManualEndpoint(name: link.name, host: link.host, port: link.port))
+        }
+        discovery?.rebuild()
+        Task { await pollAll() }
+    }
+
     /// Remove a manually-added endpoint and forget its pairing token + cert pin (clean re-add later).
     func removeManual(id: String, name: String) {
         FleetManualStore.remove(id: id)

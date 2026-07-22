@@ -69,7 +69,10 @@ struct SiliconScopeRootView: View {
                 .padding(.horizontal, 12).padding(.bottom, 8)
             }
             .sheet(isPresented: $showAddMachine) {
-                AddMachineSheet { name, host, port in fleet.addManual(name: name, host: host, port: port) }
+                AddMachineSheet(
+                    onAdd: { name, host, port in fleet.addManual(name: name, host: host, port: port) },
+                    onPairingLink: { fleet.applyPairingLink($0) }
+                )
             }
         } detail: {
             switch selection ?? .thisMac {

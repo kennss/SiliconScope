@@ -5,24 +5,37 @@
 #  Updated:   2026-07-22
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  One-line installer for the headless SiliconScope Mac agent (sscope-agent-mac). Fetches
-#             the universal binary from the latest GitHub release, installs it to /usr/local/bin, and
-#             registers a LaunchAgent that serves this Mac's metrics on :7799 over TLS + mDNS. Prints
-#             a one-time pairing token to enter on another Mac. For headless Mac minis / Studios; on a
-#             Mac you actually use, the app's Settings → "Share this Mac" toggle is simpler.
-#  Notes:     POSIX sh. LaunchAgent (per-user session) — for a truly login-less box, load it as a
-#             LaunchDaemon instead. Overrides: SSCOPE_PORT (7799), SSCOPE_REPO (kennss/SiliconScope),
-#             SSCOPE_LOCAL_BIN (install a local binary — release-less testing / offline).
+#             the universal binary from the latest GitHub release, installs it under the user's own
+#             ~/.local/bin, and registers a LaunchAgent that serves this Mac's metrics on :7799 over
+#             TLS + mDNS. Ends by printing ONE pairing link to paste into another Mac's SiliconScope
+#             ("Add machine…"). For headless Mac minis / Studios; on a Mac you actually use, the
+#             app's Settings → "Share this Mac" toggle is simpler.
+#  Notes:     POSIX sh. NO SUDO by default: a LaunchAgent runs in the user's own session, so root
+#             buys nothing — which also lets `ssh box 'curl … | sh'` finish unattended. Set
+#             SSCOPE_BIN=/usr/local/bin/sscope-agent-mac for a system-wide install; the script
+#             escalates only when the chosen directory isn't writable. Other overrides: SSCOPE_PORT
+#             (7799), SSCOPE_REPO (kennss/SiliconScope), SSCOPE_LOCAL_BIN (install a local binary —
+#             release-less testing / offline). LaunchAgent = per-user session; for a truly login-less
+#             box, load it as a LaunchDaemon instead. Re-installs unload the agent BEFORE replacing
+#             the binary — overwriting a live executable aborts the running process.
 #
 set -eu
 
 REPO="${SSCOPE_REPO:-kennss/SiliconScope}"
-BIN="/usr/local/bin/sscope-agent-mac"
+BIN="${SSCOPE_BIN:-$HOME/.local/bin/sscope-agent-mac}"
 PORT="${SSCOPE_PORT:-7799}"
 LABEL="ai.calidalab.sscope-agent"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 [ "$(uname -s)" = "Darwin" ] || { echo "This installer is for macOS. Use install-agent.sh on Linux."; exit 1; }
-if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+
+# Escalate only when the chosen directory isn't ours (i.e. the caller opted into a system path).
+BINDIR="$(dirname "$BIN")"
+mkdir -p "$BINDIR" 2>/dev/null || true
+if [ -w "$BINDIR" ]; then SUDO=""; else SUDO="sudo"; fi
+
+# --- stop any running agent BEFORE swapping its binary (overwriting a live executable aborts it) ---
+launchctl unload "$PLIST" 2>/dev/null || true
 
 # --- obtain the binary (local file or latest release) ---
 if [ -n "${SSCOPE_LOCAL_BIN:-}" ]; then
@@ -61,16 +74,17 @@ cat > "$PLIST" <<PLIST
 </plist>
 PLIST
 
-launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
 
 echo "✓ sscope-agent-mac is running on :$PORT and will auto-start at login."
 sleep 1
 echo
 echo "──────────────────────────────────────────────────────────────────"
-echo "  Pairing token — enter it in SiliconScope → Fleet on another Mac:"
+echo "  Paste this ONE line into SiliconScope → Add machine… on your Mac:"
 echo
-echo "      $("$BIN" --print-token)"
+echo "      $("$BIN" --pair-url --serve ":$PORT")"
 echo
-echo "  This Mac then appears in that Mac's Fleet sidebar, encrypted."
+echo "  It carries this Mac's name, address and pairing token — one paste"
+echo "  and it joins your Fleet, encrypted. (Over Tailscale/VPN, swap the"
+echo "  host for that network's address.)"
 echo "──────────────────────────────────────────────────────────────────"

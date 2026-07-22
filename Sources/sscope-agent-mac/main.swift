@@ -11,6 +11,7 @@
 //             from `SystemSampler().sample()` in a background loop instead of the @MainActor monitor.
 //             Sampling blocks ~interval, and FleetAgentServer's SecPKCS12Import blocks on a secd XPC
 //             round trip, so both run off the main thread. Flags: --version, --print-token,
+//             --pair-url (one-line pairing handoff for the viewer),
 //             --serve :PORT (default 7799).
 //
 import Foundation
@@ -53,26 +54,64 @@ func loadAvg1() -> Double {
 
 func logErr(_ s: String) { FileHandle.standardError.write(Data("sscope-agent-mac: \(s)\n".utf8)) }
 
-// MARK: - CLI flags
-
-let args = CommandLine.arguments
-if args.contains("--version") { print(agentVersion); exit(0) }
-if args.contains("--print-token") {
+/// The persisted pairing token, creating it on first call (same file the server uses).
+func readOrCreateToken() -> String {
     let tokenPath = agentConfigDir().appendingPathComponent("token")
     if let t = try? String(contentsOf: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
        !t.isEmpty {
-        print(t)
-    } else if let server = try? FleetAgentServer(port: defaultPort, configDir: agentConfigDir(),
-                                                 metricsProvider: { Data() }) {
-        print(server.pairingToken)   // creates + persists the token on first run
+        return t
     }
-    exit(0)
+    if let server = try? FleetAgentServer(port: defaultPort, configDir: agentConfigDir(),
+                                          metricsProvider: { Data() }) {
+        return server.pairingToken   // creates + persists the token on first run
+    }
+    return ""
 }
 
+/// This machine's primary non-loopback IPv4, so the pairing link names an address the viewer can
+/// actually reach. Falls back to the hostname (resolvable via mDNS on the same LAN).
+func primaryIPv4() -> String? {
+    var head: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&head) == 0, let first = head else { return nil }
+    defer { freeifaddrs(head) }
+    var best: String?
+    for ifa in sequence(first: first, next: { $0.pointee.ifa_next }) {
+        let flags = Int32(ifa.pointee.ifa_flags)
+        guard flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0,
+              ifa.pointee.ifa_addr?.pointee.sa_family == UInt8(AF_INET) else { continue }
+        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        guard getnameinfo(ifa.pointee.ifa_addr, socklen_t(ifa.pointee.ifa_addr.pointee.sa_len),
+                          &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
+        let ip = String(cString: host)
+        let name = String(cString: ifa.pointee.ifa_name)
+        if ip.hasPrefix("169.254.") { continue }         // link-local autoconf — not routable
+        if name.hasPrefix("en") { return ip }            // prefer Ethernet/Wi-Fi
+        if best == nil { best = ip }                     // else first usable (utun/tailscale/bridge)
+    }
+    return best
+}
+
+// MARK: - CLI flags
+
+let args = CommandLine.arguments
 var port = defaultPort
 if let i = args.firstIndex(of: "--serve"), i + 1 < args.count {
     let raw = args[i + 1].hasPrefix(":") ? String(args[i + 1].dropFirst()) : args[i + 1]
     if let p = UInt16(raw) { port = p }
+}
+
+if args.contains("--version") { print(agentVersion); exit(0) }
+if args.contains("--print-token") { print(readOrCreateToken()); exit(0) }
+// One-line pairing handoff: everything the viewer needs (name + address + port + token) in a single
+// string to paste into "Add machine…", instead of hand-carrying a bare token. Percent-encoded here
+// because a Mac's computer name routinely contains spaces and non-ASCII.
+if args.contains("--pair-url") {
+    let link = PairingLink(name: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
+                           host: primaryIPv4() ?? ProcessInfo.processInfo.hostName,
+                           port: Int(port),
+                           token: readOrCreateToken())
+    print(link.url)
+    exit(0)
 }
 
 // MARK: - sample loop + server

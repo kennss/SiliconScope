@@ -4,13 +4,16 @@
 #  Created:   2026-07-22
 #  Updated:   2026-07-22
 #  Developer: Kennt Kim / Calida Lab
-#  Overview:  One-line installer for the SiliconScope fleet agent on a Linux box. Detects the CPU
-#             arch, fetches the matching static binary from the latest GitHub release, installs it
-#             to /usr/local/bin, and registers a hardened systemd service that serves token-protected
-#             metrics over TLS on :7799 and advertises over mDNS. It prints a one-time pairing token
-#             to enter on the Mac; the machine then appears in the Fleet view automatically,
-#             encrypted. Intended for:  curl -fsSL <raw-url>/install-agent.sh | sh
-#  Notes:     POSIX sh (no bashisms) for maximum portability. Uses sudo only when not already root.
+#  Overview:  THE install entry point for the SiliconScope fleet agent — one URL for every platform.
+#             On macOS it hands off to install-agent-mac.sh; on Linux it detects the CPU arch, fetches
+#             the matching static binary from the latest GitHub release, installs it to /usr/local/bin,
+#             and registers a hardened systemd service serving token-protected metrics over TLS on
+#             :7799 + mDNS. It ends by printing ONE pairing link to paste into the Mac app's
+#             "Add machine…" — name, address and token in a single copy.
+#             Intended for:  curl -fsSL <raw-url>/install-agent.sh | sh
+#  Notes:     POSIX sh (no bashisms) for maximum portability. Uses sudo only when not already root —
+#             a systemd SYSTEM service must start at boot without a login session, so root is real
+#             here (unlike the Mac agent, whose LaunchAgent needs none).
 #             Overrides (env): SSCOPE_PORT (default 7799), SSCOPE_REPO (default kennss/SiliconScope),
 #             SSCOPE_LOCAL_BIN (install a local binary instead of downloading — for release-less
 #             testing and offline/air-gapped installs). The service runs as the invoking user so
@@ -23,9 +26,15 @@ BIN="/usr/local/bin/sscope-agent"
 PORT="${SSCOPE_PORT:-7799}"
 SERVICE="/etc/systemd/system/sscope-agent.service"
 
+# --- platform dispatch: this is THE install URL for every platform ---
+if [ "$(uname -s)" = "Darwin" ]; then
+  echo "▸ macOS detected — handing off to the Mac agent installer…"
+  exec sh -c "curl -fsSL 'https://raw.githubusercontent.com/$REPO/main/scripts/install-agent-mac.sh' | sh"
+fi
+
 # --- platform detection ---
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-[ "$os" = "linux" ] || { echo "This installer supports Linux only (got: $os)."; exit 1; }
+[ "$os" = "linux" ] || { echo "This installer supports Linux and macOS (got: $os)."; exit 1; }
 case "$(uname -m)" in
   x86_64|amd64)  arch="amd64" ;;
   aarch64|arm64) arch="arm64" ;;
@@ -88,10 +97,21 @@ $SUDO systemctl --no-pager --lines=0 status sscope-agent || true
 sleep 1
 TOKEN_FILE="/var/lib/sscope-agent/token"
 echo
+TOKEN="$($SUDO cat "$TOKEN_FILE" 2>/dev/null || true)"
+# A reachable address for the viewer: the route-selected source IP, else the first configured one.
+IP="$(ip -4 -o route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)"
+[ -n "$IP" ] || IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+[ -n "$IP" ] || IP="$(hostname)"
 echo "──────────────────────────────────────────────────────────────────"
-echo "  Pairing token — enter it in SiliconScope → Fleet on your Mac:"
-echo
-echo "      $($SUDO cat "$TOKEN_FILE" 2>/dev/null || echo '(run: sudo cat '"$TOKEN_FILE"')')"
-echo
-echo "  This machine then appears in the SiliconScope sidebar under Fleet, encrypted."
+if [ -n "$TOKEN" ]; then
+  echo "  Paste this ONE line into SiliconScope → Add machine… on your Mac:"
+  echo
+  echo "      sscope://pair?name=$(hostname)&host=$IP&port=$PORT&token=$TOKEN"
+  echo
+  echo "  It carries this box's name, address and pairing token — one paste"
+  echo "  and it joins your Fleet, encrypted. (Over Tailscale/VPN, swap the"
+  echo "  host for that network's address.)"
+else
+  echo "  Pairing token (read it with: sudo cat $TOKEN_FILE)"
+fi
 echo "──────────────────────────────────────────────────────────────────"
