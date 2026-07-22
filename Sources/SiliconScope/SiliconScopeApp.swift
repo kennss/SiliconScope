@@ -145,6 +145,15 @@ struct SiliconScopeApp: App {
                         .first { $0.identifier?.rawValue == "siliconscope-main" }?
                         .isReleasedWhenClosed = false
                     monitor.start()
+                    // This Mac is always the first Fleet-overview tile: feed the live monitor to the
+                    // fleet aggregator so it samples this Mac on the same cadence as remote agents.
+                    fleet.localProvider = {
+                        let host = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+                        let v = ProcessInfo.processInfo.operatingSystemVersion
+                        let os = "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+                        return monitor.machineMetricsMac(machineId: "local", hostname: host,
+                                                         osName: os, agentVersion: "local")
+                    }
                     fleet.start()   // run fleet discovery from launch so the menu-bar glyph stays live
                     // Share this Mac to the fleet when enabled (Settings toggle, or SSCOPE_SHARE=1 for dev).
                     MacAgentController.shared.configure(monitor: monitor)

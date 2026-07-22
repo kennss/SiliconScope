@@ -1,7 +1,7 @@
 //
 //  File:      DashboardState.swift
 //  Created:   2026-06-25
-//  Updated:   2026-07-03
+//  Updated:   2026-07-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The exact set of values DashboardView renders — built either from the live monitor
 //             or from a replayed recording frame. Making it one value struct (rather than a
@@ -90,7 +90,8 @@ struct DashboardState {
         history = MetricsEngine.History()
         anePeakWatts = m.apple?.anePeakWatts ?? 0
         mediaPeakGBs = m.apple?.mediaPeakGBs ?? 0
-        bandwidthPeakGBs = m.apple?.bandwidth.totalGBs ?? 0
+        // Prefer the agent's decaying observed peak; fall back to the current total on version skew.
+        bandwidthPeakGBs = m.apple?.bandwidth.totalPeakGBs ?? m.apple?.bandwidth.totalGBs ?? 0
         let throttling = MetricsEngine.gpuThrottling(latest: s, gpuClockPeakMHz: 0)
         gpuThrottling = throttling
         gpuClockDropFraction = 0

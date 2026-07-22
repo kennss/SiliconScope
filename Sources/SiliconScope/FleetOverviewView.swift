@@ -3,41 +3,52 @@
 //  Created:   2026-07-22
 //  Updated:   2026-07-22
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  At-a-glance view of every remote machine at once — an adaptive grid of compact tiles
-//             (GPU util + power/temp, VRAM bar, loaded LLM, a mini util sparkline), so a fleet of GPU
-//             boxes / Mac servers reads in one screen ("which box is busy / idle / hot right now").
-//             Tapping a tile drills into that machine's full detail. This is the sidebar's "Fleet"
-//             root, above the individual devices.
-//  Notes:     kind-agnostic tiles (GPU 0 + LLM summary work for both NVIDIA and Apple). Pairing /
-//             connecting / error states render in-tile. Sparkline uses FleetMonitor's rolling history.
+//  Overview:  At-a-glance view of every machine at once — an adaptive grid of compact tiles. THIS
+//             MAC is always the first tile (a laptop glyph, taps through to its full dashboard);
+//             discovered remote agents follow. Each tile has the same paired-graph form as the local
+//             dashboard: a GPU+VRAM mini graph and a CPU+RAM mini graph, each overlaying two
+//             `Sparkline` traces (line + gradient fill), with the caption's metric word tinted its
+//             line color so it doubles as the legend. So a fleet of GPU boxes / Mac servers reads in
+//             one screen ("which box is busy / idle / hot right now").
+//  Notes:     Uses the shared `Sparkline` + `MetricPalette` (NOT Swift Charts) to match the local
+//             GPU/CPU cards exactly — GPU=green, VRAM=sky-cyan, CPU=blue, RAM=amber. All four series
+//             are normalized to 0…1 (util ÷100; VRAM/RAM fractions as-is) to share one axis. FleetTile
+//             is kind-agnostic (GPU 0 + LLM summary work for Apple + NVIDIA) and source-agnostic
+//             (local Mac = FleetMonitor.localMetrics/localHistory; remote = entry + fleet.history).
 //
 import SwiftUI
-import Charts
 import SiliconScopeCore
 
 struct FleetOverviewView: View {
     let fleet: FleetMonitor
-    let onSelect: (String) -> Void
+    let onSelect: (String) -> Void      // tapped a remote machine → open its detail
+    let onSelectLocal: () -> Void       // tapped This Mac → open the local dashboard
 
     var body: some View {
         ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 12)], spacing: 12) {
+                if let local = fleet.localMetrics {
+                    FleetTile(hostname: local.hostname, metrics: local, history: fleet.localHistory,
+                              needsPairing: false, error: nil, isLocal: true, onTap: onSelectLocal)
+                }
+                ForEach(fleet.entries) { entry in
+                    FleetTile(hostname: entry.metrics?.hostname ?? entry.source.label,
+                              metrics: entry.metrics, history: fleet.history[entry.id] ?? [],
+                              needsPairing: entry.needsPairing, error: entry.error,
+                              isLocal: false, onTap: { onSelect(entry.id) })
+                }
+            }
+            .padding(16)
+
             if fleet.entries.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Searching for agents on your network…")
-                        .font(.callout).foregroundStyle(.secondary)
+                    Text("Searching for other agents on your network…")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text("Install the agent on a machine to see it here.")
-                        .font(.caption).foregroundStyle(.tertiary)
+                        .font(.caption2).foregroundStyle(.tertiary)
                 }
-                .frame(maxWidth: .infinity, minHeight: 300)
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
-                    ForEach(fleet.entries) { entry in
-                        FleetTile(entry: entry, history: fleet.history[entry.id] ?? [])
-                            .onTapGesture { onSelect(entry.id) }
-                    }
-                }
-                .padding(16)
+                .frame(maxWidth: .infinity).padding(.bottom, 24)
             }
         }
         .background(Theme.bg)
@@ -47,61 +58,112 @@ struct FleetOverviewView: View {
 }
 
 private struct FleetTile: View {
-    let entry: FleetMonitor.Entry
+    let hostname: String
+    let metrics: MachineMetrics?
     let history: [FleetMonitor.Sample]
+    let needsPairing: Bool
+    let error: String?
+    let isLocal: Bool                    // This Mac: a laptop glyph instead of a pairing lock
+    let onTap: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle().fill(statusColor).frame(width: 7, height: 7)
-                Text(entry.metrics?.hostname ?? entry.source.label)
+                Text(hostname)
                     .font(.system(.callout, design: .monospaced).bold()).lineLimit(1)
                 Spacer()
-                Image(systemName: entry.needsPairing ? "lock.slash" : "lock.fill")
-                    .font(.system(size: 9)).foregroundStyle(entry.needsPairing ? .orange : .secondary)
+                cornerGlyph
             }
 
-            if entry.needsPairing {
+            if needsPairing {
                 spacerText("Pairing required", .orange)
-            } else if let m = entry.metrics, let g = m.gpus.first {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(Int(g.utilizationPercent))%").font(.system(.title2, design: .rounded).bold())
-                        .foregroundStyle(utilColor(g.utilizationPercent))
-                    Text("GPU").font(.caption2).foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(Int(g.powerDrawW)) W · \(Int(g.temperatureC))°C")
-                        .font(.caption).foregroundStyle(.secondary)
+            } else if let m = metrics, let g = m.gpus.first {
+                gpuCaption(g)
+                miniChart(history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
+                          history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+                cpuCaption(m)
+                miniChart(history.map { $0.cpu / 100 }, MetricPalette.cpuC,
+                          history.map { $0.memFrac }, MetricPalette.ramC)
+                if let a = m.apple {   // Apple-only signature metrics: ANE + memory bandwidth
+                    aneCaption(a)
+                    miniChart(history.map { $0.aneFrac }, MetricPalette.aneC,
+                              history.map { $0.bwFrac }, MetricPalette.mediaC)
                 }
-                if history.count >= 2 {
-                    Chart(history) { s in
-                        AreaMark(x: .value("t", s.t), y: .value("u", s.gpuUtil))
-                            .foregroundStyle(Color.green.opacity(0.18))
-                        LineMark(x: .value("t", s.t), y: .value("u", s.gpuUtil))
-                            .foregroundStyle(.green).interpolationMethod(.monotone)
-                    }
-                    .chartXAxis(.hidden).chartYAxis(.hidden).chartYScale(domain: 0...100)
-                    .frame(height: 26)
-                } else {
-                    Color.clear.frame(height: 26)
-                }
-                bar(g.vramFraction, .teal)
-                Text("VRAM \(gb(g.vramUsedBytes)) / \(gb(g.vramTotalBytes))")
-                    .font(.caption2).foregroundStyle(.secondary)
                 if let o = m.llm?.ollama, o.running {
                     let loaded = o.loaded.first?.name
                     Text(loaded.map { "● \($0)" } ?? "\(o.models.count) model(s)")
                         .font(.caption2).foregroundStyle(loaded != nil ? .green : .secondary).lineLimit(1)
                 }
-            } else if let e = entry.error {
+            } else if let e = error {
                 spacerText(e, .red)
             } else {
                 spacerText("Connecting…", .secondary)
             }
         }
         .padding(12)
-        .frame(height: 158, alignment: .top)
+        .frame(height: tileHeight, alignment: .top)
         .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.4)))
         .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+    }
+
+    /// All tiles share one height; the charts flex to fill, so a 2-chart (Linux) and a 3-chart
+    /// (Apple, incl. ANE/Bandwidth) tile are the same size with no dead space.
+    private let tileHeight: CGFloat = 246
+
+    @ViewBuilder private var cornerGlyph: some View {
+        if isLocal {
+            Image(systemName: "laptopcomputer").font(.system(size: 9)).foregroundStyle(.secondary)
+        } else {
+            Image(systemName: needsPairing ? "lock.slash" : "lock.fill")
+                .font(.system(size: 9)).foregroundStyle(needsPairing ? .orange : .secondary)
+        }
+    }
+
+    // MARK: - captions (the tinted metric word doubles as the chart legend)
+
+    private func gpuCaption(_ g: FleetGPU) -> some View {
+        (tag("GPU", MetricPalette.gpuC)
+         + dim(" \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W · \(Int(g.temperatureC))°C · ")
+         + tag("VRAM", MetricPalette.gpuMemC)
+         + dim(" \(gb(g.vramUsedBytes))/\(gb(g.vramTotalBytes))"))
+            .font(.caption2).lineLimit(1)
+    }
+
+    private func cpuCaption(_ m: MachineMetrics) -> some View {
+        (tag("CPU", MetricPalette.cpuC)
+         + dim(" \(Int(m.cpu.usagePercent))% · \(m.cpu.cores) cores · ")
+         + tag("RAM", MetricPalette.ramC)
+         + dim(" \(gb(m.memory.usedBytes))/\(gb(m.memory.totalBytes))"))
+            .font(.caption2).lineLimit(1)
+    }
+
+    private func aneCaption(_ a: FleetApple) -> some View {
+        (tag("ANE", MetricPalette.aneC)
+         + dim(String(format: " %.1fW · ", a.aneWatts))
+         + tag("BW", MetricPalette.mediaC)
+         + dim(String(format: " %.0f GB/s", a.bandwidth.totalGBs)))
+            .font(.caption2).lineLimit(1)
+    }
+
+    private func tag(_ s: String, _ c: Color) -> Text { Text(s).foregroundStyle(c).bold() }
+    private func dim(_ s: String) -> Text { Text(s).foregroundStyle(.secondary) }
+
+    /// Two overlaid `Sparkline` traces on a shared 0…1 axis (values pre-normalized by the caller).
+    /// Flexes to fill the tile's spare height so 2-chart and 3-chart tiles stay the same size.
+    private func miniChart(_ a: [Double], _ ca: Color, _ b: [Double], _ cb: Color) -> some View {
+        Group {
+            if history.count >= 2 {
+                ZStack {
+                    Sparkline(values: a, color: ca, yDomain: 0...1, fill: true, grid: true)
+                    Sparkline(values: b, color: cb, yDomain: 0...1, fill: true)
+                }
+            } else {
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 26, maxHeight: .infinity)
     }
 
     private func spacerText(_ text: String, _ color: Color) -> some View {
@@ -112,25 +174,11 @@ private struct FleetTile: View {
         }.frame(maxWidth: .infinity)
     }
 
-    private func bar(_ fraction: Double, _ color: Color) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(color.opacity(0.15))
-                Capsule().fill(color).frame(width: geo.size.width * min(max(fraction, 0), 1))
-            }
-        }
-        .frame(height: 6)
-    }
-
     private var statusColor: Color {
-        if entry.needsPairing { return .orange }
-        if entry.metrics != nil { return .green }
-        if entry.error != nil { return .red }
+        if needsPairing { return .orange }
+        if metrics != nil { return .green }
+        if error != nil { return .red }
         return .gray
-    }
-
-    private func utilColor(_ pct: Double) -> Color {
-        pct >= 80 ? .orange : (pct >= 1 ? .green : .secondary)
     }
 
     private func gb(_ bytes: Int64) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }

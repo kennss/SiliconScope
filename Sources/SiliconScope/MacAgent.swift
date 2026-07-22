@@ -113,7 +113,8 @@ extension SiliconScopeMonitor {
             snapshot: snapshot, topology: topology,
             hostname: hostname, machineId: machineId, osName: osName,
             agentVersion: agentVersion, tsMillis: Int64(Date().timeIntervalSince1970 * 1000),
-            loadAvg1: Self.loadAvg1(), anePeakWatts: anePeakWatts, mediaPeakGBs: mediaPeakGBs
+            loadAvg1: Self.loadAvg1(), anePeakWatts: anePeakWatts, mediaPeakGBs: mediaPeakGBs,
+            bandwidthPeakGBs: bandwidthPeakGBs
         )
     }
 

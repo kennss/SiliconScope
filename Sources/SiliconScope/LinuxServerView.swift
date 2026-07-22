@@ -3,17 +3,18 @@
 //  Created:   2026-07-22
 //  Updated:   2026-07-22
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  Detail dashboard for a remote LINUX / NVIDIA server — GPU-centric, unlike the Mac
-//             layout. The GPU (util / VRAM / power draw+limit / temp / clock + compute processes)
-//             is the headline, with CPU (blended usage + load) and memory below, and Ollama models
-//             at the bottom. Deliberately omits the Apple-only concepts (ANE, Media engine, E/P
-//             clusters, per-requestor memory bandwidth, fans) that make no sense on a CUDA box.
-//  Notes:     Driven by the remote MachineMetrics + FleetMonitor's rolling history (GPU util/power
-//             sparklines). This is the "kind == linux" branch of FleetMachineDetailView; Macs use
-//             the reused DashboardView instead.
+//  Overview:  Detail dashboard for a remote LINUX / NVIDIA server — GPU-centric, distinct from the
+//             Mac layout. An identity row (CPU cores / RAM / GPU name / VRAM), then two paired
+//             time-series graphs — GPU util + VRAM on one, CPU + RAM on the other — each captioned
+//             with the live values as text. Below: GPU compute processes and Ollama models.
+//             Deliberately omits Apple-only concepts (ANE / E-P / Media / bandwidth / fans).
+//  Notes:     Reuses the app's shared `Sparkline` + `MetricPalette` (line + gradient fill, NOT Swift
+//             Charts) so it matches the local GPU/CPU cards — GPU=green, VRAM=sky-cyan, CPU=blue,
+//             RAM=amber. Each graph overlays two traces on a shared 0…1 axis (util ÷100; VRAM/RAM
+//             fractions as-is). The caption's tinted metric word (GPU/VRAM/CPU/RAM) is the legend.
+//             Driven by remote MachineMetrics + FleetMonitor's rolling history.
 //
 import SwiftUI
-import Charts
 import SiliconScopeCore
 
 struct LinuxServerView: View {
@@ -22,17 +23,23 @@ struct LinuxServerView: View {
 
     private var entry: FleetMonitor.Entry? { fleet.entries.first { $0.id == machineID } }
     private var history: [FleetMonitor.Sample] { fleet.history[machineID] ?? [] }
-    private var hasHistory: Bool { history.count >= 2 }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if let m = entry?.metrics {
                     header(m)
-                    ForEach(Array(m.gpus.enumerated()), id: \.element.index) { idx, g in
-                        gpuCard(g, showChart: idx == 0)
-                    }
-                    HStack(alignment: .top, spacing: 12) { cpuCard(m); memoryCard(m) }
+                    let g = m.gpus.first
+                    identityRow(m, g)
+
+                    dualChart(title: "GPU / VRAM", caption: gpuCaption(g),
+                              history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
+                              history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+                    dualChart(title: "CPU / RAM", caption: cpuCaption(m),
+                              history.map { $0.cpu / 100 }, MetricPalette.cpuC,
+                              history.map { $0.memFrac }, MetricPalette.ramC)
+
+                    if let g, !g.processes.isEmpty { computeProcesses(g) }
                     if let o = m.llm?.ollama, o.running { ollamaCard(o) }
                 }
             }
@@ -60,56 +67,72 @@ struct LinuxServerView: View {
         }
     }
 
-    private func gpuCard(_ g: FleetGPU, showChart: Bool) -> some View {
-        card("GPU · \(g.name)") {
-            metricRow("utilization", pct(g.utilizationPercent))
-            bar(g.utilizationPercent / 100, .green)
-            if showChart && hasHistory { spark({ $0.gpuUtil }, .green, yMax: 100).frame(height: 44) }
-
-            metricRow("VRAM", "\(gb(g.vramUsedBytes)) / \(gb(g.vramTotalBytes))")
-            bar(g.vramFraction, .teal)
-
-            HStack(spacing: 20) {
-                labelled("temp", "\(Int(g.temperatureC))°C")
-                labelled("power", "\(Int(g.powerDrawW)) / \(Int(g.powerLimitW)) W")
-                if let f = g.freqMHz, f > 0 { labelled("clock", "\(Int(f)) MHz") }
-                if g.powerLimitW > 0 { labelled("draw", pct(g.powerDrawW / g.powerLimitW * 100)) }
+    private func identityRow(_ m: MachineMetrics, _ g: FleetGPU?) -> some View {
+        card {
+            HStack(alignment: .top, spacing: 24) {
+                labelled("CPU", "\(m.cpu.cores) cores")
+                labelled("RAM", gbInt(m.memory.totalBytes))
+                Spacer()
+                labelled("GPU", g?.name ?? "—")
+                labelled("VRAM", g.map { gbInt($0.vramTotalBytes) } ?? "—")
             }
-            if showChart && hasHistory {
-                Text("POWER (W)").font(.caption2).foregroundStyle(.secondary).padding(.top, 2)
-                spark({ $0.gpuPowerW }, .orange, yMax: g.powerLimitW > 0 ? g.powerLimitW : 400).frame(height: 40)
+        }
+    }
+
+    // MARK: - captions (the tinted metric word doubles as the graph legend)
+
+    private func gpuCaption(_ g: FleetGPU?) -> Text {
+        guard let g else { return Text("no GPU").foregroundStyle(.secondary) }
+        let power = g.powerLimitW > 0 ? "\(Int(g.powerDrawW)) / \(Int(g.powerLimitW)) W" : "\(Int(g.powerDrawW)) W"
+        return tag("GPU", MetricPalette.gpuC)
+            + dim(" \(Int(g.utilizationPercent))% · \(power) · \(Int(g.temperatureC))°C     ")
+            + tag("VRAM", MetricPalette.gpuMemC)
+            + dim(" \(gb(g.vramUsedBytes)) / \(gb(g.vramTotalBytes))")
+    }
+
+    private func cpuCaption(_ m: MachineMetrics) -> Text {
+        tag("CPU", MetricPalette.cpuC)
+            + dim(" \(Int(m.cpu.usagePercent))% · load \(dec2(m.cpu.loadAvg1))     ")
+            + tag("RAM", MetricPalette.ramC)
+            + dim(" \(gb(m.memory.usedBytes)) / \(gb(m.memory.totalBytes))")
+    }
+
+    private func tag(_ s: String, _ c: Color) -> Text {
+        Text(s).font(.system(.caption, design: .monospaced).bold()).foregroundStyle(c)
+    }
+    private func dim(_ s: String) -> Text {
+        Text(s).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+    }
+
+    /// A card with a tinted value caption and two overlaid `Sparkline` traces on a shared 0…1 axis
+    /// (values pre-normalized by the caller) — matching the local GPU/CPU cards' look.
+    private func dualChart(title: String, caption: Text,
+                           _ a: [Double], _ ca: Color, _ b: [Double], _ cb: Color) -> some View {
+        card(title) {
+            caption.fixedSize(horizontal: false, vertical: true)
+            if history.count >= 2 {
+                ZStack {
+                    Sparkline(values: a, color: ca, yDomain: 0...1, fill: true, grid: true)
+                    Sparkline(values: b, color: cb, yDomain: 0...1, fill: true)
+                }
+                .frame(height: 84)
+            } else {
+                Color.clear.frame(height: 84)
             }
-            if !g.processes.isEmpty {
-                Divider().padding(.vertical, 2)
-                Text("COMPUTE PROCESSES").font(.caption2).foregroundStyle(.secondary)
-                ForEach(g.processes, id: \.pid) { p in
-                    HStack {
-                        Text("\(p.pid)").font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
-                            .frame(width: 64, alignment: .leading)
-                        Text(p.name).font(.system(.caption2, design: .monospaced)).lineLimit(1)
-                        Spacer()
-                        Text(gb(p.vramBytes)).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
-                    }
+        }
+    }
+
+    private func computeProcesses(_ g: FleetGPU) -> some View {
+        card("COMPUTE PROCESSES") {
+            ForEach(g.processes, id: \.pid) { p in
+                HStack {
+                    Text("\(p.pid)").font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
+                        .frame(width: 64, alignment: .leading)
+                    Text(p.name).font(.system(.caption2, design: .monospaced)).lineLimit(1)
+                    Spacer()
+                    Text(gb(p.vramBytes)).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
                 }
             }
-        }
-    }
-
-    private func cpuCard(_ m: MachineMetrics) -> some View {
-        card("CPU") {
-            metricRow("\(m.cpu.cores) cores", pct(m.cpu.usagePercent))
-            bar(m.cpu.usagePercent / 100, .blue)
-            if hasHistory { spark({ $0.cpu }, .blue, yMax: 100).frame(height: 36) }
-            metricRow("load (1m)", dec2(m.cpu.loadAvg1))
-        }
-    }
-
-    private func memoryCard(_ m: MachineMetrics) -> some View {
-        let frac = m.memory.totalBytes > 0 ? Double(m.memory.usedBytes) / Double(m.memory.totalBytes) : 0
-        return card("MEMORY") {
-            metricRow("used", "\(gb(m.memory.usedBytes)) / \(gb(m.memory.totalBytes))")
-            bar(frac, .purple)
-            metricRow("free", gb(m.memory.availableBytes))
         }
     }
 
@@ -133,9 +156,9 @@ struct LinuxServerView: View {
 
     // MARK: - building blocks
 
-    private func card<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func card<Content: View>(_ title: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased()).font(.caption2.bold()).foregroundStyle(.secondary)
+            if let title { Text(title.uppercased()).font(.caption2.bold()).foregroundStyle(.secondary) }
             content()
         }
         .padding(12)
@@ -143,45 +166,14 @@ struct LinuxServerView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.35)))
     }
 
-    private func metricRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.system(.caption, design: .monospaced))
-        }
-    }
-
     private func labelled(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value).font(.system(.caption, design: .monospaced))
+            Text(value).font(.system(.callout, design: .monospaced)).lineLimit(1)
         }
     }
 
-    private func bar(_ fraction: Double, _ color: Color) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(color.opacity(0.15))
-                Capsule().fill(color).frame(width: geo.size.width * min(max(fraction, 0), 1))
-            }
-        }
-        .frame(height: 6)
-    }
-
-    private func spark(_ value: @escaping (FleetMonitor.Sample) -> Double, _ color: Color, yMax: Double) -> some View {
-        Chart(history) { s in
-            AreaMark(x: .value("t", s.t), y: .value("v", value(s)))
-                .foregroundStyle(color.opacity(0.18))
-            LineMark(x: .value("t", s.t), y: .value("v", value(s)))
-                .foregroundStyle(color)
-                .interpolationMethod(.monotone)
-        }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartYScale(domain: 0...max(yMax, 1))
-    }
-
-    private func pct(_ v: Double) -> String { "\(Int(v.rounded()))%" }
     private func dec2(_ v: Double) -> String { String(format: "%.2f", v) }
     private func gb(_ bytes: Int64) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }
+    private func gbInt(_ bytes: Int64) -> String { "\(Int((Double(bytes) / 1_073_741_824).rounded())) GB" }
 }

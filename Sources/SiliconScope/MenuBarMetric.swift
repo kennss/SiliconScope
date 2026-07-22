@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarMetric.swift
 //  Created:   2026-06-19
-//  Updated:   2026-06-24
+//  Updated:   2026-07-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style per-metric menu-bar items. Each dashboard card can be toggled
 //             into its own menu-bar item (a stacked label + a mini histogram or two-line
@@ -215,6 +215,10 @@ enum MetricPalette {
     static var aneC: Color { Color(nsColor: ane) }
     static var downC: Color { Color(nsColor: down) }
     static var upC: Color { Color(nsColor: up) }
+    // Fleet dual-charts pair a utilization line with a memory line in one graph:
+    // GPU util / VRAM (green / sky-cyan, same as the local GPU card) and CPU / RAM.
+    static var cpuC: Color { Color(nsColor: pCPU) }   // blue — CPU line
+    static var ramC: Color { Color(nsColor: eCPU) }   // amber — RAM line (warm contrast to cpuC)
 }
 
 // Compact one-token formatters for the tiny two-line glyphs ("44G", "3.4T", "202K").

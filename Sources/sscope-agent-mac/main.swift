@@ -101,7 +101,8 @@ sampleQueue.async {
             snapshot: snap, topology: topology, hostname: hostname, machineId: machineId,
             osName: osName, agentVersion: agentVersion,
             tsMillis: Int64(now.timeIntervalSince1970 * 1000), loadAvg1: loadAvg1(),
-            anePeakWatts: engine.anePeakWatts, mediaPeakGBs: engine.mediaPeakGBs
+            anePeakWatts: engine.anePeakWatts, mediaPeakGBs: engine.mediaPeakGBs,
+            bandwidthPeakGBs: engine.bandwidthPeakGBs
         )
         if let d = try? JSONEncoder().encode(metrics) { cache.set(d) }
         Thread.sleep(forTimeInterval: 0.8)   // total cadence ≈ 1 s

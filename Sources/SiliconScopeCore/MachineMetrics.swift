@@ -182,10 +182,12 @@ public struct FleetBandwidth: Codable, Sendable, Equatable {
     public let otherGBs: Double
     public let totalGBs: Double
     public let isEstimated: Bool
+    public let totalPeakGBs: Double?   // engine's decaying observed peak, for 0…1 scaling (nil on skew)
 
     public init(cpuGBs: Double, gpuGBs: Double, mediaGBs: Double, otherGBs: Double,
-                totalGBs: Double, isEstimated: Bool) {
+                totalGBs: Double, isEstimated: Bool, totalPeakGBs: Double? = nil) {
         self.cpuGBs = cpuGBs; self.gpuGBs = gpuGBs; self.mediaGBs = mediaGBs
         self.otherGBs = otherGBs; self.totalGBs = totalGBs; self.isEstimated = isEstimated
+        self.totalPeakGBs = totalPeakGBs
     }
 }

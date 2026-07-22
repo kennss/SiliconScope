@@ -25,7 +25,8 @@ public extension MachineMetrics {
                     tsMillis: Int64,
                     loadAvg1: Double,
                     anePeakWatts: Double,
-                    mediaPeakGBs: Double) -> MachineMetrics {
+                    mediaPeakGBs: Double,
+                    bandwidthPeakGBs: Double) -> MachineMetrics {
         let eCores = topology?.eCoreCount ?? 0
         let pCores = topology?.pCoreCount ?? 0
         let coreDivisor = Double(max(eCores + pCores, 1))
@@ -86,7 +87,8 @@ public extension MachineMetrics {
                 mediaGBs: s.bandwidth.mediaGBs,
                 otherGBs: s.bandwidth.otherGBs,
                 totalGBs: s.bandwidth.totalGBs,
-                isEstimated: s.bandwidth.isEstimated
+                isEstimated: s.bandwidth.isEstimated,
+                totalPeakGBs: bandwidthPeakGBs
             ),
             fanRPMs: s.thermal.fanRPMs
         )

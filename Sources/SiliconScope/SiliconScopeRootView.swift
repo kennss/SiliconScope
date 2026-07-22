@@ -54,7 +54,9 @@ struct SiliconScopeRootView: View {
         } detail: {
             switch selection ?? .thisMac {
             case .fleet:
-                FleetOverviewView(fleet: fleet, onSelect: { selection = .remote($0) })
+                FleetOverviewView(fleet: fleet,
+                                  onSelect: { selection = .remote($0) },
+                                  onSelectLocal: { selection = .thisMac })
             case .thisMac:
                 DashboardContainer(monitor: monitor)
                     .frame(minWidth: 640, minHeight: 600)

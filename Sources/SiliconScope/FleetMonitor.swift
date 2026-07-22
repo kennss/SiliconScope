@@ -35,11 +35,22 @@ final class FleetMonitor {
         let cpu: Double      // 0..100
         let gpuUtil: Double  // 0..100 (first GPU; 0 if none)
         let gpuPowerW: Double
-        let memFrac: Double  // 0..1
+        let memFrac: Double  // 0..1 (RAM used / total)
+        let vramFrac: Double // 0..1 (first GPU VRAM used / total)
+        let aneFrac: Double  // 0..1 (ANE watts / peak; Apple only, 0 on Linux)
+        let bwFrac: Double   // 0..1 (memory bandwidth / peak; Apple only, 0 on Linux)
     }
 
     private(set) var entries: [Entry] = []
     private(set) var history: [String: [Sample]] = [:]   // machine id → rolling samples
+
+    // This Mac — always the first tile in the Fleet overview (before any remote agent). Sampled
+    // locally each poll tick from `localProvider` (the app wires it to the live monitor), so it's
+    // on the same cadence and history shape as remote agents and reuses the same FleetTile.
+    private(set) var localMetrics: MachineMetrics?
+    private(set) var localHistory: [Sample] = []
+    @ObservationIgnored var localProvider: (() -> MachineMetrics?)?
+
     @ObservationIgnored private let historyLimit = 120    // ~6 min at 3s
     @ObservationIgnored private var sampleSeq = 0
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -120,20 +131,43 @@ final class FleetMonitor {
                 }
             }
         }
+        sampleLocal()   // refresh This Mac's overview tile on the same cadence as the remotes
     }
 
-    /// Append one rolling-history sample for a machine, trimming to the recent window.
-    private func appendHistory(id: String, m: MachineMetrics) {
+    /// Build one rolling-history sample from a machine's current metrics (shared local + remote).
+    private func makeSample(_ m: MachineMetrics) -> Sample {
         sampleSeq += 1
         let memFrac = m.memory.totalBytes > 0 ? Double(m.memory.usedBytes) / Double(m.memory.totalBytes) : 0
-        let sample = Sample(id: sampleSeq, t: Date(),
-                            cpu: m.cpu.usagePercent,
-                            gpuUtil: m.gpus.first?.utilizationPercent ?? 0,
-                            gpuPowerW: m.gpus.first?.powerDrawW ?? 0,
-                            memFrac: memFrac)
+        // Apple-only extras (nil on Linux → 0): ANE and memory bandwidth, each scaled to the
+        // engine's decaying observed peak so a flat-near-zero series isn't amplified to full height.
+        let aneFrac = m.apple.map { $0.anePeakWatts > 0 ? min(1, $0.aneWatts / $0.anePeakWatts) : 0 } ?? 0
+        let bwFrac: Double = m.apple.map {
+            let peak = $0.bandwidth.totalPeakGBs ?? $0.bandwidth.totalGBs
+            return peak > 0 ? min(1, $0.bandwidth.totalGBs / peak) : 0
+        } ?? 0
+        return Sample(id: sampleSeq, t: Date(),
+                      cpu: m.cpu.usagePercent,
+                      gpuUtil: m.gpus.first?.utilizationPercent ?? 0,
+                      gpuPowerW: m.gpus.first?.powerDrawW ?? 0,
+                      memFrac: memFrac,
+                      vramFrac: m.gpus.first?.vramFraction ?? 0,
+                      aneFrac: aneFrac,
+                      bwFrac: bwFrac)
+    }
+
+    /// Append one rolling-history sample for a remote machine, trimming to the recent window.
+    private func appendHistory(id: String, m: MachineMetrics) {
         var buf = history[id, default: []]
-        buf.append(sample)
+        buf.append(makeSample(m))
         if buf.count > historyLimit { buf.removeFirst(buf.count - historyLimit) }
         history[id] = buf
+    }
+
+    /// Sample This Mac from the live monitor (via localProvider) into localMetrics/localHistory.
+    private func sampleLocal() {
+        guard let m = localProvider?() else { return }
+        localMetrics = m
+        localHistory.append(makeSample(m))
+        if localHistory.count > historyLimit { localHistory.removeFirst(localHistory.count - historyLimit) }
     }
 }
