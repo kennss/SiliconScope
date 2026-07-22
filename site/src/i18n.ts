@@ -10,12 +10,15 @@ export const STRINGS = {
     nav: { features: 'Features', privacy: 'Privacy', download: 'Download' },
     hero: {
       title: 'See what your Apple Silicon is really doing.',
-      sub: 'A sudoless macOS monitor with first-class ANE, Media Engine, and memory-bandwidth tracking — the signals Activity Monitor and btop don’t show. Menu bar and full dashboard.',
+      sub: 'A sudoless macOS monitor with first-class ANE, Media Engine, and memory-bandwidth tracking — the signals Activity Monitor and btop don’t show. Menu bar and full dashboard. New in 4.0: watch your other machines too — headless Macs and Linux GPU boxes, in the same window.',
       download: 'Download for Apple Silicon',
       github: 'View on GitHub',
       badges: ['Free', 'Open source · MIT', 'No sudo', 'macOS 14+'],
     },
     features: [
+      { tag: 'New in 4.0 · Fleet', title: 'Your other machines, in the same dashboard',
+        body: 'A headless Mac mini, a Linux GPU box, a cloud instance — run a small agent there and it joins this dashboard over an encrypted, paired connection. Remote Macs keep the full treatment, Neural Engine included; a Linux/NVIDIA box gets a GPU-centric view with VRAM holders and loaded Ollama models. One line to install, one paste to pair.',
+        img: '/img/fleet.png' },
       { tag: 'Menu-bar cockpit', title: 'Your whole Mac in one glyph',
         body: 'The combined SiliconScope menu-bar item: live CPU / GPU / ANE / Media / memory bars plus bandwidth, and a dropdown with six color-matched 60-second trends, top processes, and the live workload verdict.',
         img: '/img/menubar-cockpit.png' },
@@ -50,12 +53,15 @@ export const STRINGS = {
     nav: { features: '기능', privacy: '프라이버시', download: '다운로드' },
     hero: {
       title: 'Apple Silicon, 그 속까지 들여다보다',
-      sub: 'Activity Monitor도 btop도 보여주지 않는 ANE(뉴럴 엔진)·미디어 엔진·메모리 대역폭까지, sudo 없이 살펴봅니다. 메뉴바와 풀 대시보드, 두 가지 모습으로.',
+      sub: 'Activity Monitor도 btop도 보여주지 않는 ANE(뉴럴 엔진)·미디어 엔진·메모리 대역폭까지, sudo 없이 살펴봅니다. 메뉴바와 풀 대시보드, 두 가지 모습으로. 4.0부터는 내 다른 기계들 — 헤드리스 Mac과 Linux GPU 박스까지 — 같은 창에서 지켜봅니다.',
       download: 'Apple Silicon용 다운로드',
       github: 'GitHub에서 보기',
       badges: ['무료', '오픈소스 · MIT', 'sudo 불필요', 'macOS 14+'],
     },
     features: [
+      { tag: '4.0 신규 · Fleet', title: '내 다른 기계들까지, 같은 대시보드에',
+        body: '헤드리스 Mac mini, 책상 밑의 Linux GPU 박스, 빌려 쓰는 클라우드 인스턴스 — 거기에 작은 에이전트 하나를 띄우면 암호화된 페어링 연결로 이 대시보드에 합류합니다. 원격 Mac은 Neural Engine까지 그대로 보이고, Linux·NVIDIA 박스는 VRAM을 물고 있는 프로세스와 올라와 있는 Ollama 모델까지 GPU 중심으로 펼쳐집니다. 설치는 한 줄, 페어링은 붙여넣기 한 번.',
+        img: '/img/fleet.png' },
       { tag: '메뉴바 콕핏', title: '맥 전체가 글리프 하나에',
         body: '통합 SiliconScope 메뉴바 아이템 하나에 CPU·GPU·ANE·미디어·메모리 막대와 대역폭이 실시간으로 담깁니다. 드롭다운을 열면 색을 맞춘 60초 추세 여섯 개와 상위 프로세스, 그리고 지금 무엇이 발목을 잡는지 일러 주는 판정이 펼쳐집니다.',
         img: '/img/menubar-cockpit.png' },
