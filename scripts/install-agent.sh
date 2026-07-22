@@ -93,5 +93,5 @@ echo "  Pairing token — enter it in SiliconScope → Fleet on your Mac:"
 echo
 echo "      $($SUDO cat "$TOKEN_FILE" 2>/dev/null || echo '(run: sudo cat '"$TOKEN_FILE"')')"
 echo
-echo "  This machine then appears in Fleet (⌘⇧F) automatically, encrypted."
+echo "  This machine then appears in the SiliconScope sidebar under Fleet, encrypted."
 echo "──────────────────────────────────────────────────────────────────"
