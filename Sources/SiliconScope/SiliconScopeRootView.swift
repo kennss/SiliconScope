@@ -18,8 +18,9 @@ import SiliconScopeCore
 
 /// Which device the detail pane is showing.
 enum DeviceSelection: Hashable {
+    case fleet               // at-a-glance overview of all remote machines
     case thisMac
-    case remote(String)   // fleet machine id
+    case remote(String)      // fleet machine id
 }
 
 struct SiliconScopeRootView: View {
@@ -31,6 +32,8 @@ struct SiliconScopeRootView: View {
         NavigationSplitView {
             List(selection: $selection) {
                 Section("Devices") {
+                    Label("Fleet", systemImage: "square.grid.2x2")
+                        .tag(DeviceSelection.fleet)
                     Label("This Mac", systemImage: "laptopcomputer")
                         .tag(DeviceSelection.thisMac)
                     ForEach(fleet.entries) { entry in
@@ -50,6 +53,8 @@ struct SiliconScopeRootView: View {
             }
         } detail: {
             switch selection ?? .thisMac {
+            case .fleet:
+                FleetOverviewView(fleet: fleet, onSelect: { selection = .remote($0) })
             case .thisMac:
                 DashboardContainer(monitor: monitor)
                     .frame(minWidth: 640, minHeight: 600)
