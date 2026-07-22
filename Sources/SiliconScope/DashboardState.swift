@@ -79,4 +79,28 @@ struct DashboardState {
         benchmark = nil
         benchmarkError = nil
     }
+
+    /// Remote: reconstruct the dashboard from a remote Mac's wire metrics, run through the SAME
+    /// verdict functions as replay. History is empty (no time series over the wire yet) → flat
+    /// sparklines. Powers the remote-mode DashboardView so a remote Mac looks like This Mac.
+    init(remote m: MachineMetrics) {
+        let (s, topo) = m.toDashboardSnapshot()
+        snapshot = s
+        topology = topo
+        history = MetricsEngine.History()
+        anePeakWatts = m.apple?.anePeakWatts ?? 0
+        mediaPeakGBs = m.apple?.mediaPeakGBs ?? 0
+        bandwidthPeakGBs = m.apple?.bandwidth.totalGBs ?? 0
+        let throttling = MetricsEngine.gpuThrottling(latest: s, gpuClockPeakMHz: 0)
+        gpuThrottling = throttling
+        gpuClockDropFraction = 0
+        cpuThrottling = false
+        cpuClockDropFraction = 0
+        bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: topo, bandwidthPeakGBs: bandwidthPeakGBs)
+        bottleneck = MetricsEngine.bottleneck(latest: s, history: history, bandwidthPeakGBs: bandwidthPeakGBs, throttling: throttling)
+        memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: 0, compressionRate: 0)
+        isBenchmarking = false
+        benchmark = nil
+        benchmarkError = nil
+    }
 }

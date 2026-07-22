@@ -146,6 +146,12 @@ struct SiliconScopeApp: App {
                         .isReleasedWhenClosed = false
                     monitor.start()
                     fleet.start()   // run fleet discovery from launch so the menu-bar glyph stays live
+                    // Share this Mac to the fleet when enabled (Settings toggle, or SSCOPE_SHARE=1 for dev).
+                    MacAgentController.shared.configure(monitor: monitor)
+                    if UserDefaults.standard.bool(forKey: "shareThisMac")
+                        || ProcessInfo.processInfo.environment["SSCOPE_SHARE"] == "1" {
+                        MacAgentController.shared.startIfConfigured()
+                    }
                 }
         }
         .windowResizability(.contentMinSize)

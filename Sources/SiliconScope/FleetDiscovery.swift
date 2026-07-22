@@ -31,6 +31,9 @@ final class FleetDiscovery {
     private var browser: NWBrowser?
     private let onChange: ([any FleetSource]) -> Void
     private var cache: [String: DiscoveredAgent] = [:]   // instance name → agent
+    /// This Mac's own Bonjour name — skipped in discovery since it's already listed as "This Mac"
+    /// (when share mode is on, the local agent would otherwise self-discover as a duplicate).
+    private static let localComputerName = Host.current().localizedName ?? ""
 
     init(onChange: @escaping ([any FleetSource]) -> Void) { self.onChange = onChange }
 
@@ -67,6 +70,7 @@ final class FleetDiscovery {
         var seen = Set<String>()
         for r in results {
             guard case let .service(name, _, _, _) = r.endpoint else { continue }
+            if name == Self.localComputerName { continue }   // skip ourselves; This Mac is already listed
             seen.insert(name)
             if cache[name] != nil { continue }   // already resolved this instance
             if let (host, port) = await Self.resolve(r.endpoint) {

@@ -145,8 +145,13 @@ struct DashboardContainer: View {
     }
 }
 
+/// Where the dashboard's data comes from: the local Mac (all cards) or a remote fleet agent
+/// (only the hardware cards a Mac agent sends — no network/disk/process/AI-runtime).
+enum DashboardMode { case local, remote }
+
 struct DashboardView: View {
     let state: DashboardState
+    var mode: DashboardMode = .local
     var onBenchmark: (() -> Void)? = nil   // nil → replay: hides the benchmark control + process kill
     var onInspect: ((ProcessRow) -> Void)? = nil   // nil → replay: process inspection disabled
     @State private var dismissedWarnings: Set<String> = []   // user-dismissed warnings (until the episode ends)
@@ -164,6 +169,34 @@ struct DashboardView: View {
         ScrollView {
             VStack(spacing: 4) {
                 HeaderView(topology: s.topology, power: snapshot.power, battery: snapshot.battery)
+
+                if mode == .remote {
+                    // Remote Mac: only the hardware cards a Mac agent sends. Same look as local, minus
+                    // network/disk/process/AI-runtime (no data over the wire). Re-paired into 3 rows.
+                    HStack(alignment: .top, spacing: 6) {
+                        AIWorkloadCard(snapshot: snapshot, bottleneck: s.bottleneck, ceilingGBs: s.bandwidthCeilingGBs,
+                                       cpuThrottling: s.cpuThrottling, cpuClockDrop: s.cpuClockDropFraction,
+                                       gpuThrottling: s.gpuThrottling, gpuClockDrop: s.gpuClockDropFraction,
+                                       memoryRisk: s.memoryRisk, onInspect: nil, allowKill: false)
+                        AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth,
+                                        anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
+                                        gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
+                                        mediaHistory: s.history.media, aneHistory: s.history.ane,
+                                        throttling: s.gpuThrottling)
+                    }
+                    .frame(height: 166)
+                    HStack(alignment: .top, spacing: 6) {
+                        CPUCard(cpu: snapshot.cpu, topology: s.topology,
+                                eHistory: s.history.eCPU, pHistory: s.history.pCPU,
+                                throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
+                        MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
+                                            bandwidthPeak: s.bandwidthPeakGBs,
+                                            memHistory: s.history.memory, bwHistory: s.history.bandwidth)
+                    }
+                    .frame(minHeight: 176)
+                    SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
+                        .frame(minHeight: 120)
+                } else {
 
                 // AI cockpit pair, side by side (matches the rest of the 2-column grid and
                 // saves a stacked row of vertical space).
@@ -227,6 +260,7 @@ struct DashboardView: View {
                 // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
                 // needs a bounded height — minHeight lets the whole list expand and balloons the window.
                 .frame(height: 196)
+                }
             }
             .padding(8)
         }

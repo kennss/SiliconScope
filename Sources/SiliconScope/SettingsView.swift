@@ -12,6 +12,7 @@
 //             reads refreshInterval + notificationsEnabled each loop. All update live.
 //
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @AppStorage("refreshInterval") private var refreshInterval = 1.0
@@ -35,8 +36,10 @@ struct SettingsView: View {
     @AppStorage("menubar.ssd") private var mbSSD = false
     @AppStorage("menubar.sensors") private var mbSEN = false
     @AppStorage("menubar.battery") private var mbBAT = false
+    @AppStorage("shareThisMac") private var shareThisMac = false
     @State private var autoUpdate = false
     @State private var launchAtLogin = LoginItem.isEnabled
+    @State private var agentToken: String?
 
     var body: some View {
         Form {
@@ -104,9 +107,47 @@ struct SettingsView: View {
             } footer: {
                 Text("Reads the loaded model, processor split, and tokens/sec from AI runtimes on 127.0.0.1. Nothing leaves your Mac.")
             }
+
+            Section {
+                Toggle("Share this Mac to Fleet", isOn: $shareThisMac)
+                    .onChange(of: shareThisMac) { _, on in
+                        if on {
+                            MacAgentController.shared.startIfConfigured()
+                            Task { try? await Task.sleep(for: .seconds(1)); agentToken = MacAgentController.shared.pairingToken }
+                        } else {
+                            MacAgentController.shared.stop()
+                            agentToken = nil
+                        }
+                    }
+                if shareThisMac {
+                    if let token = agentToken {
+                        LabeledContent("Pairing token") {
+                            HStack(spacing: 6) {
+                                Text(token)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled).lineLimit(1).truncationMode(.middle)
+                                Button {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(token, forType: .string)
+                                } label: { Image(systemName: "doc.on.doc") }
+                                    .buttonStyle(.borderless).help("Copy token")
+                            }
+                        }
+                    } else {
+                        Text("Starting…").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Fleet")
+            } footer: {
+                Text("Let other Macs on your network monitor this Mac, encrypted. Enter this token in their SiliconScope (Fleet sidebar → this Mac → Pair).")
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 400, height: aiRuntimeAPIEnabled ? 760 : 650)
-        .onAppear { autoUpdate = UpdaterController.shared.automaticallyChecks }
+        .frame(width: 400, height: aiRuntimeAPIEnabled ? 820 : 710)
+        .onAppear {
+            autoUpdate = UpdaterController.shared.automaticallyChecks
+            if shareThisMac { agentToken = MacAgentController.shared.pairingToken }
+        }
     }
 }
