@@ -19,6 +19,11 @@ Entstanden aus dem Wunsch zu *sehen*, wie On-Device-KI- und Medien-Workloads die
 Apple-Silicon-Beschleuniger auslasten — und herangewachsen zu einem Alltags-Monitor, der
 iStat Menus ersetzen kann.
 
+**Neu in 4.0 — er beobachtet jetzt auch deine *anderen* Rechner.** Ein Mac mini ohne Bildschirm,
+eine Linux-GPU-Kiste unter dem Schreibtisch, eine gemietete Cloud-Instanz: Dort läuft ein kleiner
+Agent, und die Maschine tritt über eine verschlüsselte, gekoppelte Verbindung demselben Dashboard
+bei. Ferne Macs bekommen die volle Behandlung — **Neural Engine inklusive**.
+
 *Vorgestellt auf [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE) und [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP).*
 
 ![SiliconScope-Dashboard unter Last eines lokalen LLM](docs/img/dashboard.png)
@@ -44,6 +49,71 @@ Pinne jede Karte als eigenständiges Menüleisten-Element an — **CPU · GPU ·
 *On-Demand-Benchmark: „Measure tok/s" führt eine kurze Generierung aus und misst die Dekodiergeschwindigkeit und Energieeffizienz eines Modells — **tokens/sec · tokens/Wh** — und speichert sie pro Modell.*
 
 > 📊 **Schon tok/s auf deinem Mac gemessen?** [Poste es in den Discussions](https://github.com/kennss/SiliconScope/discussions/5) — eine per Crowdsourcing erstellte Tabelle pro Chip hilft anderen bei der Hardware-Wahl.
+
+## Neu in 4.0
+
+### 🛰 Fleet — deine anderen Rechner, im selben Dashboard
+
+Läuft auf einem entfernten Rechner ein Agent, taucht er in einer **Devices**-Seitenleiste neben
+**This Mac** auf. Maschinen im eigenen LAN werden per mDNS automatisch gefunden — keine
+IP-Konfiguration nötig.
+
+![Die Fleet-Übersicht — alle Rechner auf einem Bildschirm](docs/img/fleet-overview.png)
+
+*Drei Rechner auf einen Blick. Jede Kachel legt **GPU + VRAM** und **CPU + RAM** auf dieselbe Achse,
+auf Apple Silicon kommen **ANE + Speicherbandbreite** dazu — das Metrik-Wort ist in der Farbe seiner
+Linie eingefärbt, eine Legende erübrigt sich. Hier liegt das MacBook Pro bei **64 % GPU / 10 GB/s**,
+das Air ist im Leerlauf, und die Ubuntu-Kiste hält **18,7 GB VRAM** mit zwei geladenen
+Ollama-Modellen. This Mac ist immer die erste Kachel.*
+
+- **Ein ferner Mac wird in genau dem Dashboard gezeichnet, das auch lokal läuft** — E-/P-Kerne, GPU,
+  **ANE**, Media, Speicherbandbreite, Leistung, Lüfter. Soweit ich weiß, zeigt kein anderes Werkzeug
+  die **Neural Engine eines fernen Macs**.
+- **Eine Linux/NVIDIA-Kiste bekommt eine GPU-zentrierte Ansicht** — Auslastung, VRAM, Leistung gegen
+  das Limit der Karte, Temperatur, welche Prozesse das VRAM halten, und geladene **Ollama**-Modelle.
+  Sie tut nicht so, als hätte eine 3090 E-Kerne.
+
+![Ein ferner Mac im vollen lokalen Dashboard, ANE inklusive](docs/img/fleet-remote-mac.png)
+
+*Ein M1 Air ohne Bildschirm, von einem anderen Mac aus gesehen: **4E+4P**-Kerne, GPU/Media/**ANE
+(geschätzt)**, dazu die echte Speicheraufteilung (**wired 1,0 / active 2,7 / compressed 0,5 GB**,
+Druck 19 %) — und die Sensoren melden ehrlich **fanless**, statt einen Lüfterwert zu erfinden. Karten,
+die ein Wire-Agent nicht füllen kann, werden weggelassen und nicht gefälscht.*
+
+![Eine Linux-GPU-Kiste mit VRAM-Haltern und Ollama-Modellen](docs/img/fleet-linux.png)
+
+*Dieselbe App, eine andere Klasse von Rechner. Eine RTX-3090-Kiste: **35 / 390 W** gegen das Limit der
+Karte, **18,7 / 24 GB VRAM**, wer es hält (ein Python-venv mit **17,9 GB**) und die Ollama-Modelle auf
+der Platte. Keine E-Kerne, keine ANE — weil sie beides nicht hat.*
+
+Jede Verbindung ist **TLS-verschlüsselt und token-authentifiziert**, und der Viewer pinnt beim ersten
+Verbinden das Zertifikat des Agents (TOFU) — ein neu geschlüsselter oder untergeschobener Agent wird
+also abgelehnt statt stillschweigend vertraut.
+
+![This Mac unverändert, mit der neuen Devices-Seitenleiste](docs/img/fleet-sidebar.png)
+
+*Am Betrieb mit nur einem Mac ändert sich nichts — es ist dasselbe Dashboard, ergänzt um eine
+einklappbare **Devices**-Seitenleiste. Klapp sie ein, und du bist exakt bei 3.x.*
+
+#### Einen Agent installieren
+
+Eine URL für jede Plattform — unter Linux als systemd-Dienst, unter macOS als LaunchAgent:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh
+```
+
+Der Mac-Agent braucht **kein sudo** und läuft deshalb auch über `ssh` unbeaufsichtigt durch. Jeder
+Installer gibt am Ende eine einzige `sscope://pair…`-Zeile aus — einfügen unter **Add machine…**, und
+der Rechner ist in einem Schritt hinzugefügt *und* gekoppelt.
+
+Auf einem Mac, an dem du tatsächlich sitzt, brauchst du gar keinen Agent:
+**Einstellungen → Share this Mac**.
+
+> **Mac ohne Bildschirm?** Aktiviere zuerst **Systemeinstellungen → Allgemein → Freigabe →
+> Entfernte Anmeldung** — sonst lässt sich dort nichts installieren. **Außerhalb deines LAN**
+> (Tailscale, VPN, Cloud)? Dorthin kommt mDNS nicht, also per Adresse unter **Add machine…**
+> hinzufügen; lieber Tailscale oder einen SSH-Tunnel als den Port öffentlich freizugeben.
 
 ## Neu in 3.0
 

@@ -17,6 +17,11 @@
 オンデバイス AI とメディアのワークロードが Apple Silicon のアクセラレータをどう動かしているかを
 *実際に見たい* という思いから生まれ、iStat Menus の代わりに使える常用モニターへと育ちました。
 
+**4.0 の新機能 — *ほかの* マシンも見られるようになりました。** ヘッドレスの Mac mini、机の下の
+Linux GPU マシン、借りているクラウドインスタンス — そこに小さなエージェントを動かせば、暗号化・
+ペアリング済みの接続で同じダッシュボードに合流します。リモートの Mac は **Neural Engine を含めて**
+ローカルとまったく同じように表示されます。
+
 *[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本語）と [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（ドイツ語）に掲載されました。*
 
 ![ローカル LLM 負荷時の SiliconScope ダッシュボード](docs/img/dashboard.png)
@@ -42,6 +47,68 @@
 *オンデマンドベンチマーク:「Measure tok/s」が短い生成を 1 回実行し、モデルのデコード速度とエネルギー効率 — **tokens/sec · tokens/Wh** — を測定してモデルごとに保存します。*
 
 > 📊 **あなたの Mac で tok/s を測りましたか？** [Discussions に投稿してください](https://github.com/kennss/SiliconScope/discussions/5) — チップ別のクラウドソース表は、他の人のハードウェア選びに役立ちます。
+
+## 4.0 の新機能
+
+### 🛰 Fleet — ほかのマシンを、同じダッシュボードで
+
+リモートのマシンでエージェントを動かすと、**This Mac** の隣の **Devices** サイドバーに現れます。
+同じ LAN 上のマシンは mDNS で自動的に見つかるため、IP の設定は不要です。
+
+![Fleet 概要 — すべてのマシンを 1 画面に](docs/img/fleet-overview.png)
+
+*3 台を一目で。各タイルは **GPU + VRAM** と **CPU + RAM** を 1 つの軸に重ね、Apple Silicon では
+さらに **ANE + メモリ帯域幅** が加わります。指標名がその線の色で塗られているので凡例は要りません。
+ここでは MacBook Pro が **GPU 64% / 10 GB/s**、Air はアイドル、Ubuntu マシンは **VRAM 18.7 GB** を
+確保して Ollama モデルを 2 つ載せた状態です。This Mac は常に先頭のタイルです。*
+
+- **リモートの Mac はローカルとまったく同じダッシュボードで描画されます** — E/P コア、GPU、
+  **ANE**、Media、メモリ帯域幅、電力、ファン。知る限り、**リモート Mac の Neural Engine** を
+  見せるツールはほかにありません。
+- **Linux/NVIDIA マシンには GPU 中心のビュー** — 使用率、VRAM、カードの上限に対する電力、温度、
+  VRAM を握っているプロセス、そして読み込まれている **Ollama** モデル。3090 に E コアがあるふりは
+  しません。
+
+![リモート Mac をローカルと同じダッシュボードで、ANE も込みで](docs/img/fleet-remote-mac.png)
+
+*別の Mac から覗いたヘッドレスの M1 Air：**4E+4P** コア、GPU/Media/**ANE 推定値**、そして実際の
+メモリ内訳（**wired 1.0 / active 2.7 / compressed 0.5 GB**、プレッシャー 19%）。センサーはファンの値を
+でっち上げず、正直に **fanless** と報告します。ワイヤーのエージェントが埋められないカードは、
+偽らずに省かれます。*
+
+![VRAM を握るプロセスと Ollama モデルまで見える Linux GPU マシン](docs/img/fleet-linux.png)
+
+*同じアプリ、違う種類のマシン。RTX 3090 のマシン：カード上限に対して **35 / 390 W**、
+**18.7 / 24 GB VRAM**、それを握っているのは誰か（Python の venv が **17.9 GB**）、そしてディスク上の
+Ollama モデル。E コアも ANE もありません — 実際に無いからです。*
+
+すべての接続は **TLS で暗号化され、トークンで認証** されます。ビューアは初回接続時にエージェントの
+証明書をピン留め（TOFU）するため、鍵が変わったり成りすましたエージェントは黙って信頼されるのでは
+なく拒否されます。
+
+![そのままの This Mac と、新しい Devices サイドバー](docs/img/fleet-sidebar.png)
+
+*Mac 1 台だけの使い方は何も変わりません — 同じダッシュボードに、折りたためる **Devices** サイドバーが
+1 つ増えただけです。畳めば 3.x とまったく同じです。*
+
+#### エージェントのインストール
+
+どのプラットフォームでも同じ URL — Linux では systemd、macOS では LaunchAgent として入ります：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh
+```
+
+Mac のエージェントは **sudo が不要** なので、`ssh` 越しでも止まらず最後まで完了します。各インストーラは
+最後に `sscope://pair…` のリンクを 1 行出力します — アプリの **Add machine…** に貼り付ければ、追加と
+ペアリングが 1 度で終わります。
+
+自分で使っている Mac なら、エージェントすら不要です：**設定 → Share this Mac**。
+
+> **ヘッドレスの Mac ですか？** まず **システム設定 → 一般 → 共有 → リモートログイン** を有効に
+> してください。そうしないと何もインストールできません。**LAN の外**（Tailscale・VPN・クラウド）の
+> 場合は mDNS が届かないので、**Add machine…** でアドレスを指定して追加します。ポートを公開
+> インターネットに晒すより、Tailscale や SSH トンネル経由を推奨します。
 
 ## 3.0 の新機能
 

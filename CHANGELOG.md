@@ -1,5 +1,54 @@
 # Changelog
 
+## v4.0.0 — 2026-07-23
+
+**SiliconScope stops being a monitor for *this* Mac.** The 4.x line watches a whole fleet — a
+headless Mac mini, a Linux GPU box under the desk, a rented cloud instance — from one window, with
+the same depth it always had locally. Nothing about single-Mac use changes; the sidebar simply
+starts empty.
+
+**🛰 Fleet monitoring — your other machines, in the same dashboard.** Install a small agent on a
+remote box and it appears in a new **Devices** sidebar next to **This Mac**. A remote **Mac** renders
+in the *exact* dashboard the local one uses — E/P cores, GPU, **Neural Engine**, Media, memory
+bandwidth, power, fans. As far as we know this is the only tool that shows a **remote Mac's ANE**.
+A **Linux/NVIDIA** box gets a GPU-centric view instead — utilization, VRAM, power against the card's
+limit, temperature, the processes holding VRAM, and any Ollama models loaded — because pretending a
+3090 has E-cores would be a lie.
+
+**🗂 Fleet overview — which box is busy, in one screen.** A grid of tiles, This Mac always first,
+each with paired trend graphs: **GPU + VRAM** and **CPU + RAM** on every machine, plus **ANE +
+memory bandwidth** on Apple Silicon. The metric word in each caption is tinted to match its line, so
+the graphs need no legend. Click a tile to drill in.
+
+**🔒 Encrypted, paired, sudoless.** Agents serve over **TLS** with a **bearer token**, and the viewer
+pins the agent's certificate on first connect (TOFU), so a re-keyed or spoofed agent is refused
+rather than silently trusted. Machines on your LAN are found automatically over mDNS — no IP
+configuration. The metrics themselves are read the same sudoless way as always.
+
+**📋 One line to install, one paste to pair.**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh
+```
+
+That URL is the same on every platform — it installs a systemd service on Linux and hands off to the
+Mac installer on macOS. The Mac agent needs **no sudo** (a LaunchAgent runs in your own session), so
+it finishes unattended over `ssh`. Each installer ends by printing a single `sscope://pair…` link
+carrying the machine's name, address and token: paste it into **Add machine…** and the box is added
+*and* paired in one step. On a Mac you actually sit at, **Settings → Share this Mac** is the whole
+setup.
+
+**🌍 Off-LAN machines — Tailscale, VPN, cloud.** mDNS only reaches the local subnet, so a lab GPU
+server or cloud instance can be added by address; everything above it — TLS, token, cert pin — is
+identical. Prefer reaching those over Tailscale or an SSH tunnel rather than exposing the port
+publicly.
+
+**Honest about the edges.** A remote Linux box reports GPU data only where `nvidia-smi` exists.
+Per-sensor temperature lists aren't sent, so a remote Mac's Sensors card says so instead of inventing
+values. Pairing is keyed by the machine's name, so renaming a machine means pairing it again. And a
+headless Mac needs **Remote Login** enabled before you can install anything on it — that part is
+Apple's.
+
 ## v3.2.1 — 2026-07-21
 
 - **Memory bandwidth & Media Engine now report on M4 Max and M5 Max.** On recent Apple Silicon +

@@ -1,11 +1,54 @@
-# SiliconScope — Remote & Fleet Monitoring (design proposal)
+# SiliconScope — Remote & Fleet Monitoring
 
-> **Status:** brainstorm / proposal — not a committed decision.
-> **Author:** Kennt Kim / Calida Lab · **Created:** 2026-07-14 · **Updated:** 2026-07-14
+> **Status: SHIPPED in v4.0.0 (2026-07-23).** Sections 1–4 and 6–7 held up and still describe the
+> feature. Sections 5, 8 and 9 were written as a proposal and the build diverged from them — see
+> **§0 As shipped** for what actually exists and why it differs. The original text is kept below as
+> the decision record, not as documentation of the current system.
+> **Author:** Kennt Kim / Calida Lab · **Created:** 2026-07-14 · **Updated:** 2026-07-23
 > Watch a *headless* Apple-Silicon box (e.g. a Mac mini running local LLMs) from the full
 > SiliconScope GUI on another Mac — by running a lightweight agent on the remote host and
 > pulling its metrics over the LAN. Turns SiliconScope from "monitor *this* Mac" into
 > "monitor my Apple-Silicon *fleet*."
+
+---
+
+## 0. As shipped (v4.0.0)
+
+**What exists:** two agents and a fleet UI.
+
+- **Linux agent** — `agent/` (Go, static, no deps): reads `/proc` + `nvidia-smi`, detects Ollama.
+  Installed as a hardened **systemd** service by `scripts/install-agent.sh`.
+- **Mac agent** — `sscope-agent-mac` (Swift, reuses `SiliconScopeCore`): installed under
+  `~/.local/bin` as a **LaunchAgent** with **no sudo**. The app itself can serve instead, via
+  **Settings → Share this Mac** (`MacAgentController`).
+- **Viewer** — a unified **Devices sidebar** (This Mac + every agent) plus a **Fleet overview grid**,
+  in the single main window.
+
+**Where it diverged from the proposal — and why:**
+
+| §5 proposed | Shipped | Why |
+|---|---|---|
+| One agent: `sscope --serve` (the Swift CLI) | **Two** agents (Go for Linux, Swift for Mac) | Linux became a first-class target; a static Go binary drops all runtime deps on a GPU box. |
+| Homebrew **formula** for the agent | `curl \| sh` → systemd / LaunchAgent | Agents belong to the machine's service manager, and this works identically on Linux. |
+| Apple-Silicon fleet only | **Linux/NVIDIA is a first-class `kind`** with its own GPU-centric view | The real fleet these users have is Macs *and* GPU boxes. Rendering a 3090 in a Mac layout was tried and was wrong (no E/P cores, no ANE). |
+| TLS "ideally", token required | **TLS mandatory + bearer token + TOFU cert pin** | A metrics daemon on the network earns no benefit of the doubt (§6). |
+| Bonjour "nice-to-have, not v1" | **mDNS discovery is the default path in v1** | Removing IP configuration is most of the UX win; typing a host is now the *fallback*. |
+| v1 = "Add Remote Host" → a second window; fleet sidebar later | **Unified sidebar + overview grid directly**; no second window | A second window fragments the app; one window with a device list is simpler and scaled to N machines immediately. |
+| Negotiated protocol/schema version | **No negotiation** — schema evolves by adding `Optional` fields | Simpler and sufficient: an older agent's payload still decodes, and the viewer falls back per field. |
+| Remote view is "full fidelity", so Replay / Inspector / menu-bar work for free | **A curated wire schema** (`MachineMetrics`), and remote mode hides what it can't fill | The remote source is **not** a full `Snapshot`. Per-process ANE memory, per-sensor temperature lists, network/disk and the process table are not transmitted; Replay and Inspector remain local-only. Rather than fake them, the remote dashboard omits those cards. |
+
+**Wire boundary.** `MachineMetrics` (Core) is the contract — deliberately source-agnostic so the Go
+and Swift agents produce the same JSON. `MachineMetrics.mac()` encodes it; `toDashboardSnapshot()`
+synthesizes a `SystemSnapshot` so a remote Mac reuses the *local* `DashboardView` unchanged.
+
+**Pairing.** Installers print one `sscope://pair?name=…&host=…&port=…&token=…` link
+(`PairingLink`, Core — it owns both encode and decode so the printed and parsed formats can't
+drift). Pasting it into **Add machine…** adds and pairs in one step. The token is keyed by the
+machine's **name**, which is why renaming a machine requires re-pairing.
+
+**Known limits (documented, not hidden):** GPU data on Linux requires `nvidia-smi`; remote Sensors
+says "no sensors available" rather than inventing values; mDNS doesn't traverse subnets, so
+Tailscale/VPN/cloud machines are added by address.
 
 ---
 
@@ -132,6 +175,12 @@ SiliconScope's DNA is privacy / on-device. The agent must not betray that:
 
 ## 8. Phased roadmap
 
+> **Superseded.** The phases collapsed: v4.0.0 shipped all four at once. Phase 1 (`sscope-cli`)
+> already existed; phase 2 became *two* agents rather than `sscope --serve`; phase 3's second-window
+> `RemoteSource` was skipped entirely; phase 4 (Bonjour + fleet sidebar), which was to be "gated on
+> traction", turned out to be the part that makes the feature usable and shipped in v1. See §0.
+
+
 1. **`sscope` CLI** (`--json` / `--watch` / `--once`) — reuses the core; opens the Homebrew
    **formula** channel. Low-risk probe of the terminal/headless audience.
 2. **`sscope --serve`** — the agent: same CLI + network transport (JSON/SSE) + token auth.
@@ -142,6 +191,17 @@ Each phase ships value on its own; the sequence reuses the core at every step an
 forks the data layer.
 
 ## 9. Open questions / risks
+
+> **Resolved in v4.0.0:** *schema versioning* — no negotiation; `Optional` fields keep old agents
+> decodable. *Sampling overhead* — the Go agent reads `/proc`; the Mac agent reuses the same 1 Hz
+> Core sampler as the GUI. *Multi-host UX* — solved directly with the sidebar + overview grid rather
+> than deferred. *Security surface* — TLS + bearer token + TOFU cert pin.
+> **Still open:** *connection resilience* is only partial — a dead agent surfaces as a per-machine
+> error and launchd/systemd restart it, but there's no backoff/staleness badge beyond the
+> "updated …" timestamp. Clock skew is moot for now (Replay stays local). New since: pairing is
+> keyed by machine **name**, so a rename breaks it — keying by the stable `machineId` would fix it,
+> but the viewer can't read that until it's already authenticated.
+
 
 - **Protocol/schema versioning** across independently-updated agent & viewer.
 - **Sampling overhead** on the remote host — keep the agent as light as the local sampler;

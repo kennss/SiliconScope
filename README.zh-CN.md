@@ -17,6 +17,10 @@
 它源于一个想法：*亲眼看看*端侧 AI 与媒体负载如何驱动 Apple Silicon 的各个加速器 —— 后来成长为
 一款可以替代 iStat Menus 的日常监视器。
 
+**4.0 新功能 —— 它现在也盯着你*其他*的机器。** 无头的 Mac mini、桌子底下的 Linux GPU 主机、
+租来的云实例 —— 在那边跑一个小小的 agent，它就会通过加密并已配对的连接加入同一个仪表盘。
+远程 Mac 依然是完整待遇，**连 Neural Engine 都在**。
+
 *已由 [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）与 [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德国）报道。*
 
 ![本地 LLM 负载下的 SiliconScope 仪表盘](docs/img/dashboard.png)
@@ -42,6 +46,62 @@
 *按需基准测试：“Measure tok/s” 运行一次短生成，测量模型的解码速度与能效 —— **tokens/sec · tokens/Wh** —— 并按模型保存。*
 
 > 📊 **在你的 Mac 上测过 tok/s 吗？** [发到 Discussions 吧](https://github.com/kennss/SiliconScope/discussions/5) —— 一张众包的按芯片对照表能帮助其他人挑选合适的硬件。
+
+## 4.0 新功能
+
+### 🛰 Fleet —— 你的其他机器，在同一个仪表盘里
+
+在远程主机上跑一个 agent，它就会出现在 **This Mac** 旁边的 **Devices** 侧边栏里。
+同一局域网内的机器通过 mDNS 自动发现 —— 不需要配置 IP。
+
+![Fleet 总览 —— 所有机器在一屏之内](docs/img/fleet-overview.png)
+
+*三台机器一目了然。每块磁贴把 **GPU + VRAM** 与 **CPU + RAM** 叠在同一坐标轴上，Apple Silicon 还会
+多出 **ANE + 内存带宽**；指标名按线条颜色着色，因此不需要图例。图中 MacBook Pro 处于
+**GPU 64% / 10 GB/s**，Air 空闲，Ubuntu 主机占着 **18.7 GB 显存** 并常驻两个 Ollama 模型。
+This Mac 永远是第一块磁贴。*
+
+- **远程 Mac 使用与本机完全相同的仪表盘渲染** —— E/P 核、GPU、**ANE**、Media、内存带宽、功耗、
+  风扇。据我所知，没有别的工具能显示**远程 Mac 的 Neural Engine**。
+- **Linux/NVIDIA 主机得到的是以 GPU 为中心的视图** —— 利用率、显存、相对显卡上限的功耗、温度、
+  谁占着显存，以及已加载的 **Ollama** 模型。它不会假装 3090 有 E 核。
+
+![远程 Mac 使用完整的本机仪表盘，包含 ANE](docs/img/fleet-remote-mac.png)
+
+*从另一台 Mac 看过去的无头 M1 Air：**4E+4P** 核心、GPU/Media/**ANE 估算值**，以及真实的内存构成
+（**wired 1.0 / active 2.7 / compressed 0.5 GB**，压力 19%）—— 传感器不会编造风扇读数，而是老实地
+报告 **fanless**。协议里填不出的卡片会被省略，而不是伪造。*
+
+![显示显存占用进程与 Ollama 模型的 Linux GPU 主机](docs/img/fleet-linux.png)
+
+*同一个 App，另一类机器。一台 RTX 3090 主机：相对显卡上限的 **35 / 390 W**、**18.7 / 24 GB 显存**、
+是谁占着它（一个 Python venv 占 **17.9 GB**），以及磁盘上的 Ollama 模型。没有 E 核，也没有 ANE ——
+因为它本来就没有。*
+
+每条连接都经过 **TLS 加密并使用令牌认证**，而且查看端会在首次连接时固定 agent 的证书（TOFU），
+所以换过密钥或伪装的 agent 会被拒绝，而不是被悄悄信任。
+
+![保持原样的 This Mac，以及新增的 Devices 侧边栏](docs/img/fleet-sidebar.png)
+
+*只用一台 Mac 的方式没有任何变化 —— 还是同一个仪表盘，只是多了一个可折叠的 **Devices** 侧边栏。
+把它折起来，就和 3.x 一模一样。*
+
+#### 安装 agent
+
+所有平台同一个 URL —— 在 Linux 上装成 systemd 服务，在 macOS 上装成 LaunchAgent：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh
+```
+
+Mac 端的 agent **不需要 sudo**，所以通过 `ssh` 执行也能一路跑完、不会卡住。每个安装脚本最后都会打印
+一行 `sscope://pair…` 链接 —— 粘贴到 App 的 **Add machine…** 里，添加与配对一步完成。
+
+如果是你自己在用的 Mac，连 agent 都不需要：**设置 → Share this Mac**。
+
+> **无头 Mac？** 请先打开**系统设置 → 通用 → 共享 → 远程登录**，否则你没法在上面装任何东西。
+> **不在同一局域网**（Tailscale、VPN、云）？mDNS 到不了，请在 **Add machine…** 里按地址添加；
+> 相比把端口暴露到公网，更推荐走 Tailscale 或 SSH 隧道。
 
 ## 3.0 新功能
 

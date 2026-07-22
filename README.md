@@ -17,6 +17,10 @@ menu-bar suite — with first-class **ANE (Neural Engine)**, **Media Engine**, a
 Born from wanting to *see* how on-device AI and media workloads drive the Apple Silicon
 accelerators — and grown into a daily-driver monitor that can stand in for iStat Menus.
 
+**New in 4.0 — it watches your *other* machines too.** A headless Mac mini, a Linux GPU box under
+the desk, a rented cloud instance: run a small agent there and it joins the same dashboard, over an
+encrypted, paired connection. Remote Macs keep the full treatment, **Neural Engine included**.
+
 *Featured on [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP) and [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE).*
 
 ![SiliconScope dashboard with the Replay scrubber](docs/img/dashboard.png)
@@ -42,6 +46,67 @@ Pin any card to its own menu-bar item — **CPU · GPU · Memory · Network · S
 *On-demand benchmark: "Measure tok/s" runs one short generation and reports the model's decode speed and energy efficiency — **tokens/sec · tokens/Wh** — stored per model.*
 
 > 📊 **Measured tok/s on your Mac?** [Post it in Discussions](https://github.com/kennss/SiliconScope/discussions/5) — a crowd-sourced per-chip table helps others pick the right hardware.
+
+## New in 4.0
+
+### 🛰 Fleet — your other machines, in the same dashboard
+
+Run an agent on a remote box and it shows up in a **Devices** sidebar beside **This Mac**.
+Machines on your LAN are discovered automatically (mDNS) — no IP configuration.
+
+![The Fleet overview — every machine on one screen](docs/img/fleet-overview.png)
+
+*Three machines at a glance. Each tile pairs **GPU + VRAM** and **CPU + RAM** on one axis, plus
+**ANE + memory bandwidth** on Apple Silicon — the tinted metric word matches its line, so no legend
+is needed. Here the MacBook Pro is at **64% GPU / 10 GB/s**, the Air is idle, and the Ubuntu box is
+holding **18.7 GB of VRAM** with 2 Ollama models resident. This Mac is always the first tile.*
+
+- **A remote Mac renders in the exact dashboard the local one uses** — E/P cores, GPU,
+  **ANE**, Media, memory bandwidth, power, fans. As far as I know, no other tool shows a
+  **remote Mac's Neural Engine**.
+- **A Linux/NVIDIA box gets a GPU-centric view** — utilization, VRAM, power against the card's
+  limit, temperature, which processes hold VRAM, and any **Ollama** models loaded. It doesn't
+  pretend a 3090 has E-cores.
+
+![A remote Mac in the full local dashboard, ANE included](docs/img/fleet-remote-mac.png)
+
+*A headless M1 Air, seen from another Mac: **4E+4P** cores, GPU/Media/**ANE est.**, the real memory
+split (**wired 1.0 / active 2.7 / compressed 0.5 GB**, pressure 19%) — and Sensors correctly reporting
+**fanless** instead of inventing a fan reading. Cards a wire agent can't fill are omitted, not faked.*
+
+![A Linux GPU box with VRAM holders and Ollama models](docs/img/fleet-linux.png)
+
+*The same app, a different machine class. An RTX 3090 box: **35 / 390 W** against the card's limit,
+**18.7 / 24 GB VRAM**, which processes are holding it (a Python venv at **17.9 GB**), and the Ollama
+models on disk. No E-cores, no ANE — because it has neither.*
+
+Every connection is **TLS-encrypted and token-authenticated**, and the viewer pins the agent's
+certificate the first time it connects, so a re-keyed or spoofed agent is refused rather than
+silently trusted.
+
+![This Mac unchanged, with the new Devices sidebar](docs/img/fleet-sidebar.png)
+
+*Nothing about single-Mac use changes — the dashboard is the same one, with a collapsible **Devices**
+sidebar added. Collapse it and you're back to 3.x exactly.*
+
+#### Install an agent
+
+One URL, every platform — systemd on Linux, a LaunchAgent on macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh
+```
+
+The Mac agent needs **no sudo**, so this finishes unattended over `ssh`. Each installer ends by
+printing one `sscope://pair…` link — paste it into **Add machine…** in the app and the machine is
+added *and* paired in a single step.
+
+On a Mac you actually sit at, you don't need the agent at all: **Settings → Share this Mac**.
+
+> **Headless Mac?** Enable **System Settings → General → Sharing → Remote Login** first — you can't
+> install anything on it otherwise. **Off your LAN** (Tailscale, VPN, cloud)? mDNS can't reach it, so
+> add it by address in **Add machine…**; prefer Tailscale or an SSH tunnel over exposing the port
+> publicly.
 
 ## New in 3.0
 
