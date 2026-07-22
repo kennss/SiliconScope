@@ -18,6 +18,7 @@ let package = Package(
     products: [
         .library(name: "SiliconScopeCore", targets: ["SiliconScopeCore"]),
         .executable(name: "sscope-cli", targets: ["sscope-cli"]),
+        .executable(name: "sscope-agent-mac", targets: ["sscope-agent-mac"]),
         .executable(name: "SiliconScope", targets: ["SiliconScope"]),
     ],
     dependencies: [
@@ -37,6 +38,18 @@ let package = Package(
         // Terminal verification tool for the data layer.
         .executableTarget(
             name: "sscope-cli",
+            dependencies: ["SiliconScopeCore"],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"]),
+                .linkedFramework("CoreFoundation"),
+                .linkedFramework("IOKit"),
+            ]
+        ),
+
+        // Headless fleet agent for this Mac (launchd). Samples via Core's SystemSampler and serves
+        // FleetAgentServer — same data + transport as the app's "Share this Mac" mode, no GUI.
+        .executableTarget(
+            name: "sscope-agent-mac",
             dependencies: ["SiliconScopeCore"],
             linkerSettings: [
                 .unsafeFlags(["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"]),

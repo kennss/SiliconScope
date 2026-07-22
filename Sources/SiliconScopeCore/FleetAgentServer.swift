@@ -158,6 +158,9 @@ public final class FleetAgentServer: @unchecked Sendable {
         unlink(kcPath)   // start fresh so create never collides with a stale file
         var keychain: SecKeychain?
         let pw = Array(password.utf8)
+        // SecKeychain* is deprecated wholesale, but SecPKCS12Import still requires a file-based
+        // keychain on macOS and there is no non-deprecated replacement for this import path — the
+        // deprecation warning on the next line is expected and intentional.
         let created = SecKeychainCreate(kcPath, UInt32(pw.count), pw, false, nil, &keychain)
         guard created == errSecSuccess, let kc = keychain else {
             throw AgentError.identityLoadFailed(created)
