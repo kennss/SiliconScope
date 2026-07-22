@@ -47,7 +47,16 @@ public extension MachineMetrics {
         let memory = FleetMemory(
             totalBytes: Int64(s.memory.totalBytes),
             usedBytes: Int64(s.memory.usedBytes),
-            availableBytes: Int64(s.memory.freeBytes)
+            availableBytes: Int64(s.memory.freeBytes),
+            // Full VM split, so the viewer's Memory card shows the real breakdown rather than zeros.
+            wiredBytes: Int64(s.memory.wiredBytes),
+            activeBytes: Int64(s.memory.activeBytes),
+            compressedBytes: Int64(s.memory.compressedBytes),
+            appMemoryBytes: Int64(s.memory.appMemoryBytes),
+            cachedFilesBytes: Int64(s.memory.cachedFilesBytes),
+            swapUsedBytes: Int64(s.memory.swapUsedBytes),
+            swapTotalBytes: Int64(s.memory.swapTotalBytes),
+            pressure: s.memory.pressure.rawValue
         )
 
         let chip = topology?.chipName ?? "Apple Silicon"

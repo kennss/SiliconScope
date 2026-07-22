@@ -67,9 +67,27 @@ public struct FleetMemory: Codable, Sendable, Equatable {
     public let totalBytes: Int64
     public let usedBytes: Int64
     public let availableBytes: Int64
+    // Apple VM breakdown (nil on Linux and on pre-1.1 Mac agents). Without it a remote Mac's Memory
+    // card had to render Wired/Compressed/App/Cached/Swap as fabricated zeros; an instrument must not
+    // invent numbers. used / free / pressure% and every stacked-bar fraction are DERIVED from
+    // wired+active+compressed, so sending those three restores all of them at once.
+    public let wiredBytes: Int64?
+    public let activeBytes: Int64?
+    public let compressedBytes: Int64?
+    public let appMemoryBytes: Int64?
+    public let cachedFilesBytes: Int64?
+    public let swapUsedBytes: Int64?
+    public let swapTotalBytes: Int64?
+    public let pressure: String?        // MemorySample.Pressure raw value: normal | warning | critical
 
-    public init(totalBytes: Int64, usedBytes: Int64, availableBytes: Int64) {
+    public init(totalBytes: Int64, usedBytes: Int64, availableBytes: Int64,
+                wiredBytes: Int64? = nil, activeBytes: Int64? = nil, compressedBytes: Int64? = nil,
+                appMemoryBytes: Int64? = nil, cachedFilesBytes: Int64? = nil,
+                swapUsedBytes: Int64? = nil, swapTotalBytes: Int64? = nil, pressure: String? = nil) {
         self.totalBytes = totalBytes; self.usedBytes = usedBytes; self.availableBytes = availableBytes
+        self.wiredBytes = wiredBytes; self.activeBytes = activeBytes; self.compressedBytes = compressedBytes
+        self.appMemoryBytes = appMemoryBytes; self.cachedFilesBytes = cachedFilesBytes
+        self.swapUsedBytes = swapUsedBytes; self.swapTotalBytes = swapTotalBytes; self.pressure = pressure
     }
 }
 
