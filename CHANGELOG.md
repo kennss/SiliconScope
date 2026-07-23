@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.0.2 — 2026-07-24
+
+- **A remote machine with no GPU now works.** The Linux agent returned a nil GPU list when
+  `nvidia-smi` wasn't present, which Go marshals as `null` — so any GPU-less box (Raspberry Pi,
+  CPU-only server, VM) was rejected by the viewer with
+  `DecodingError.valueNotFound … Path: gpus` and never appeared. The agent now always sends an
+  array, and the viewer treats a null or absent array as empty for every field in the schema, so
+  machines still running the older agent recover without reinstalling it.
+  ([#33](https://github.com/kennss/SiliconScope/issues/33) — thanks to @readingsnail for the
+  Raspberry Pi report)
+
 ## v4.0.1 — 2026-07-23
 
 - **The Fleet menu-bar icon is gone.** 4.0.0 added it as an always-on item with no way to turn it
