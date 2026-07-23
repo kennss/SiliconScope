@@ -32,9 +32,13 @@ struct LinuxServerView: View {
                     let g = m.gpus.first
                     identityRow(m, g)
 
-                    dualChart(title: "GPU / VRAM", caption: gpuCaption(g),
-                              history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
-                              history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+                    // Only chart a GPU that exists — a Pi / CPU-only box would otherwise get a
+                    // permanently flat "GPU / VRAM" card that says nothing (#33).
+                    if g != nil {
+                        dualChart(title: "GPU / VRAM", caption: gpuCaption(g),
+                                  history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
+                                  history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+                    }
                     dualChart(title: "CPU / RAM", caption: cpuCaption(m),
                               history.map { $0.cpu / 100 }, MetricPalette.cpuC,
                               history.map { $0.memFrac }, MetricPalette.ramC)
@@ -73,8 +77,12 @@ struct LinuxServerView: View {
                 labelled("CPU", "\(m.cpu.cores) cores")
                 labelled("RAM", gbInt(m.memory.totalBytes))
                 Spacer()
-                labelled("GPU", g?.name ?? "—")
-                labelled("VRAM", g.map { gbInt($0.vramTotalBytes) } ?? "—")
+                // Machines without a GPU (Pi, CPU-only server, VM) drop the columns entirely rather
+                // than showing "—" twice.
+                if let g {
+                    labelled("GPU", g.name)
+                    labelled("VRAM", gbInt(g.vramTotalBytes))
+                }
             }
         }
     }

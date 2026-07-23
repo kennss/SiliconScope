@@ -1,7 +1,7 @@
 //
 //  File:      FleetMetricsTests.swift
 //  Created:   2026-07-21
-//  Updated:   2026-07-22
+//  Updated:   2026-07-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins that MachineMetrics decodes each agent's JSON byte-for-byte, and that a Mac
 //             payload maps into the synthesized dashboard snapshot correctly. Both fixtures are
@@ -112,6 +112,20 @@ final class FleetMetricsTests: XCTestCase {
         let out = String(data: try JSONEncoder().encode(m), encoding: .utf8) ?? ""
         XCTAssertTrue(out.contains("\"gpus\":[]"), out)
         XCTAssertFalse(out.contains("\"gpus\":null"), out)
+    }
+
+    /// A GPU-less machine must still carry everything the UI needs to render a tile: the fleet
+    /// history sample is built from optional GPU fields, so it should read zeros rather than fail,
+    /// and CPU/RAM — which every machine has — must survive intact.
+    func testGPULessMachineStillCarriesCPUAndMemory() throws {
+        let json = #"{"machineId":"pi","hostname":"raspberrypi","os":"Debian aarch64","kind":"linux","agentVersion":"0.1.0","ts":1,"cpu":{"cores":4,"usagePercent":37.5,"loadAvg1":0.9},"memory":{"totalBytes":4294967296,"usedBytes":1073741824,"availableBytes":3221225472},"gpus":null}"#
+        let m = try JSONDecoder().decode(MachineMetrics.self, from: Data(json.utf8))
+        XCTAssertTrue(m.gpus.isEmpty)
+        XCTAssertNil(m.gpus.first)                       // the UI must treat this as optional
+        XCTAssertEqual(m.cpu.cores, 4)
+        XCTAssertEqual(m.cpu.usagePercent, 37.5, accuracy: 0.001)
+        XCTAssertEqual(m.memory.totalBytes, 4294967296)  // CPU/RAM is the row that always draws
+        XCTAssertNil(m.apple)                            // and no Apple extras on Linux
     }
 
     /// A machine with no NVIDIA GPU and no Ollama must still decode (empty gpus, nil llm).

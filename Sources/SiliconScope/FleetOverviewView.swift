@@ -78,10 +78,15 @@ private struct FleetTile: View {
 
             if needsPairing {
                 spacerText("Pairing required", .orange)
-            } else if let m = metrics, let g = m.gpus.first {
-                gpuCaption(g)
-                miniChart(history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
-                          history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+            } else if let m = metrics {
+                // A GPU is optional — a Raspberry Pi, CPU-only server or VM has none, and requiring
+                // one here left such a machine stuck on "Connecting…" even though it was reporting
+                // fine (#33). CPU/RAM is what every machine has, so that's the row that always draws.
+                if let g = m.gpus.first {
+                    gpuCaption(g)
+                    miniChart(history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
+                              history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+                }
                 cpuCaption(m)
                 miniChart(history.map { $0.cpu / 100 }, MetricPalette.cpuC,
                           history.map { $0.memFrac }, MetricPalette.ramC)
