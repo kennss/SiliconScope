@@ -65,6 +65,55 @@ final class FleetMetricsTests: XCTestCase {
         XCTAssertTrue(ollama.loaded.isEmpty)
     }
 
+    /// A GPU-less Linux box (Raspberry Pi, CPU-only server, VM) sends `"gpus": null`, because Go
+    /// marshals a nil slice as null. That threw `valueNotFound` and took the whole machine offline
+    /// in the viewer — issue #33. Every array in the schema must survive null AND absence, since
+    /// agents already deployed in the field won't be updated.
+    func testDecodesNullAndMissingArrays() throws {
+        let nullArrays = #"""
+        {"machineId":"pi","hostname":"raspberrypi","os":"Debian aarch64","kind":"linux",
+         "agentVersion":"0.1.0","ts":1,
+         "cpu":{"cores":4,"usagePercent":3,"loadAvg1":0.1},
+         "memory":{"totalBytes":4294967296,"usedBytes":1073741824,"availableBytes":3221225472},
+         "gpus":null,
+         "llm":{"ollama":{"running":true,"models":null,"loaded":null}}}
+        """#
+        let m = try JSONDecoder().decode(MachineMetrics.self, from: Data(nullArrays.utf8))
+        XCTAssertEqual(m.hostname, "raspberrypi")
+        XCTAssertTrue(m.gpus.isEmpty)                       // null → [], not a thrown error
+        XCTAssertTrue(try XCTUnwrap(m.llm?.ollama).models.isEmpty)
+        XCTAssertTrue(try XCTUnwrap(m.llm?.ollama).loaded.isEmpty)
+
+        // The same payload with the array keys omitted entirely (an older/leaner agent).
+        let missing = #"""
+        {"machineId":"pi","hostname":"raspberrypi","os":"Debian aarch64","kind":"linux",
+         "agentVersion":"0.1.0","ts":1,
+         "cpu":{"cores":4,"usagePercent":3,"loadAvg1":0.1},
+         "memory":{"totalBytes":4294967296,"usedBytes":1073741824,"availableBytes":3221225472}}
+        """#
+        let m2 = try JSONDecoder().decode(MachineMetrics.self, from: Data(missing.utf8))
+        XCTAssertTrue(m2.gpus.isEmpty)
+        XCTAssertNil(m2.llm)
+    }
+
+    /// A GPU whose `processes` arrive as null must not sink the payload either.
+    func testDecodesGPUWithNullProcesses() throws {
+        let json = #"{"machineId":"x","hostname":"h","os":"o","kind":"linux","agentVersion":"0.1.0","ts":1,"cpu":{"cores":8,"usagePercent":0,"loadAvg1":0},"memory":{"totalBytes":1,"usedBytes":0,"availableBytes":1},"gpus":[{"index":0,"name":"RTX 3090","driver":"595","vramTotalBytes":1,"vramUsedBytes":0,"utilizationPercent":0,"temperatureC":40,"powerDrawW":35,"powerLimitW":390,"processes":null}]}"#
+        let m = try JSONDecoder().decode(MachineMetrics.self, from: Data(json.utf8))
+        XCTAssertEqual(m.gpus.count, 1)
+        XCTAssertTrue(try XCTUnwrap(m.gpus.first).processes.isEmpty)
+    }
+
+    /// Round-trip: what we encode must still be a real array, so tolerating null on the way in
+    /// never leaks null on the way out.
+    func testEncodesEmptyArraysAsArraysNotNull() throws {
+        let m = try JSONDecoder().decode(MachineMetrics.self,
+                                         from: Data(#"{"machineId":"x","hostname":"h","os":"o","kind":"linux","agentVersion":"0.1.0","ts":1,"cpu":{"cores":1,"usagePercent":0,"loadAvg1":0},"memory":{"totalBytes":1,"usedBytes":0,"availableBytes":1},"gpus":null}"#.utf8))
+        let out = String(data: try JSONEncoder().encode(m), encoding: .utf8) ?? ""
+        XCTAssertTrue(out.contains("\"gpus\":[]"), out)
+        XCTAssertFalse(out.contains("\"gpus\":null"), out)
+    }
+
     /// A machine with no NVIDIA GPU and no Ollama must still decode (empty gpus, nil llm).
     func testDecodesMinimalMachine() throws {
         let json = #"{"machineId":"x","hostname":"h","os":"o","kind":"linux","agentVersion":"0.1.0","ts":1,"cpu":{"cores":8,"usagePercent":0,"loadAvg1":0},"memory":{"totalBytes":1,"usedBytes":0,"availableBytes":1},"gpus":[]}"#

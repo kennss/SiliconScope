@@ -27,7 +27,7 @@ public struct MachineMetrics: Codable, Sendable, Identifiable, Equatable {
     public let ts: Int64               // unix ms
     public let cpu: FleetCPU
     public let memory: FleetMemory
-    public let gpus: [FleetGPU]
+    @DefaultEmpty public var gpus: [FleetGPU]
     public let llm: FleetLLM?
     public let apple: FleetApple?      // Apple-Silicon extras; nil on Linux
 
@@ -112,7 +112,7 @@ public struct FleetGPU: Codable, Sendable, Equatable, Identifiable {
     public let temperatureC: Double
     public let powerDrawW: Double
     public let powerLimitW: Double
-    public let processes: [FleetGPUProc]
+    @DefaultEmpty public var processes: [FleetGPUProc]
     public let freqMHz: Double?         // GPU clock; nil when the agent doesn't report it
 
     public init(index: Int, name: String, driver: String, vramTotalBytes: Int64, vramUsedBytes: Int64,
@@ -138,8 +138,8 @@ public struct FleetLLMModel: Codable, Sendable, Equatable {
 
 public struct FleetOllama: Codable, Sendable, Equatable {
     public let running: Bool
-    public let models: [FleetLLMModel]
-    public let loaded: [FleetLLMModel]
+    @DefaultEmpty public var models: [FleetLLMModel]
+    @DefaultEmpty public var loaded: [FleetLLMModel]
 
     public init(running: Bool, models: [FleetLLMModel], loaded: [FleetLLMModel]) {
         self.running = running; self.models = models; self.loaded = loaded
@@ -165,7 +165,7 @@ public struct FleetApple: Codable, Sendable, Equatable {
     public let socWatts: Double        // whole-SoC power (sensor or derived sum)
     public let power: FleetPower
     public let bandwidth: FleetBandwidth
-    public let fanRPMs: [Double]       // empty on fanless Macs (MacBook Air)
+    @DefaultEmpty public var fanRPMs: [Double]   // empty on fanless Macs (MacBook Air)
 
     public init(chip: String, aneWatts: Double, anePeakWatts: Double, mediaGBs: Double,
                 mediaPeakGBs: Double, socWatts: Double, power: FleetPower,

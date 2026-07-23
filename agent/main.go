@@ -304,10 +304,13 @@ func readGPUs() []GPU {
 		"--query-gpu=index,name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw,power.limit",
 		"--format=csv,noheader,nounits").Output()
 	if err != nil {
-		return nil // no NVIDIA GPU / driver
+		// No NVIDIA GPU / driver — a Raspberry Pi, CPU-only server or VM lands here. Return an
+		// EMPTY slice, never nil: encoding/json marshals a nil slice as `null`, which broke the
+		// viewer's decode for every GPU-less machine (issue #33).
+		return []GPU{}
 	}
 	procs := readGPUProcs()
-	var gpus []GPU
+	gpus := []GPU{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		f := splitCSV(line)
 		if len(f) < 9 {
@@ -339,7 +342,7 @@ func readGPUProcs() []GPUProc {
 		"--query-compute-apps=pid,process_name,used_memory",
 		"--format=csv,noheader,nounits").Output()
 	if err != nil {
-		return nil
+		return []GPUProc{} // never nil — see readGPUs (#33)
 	}
 	var procs []GPUProc
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -362,7 +365,10 @@ func readLLM() *LLM {
 	if !ok {
 		return nil // Ollama not reachable → omit
 	}
-	loaded, _ := ollamaModels("/api/ps")
+	loaded, ok := ollamaModels("/api/ps")
+	if !ok || loaded == nil {
+		loaded = []LLMModel{} // never emit `null` — same nil-slice trap as gpus (#33)
+	}
 	return &LLM{Ollama: &Ollama{Running: true, Models: models, Loaded: loaded}}
 }
 
