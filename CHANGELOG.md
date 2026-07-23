@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.0.3 — 2026-07-24
+
+- **A machine with no GPU now actually appears.** 4.0.2 fixed the decode, but the UI still required
+  a GPU: the overview tile was gated on one, so a Raspberry Pi (or CPU-only server, or VM) connected
+  and reported yet sat on "Connecting…" indefinitely. Tiles now draw CPU/RAM — which every machine
+  has — and add the GPU/VRAM row only when there is a GPU; the Linux detail view drops the GPU chart
+  and identity columns instead of showing an empty card.
+  ([#33](https://github.com/kennss/SiliconScope/issues/33))
+
 ## v4.0.2 — 2026-07-24
 
 - **A remote machine with no GPU now works.** The Linux agent returned a nil GPU list when
