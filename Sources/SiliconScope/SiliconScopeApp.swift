@@ -3,8 +3,9 @@
 //  Created:   2026-06-08
 //  Updated:   2026-06-30
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  App entry point. Shows a full dashboard Window and a MenuBarExtra (with a
-//             live 5-bar MenuBarIcon glyph), both backed by one shared SiliconScopeMonitor.
+//  Overview:  App entry point. Declares the full dashboard Window and Settings, backed by one
+//             shared SiliconScopeMonitor. The menu-bar items are NOT scenes here — they're AppKit
+//             NSStatusItems owned by MetricBarController, so each stays individually toggleable.
 //  Notes:     Runs as an SPM executable (xcrun swift run SiliconScope); activation
 //             policy is set to .regular at runtime so the window + Dock icon appear
 //             without a bundled Info.plist. A proper .app bundle comes in packaging.
@@ -58,43 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     NSApplication.shared.setActivationPolicy(showDock ? .regular : .accessory)
 }
 
-/// Dropdown content for the menu-bar fleet glyph: This Mac + one summary line per machine, each
-/// selecting that device in the main window (deep-linking via the shared selection binding).
-private struct FleetMenuContent: View {
-    let fleet: FleetMonitor
-    @Binding var selection: DeviceSelection?
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("This Mac") { open(.thisMac) }
-        Divider()
-        if fleet.entries.isEmpty {
-            Text("Searching for agents…")
-        } else {
-            ForEach(fleet.entries) { e in
-                Button(fleetLine(e)) { open(.remote(e.id)) }
-            }
-        }
-        Divider()
-        Button("Open SiliconScope") { openWindow(id: "siliconscope-main") }
-    }
-
-    private func open(_ sel: DeviceSelection) {
-        selection = sel
-        openWindow(id: "siliconscope-main")
-    }
-
-    private func fleetLine(_ e: FleetMonitor.Entry) -> String {
-        let name = e.metrics?.hostname ?? e.source.label
-        if e.needsPairing { return "\(name) — pairing required" }
-        guard let m = e.metrics else { return "\(name) — connecting…" }
-        if let g = m.gpus.first {
-            return "\(name) — GPU \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W · \(Int(g.temperatureC))°C"
-        }
-        return "\(name) — CPU \(Int(m.cpu.usagePercent))%"
-    }
-}
-
 @main
 struct SiliconScopeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -102,8 +66,7 @@ struct SiliconScopeApp: App {
     // Fleet — machines are discovered automatically via mDNS ("_sscope-agent._tcp"); no hardcoded
     // endpoints. FleetMonitor owns discovery + polling behind the MachineMetrics boundary.
     @State private var fleet = FleetMonitor()
-    // Which device the single window's detail pane shows. A Binding so the menu-bar glyph can
-    // deep-link to a specific machine. Optional to satisfy List(selection:).
+    // Which device the single window's detail pane shows. Optional to satisfy List(selection:).
     @State private var deviceSelection: DeviceSelection? = .thisMac
 
     // The combined "SS" menu-bar item and all per-metric items are AppKit NSStatusItems managed
@@ -113,17 +76,7 @@ struct SiliconScopeApp: App {
     // main menu.) The monitor is started from the main window's onAppear at launch.
     var body: some Scene {
         mainWindow
-        fleetMenuExtra
         Settings { SettingsView() }
-    }
-
-    /// Menu-bar fleet glyph: a compact per-machine summary that deep-links into the main window.
-    /// FleetMonitor runs from launch (see mainWindow onAppear) so this stays live even when the
-    /// window is closed.
-    private var fleetMenuExtra: some Scene {
-        MenuBarExtra("Fleet", systemImage: "server.rack") {
-            FleetMenuContent(fleet: fleet, selection: $deviceSelection)
-        }
     }
 
     /// The single app window: a Devices sidebar (This Mac + discovered fleet agents) driving a
@@ -154,7 +107,9 @@ struct SiliconScopeApp: App {
                         return monitor.machineMetricsMac(machineId: "local", hostname: host,
                                                          osName: os, agentVersion: "local")
                     }
-                    fleet.start()   // run fleet discovery from launch so the menu-bar glyph stays live
+                    // Start discovery immediately: mDNS takes a moment, so machines are already
+                    // listed by the time the user opens the Devices sidebar.
+                    fleet.start()
                     // Share this Mac to the fleet when enabled (Settings toggle, or SSCOPE_SHARE=1 for dev).
                     MacAgentController.shared.configure(monitor: monitor)
                     if UserDefaults.standard.bool(forKey: "shareThisMac")

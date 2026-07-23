@@ -1,16 +1,16 @@
 //
 //  File:      SiliconScopeRootView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-07-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The single-window shell: a NavigationSplitView with a "Devices" sidebar (This Mac +
 //             every discovered fleet agent) and a detail pane that shows the selected device's
 //             dashboard — the local DashboardContainer for This Mac, FleetMachineDetailView for a
 //             remote machine. This replaces the old split of a separate dashboard window and a
 //             ⌘⇧F Fleet window: local and remote now live in one place, one click apart.
-//  Notes:     `selection` is a Binding owned by the App so the menu-bar glyph can deep-link to a
-//             specific machine. Sidebar is collapsible, so viewing only This Mac keeps the full-size
-//             dashboard exactly as before. Devices are secure (https) agents; the lock reflects
+//  Notes:     `selection` is a Binding because the App owns the state, so the chosen device survives
+//             closing and reopening the window. Sidebar is collapsible, so viewing only This Mac
+//             keeps the full-size dashboard exactly as before. Devices are secure (https) agents; the lock reflects
 //             pairing state. "Add machine…" registers an off-LAN endpoint (Tailscale / VPN / cloud)
 //             that mDNS can't auto-discover; manual rows can be removed from their context menu.
 //
