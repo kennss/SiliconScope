@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.0.1 — 2026-07-23
+
+- **The Fleet menu-bar icon is gone.** 4.0.0 added it as an always-on item with no way to turn it
+  off, while every other menu-bar item (CPU, GPU, Memory, Network, SSD, Sensors, Battery) is opt-in
+  and off by default. Menu-bar space is scarce and one app shouldn't take a second slot uninvited.
+  The fleet is still one click away in the window's **Devices** sidebar — which is where the icon's
+  menu led anyway. ([#31](https://github.com/kennss/SiliconScope/issues/31))
+
 ## v4.0.0 — 2026-07-23
 
 **SiliconScope stops being a monitor for *this* Mac.** The 4.x line watches a whole fleet — a
