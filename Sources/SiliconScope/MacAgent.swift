@@ -1,7 +1,7 @@
 //
 //  File:      MacAgent.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-07-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App-side "share this Mac to the Fleet" controller. Runs a FleetAgentServer (Core) that
 //             serves this Mac's MachineMetrics over TLS + mDNS, so another Mac's Fleet view discovers
@@ -86,8 +86,13 @@ final class MacAgentController {
     }
 
     private static func configDir() -> URL {
+        // Separate from the headless CLI agent's dir ("SiliconScope/agent"). If both run on one Mac
+        // — a machine with the app open AND the launchd agent installed — sharing the dir means one
+        // process's `unlink`+recreate of agent.keychain-db invalidates the other's handle, which then
+        // prompts for the keychain password on its next signature (part of issue #34). Each owns its
+        // own token + keychain instead.
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return base.appendingPathComponent("SiliconScope/agent", isDirectory: true)
+        return base.appendingPathComponent("SiliconScope/agent-app", isDirectory: true)
     }
 
     /// Stable per-machine identifier (survives renames), like the Linux agent's /etc/machine-id.

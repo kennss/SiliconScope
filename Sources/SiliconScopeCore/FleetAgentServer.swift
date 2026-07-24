@@ -1,7 +1,7 @@
 //
 //  File:      FleetAgentServer.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-07-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Mac-side fleet agent: serves this machine's MachineMetrics over token-protected
 //             TLS and advertises via mDNS (_sscope-agent._tcp), so another Mac's Fleet view discovers
@@ -166,6 +166,14 @@ public final class FleetAgentServer: @unchecked Sendable {
             throw AgentError.identityLoadFailed(created)
         }
 
+        // Turn OFF auto-lock, or the keychain locks on sleep / after 5 min idle — and then EVERY TLS
+        // handshake needs a private-key signature, which pops a "keychain password" prompt each time
+        // (issue #34). The obvious `SecKeychainSetSettings` can't do this from an unsigned binary on
+        // macOS 26 — it itself prompts for authorization — so shell out to Apple's own signed
+        // `security` tool, which sets it silently. Then unlock once so the first import/sign is ready.
+        try? runSecurity(["set-keychain-settings", kcPath])          // no -l / -u = no lock-on-sleep, no timeout
+        _ = SecKeychainUnlock(kc, UInt32(pw.count), pw, true)
+
         let data = try Data(contentsOf: p12)
         let opts = [kSecImportExportPassphrase as String: password,
                     kSecImportExportKeychain as String: kc] as CFDictionary
@@ -205,6 +213,19 @@ public final class FleetAgentServer: @unchecked Sendable {
         guard p.terminationStatus == 0 else {
             throw AgentError.opensslFailed(String(data: errData, encoding: .utf8) ?? "openssl exit \(p.terminationStatus)")
         }
+    }
+
+    /// Run Apple's signed `/usr/bin/security` tool. Used for `set-keychain-settings`, which the
+    /// `SecKeychainSetSettings` API refuses to do silently from an unsigned agent on macOS 26.
+    /// Best-effort: a failure here only means auto-lock stays on, so callers ignore the result.
+    private static func runSecurity(_ args: [String]) throws {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        p.arguments = args
+        p.standardError = Pipe()
+        p.standardOutput = Pipe()
+        try p.run()
+        p.waitUntilExit()
     }
 
     private func constantTimeEqual(_ a: String, _ b: String) -> Bool {

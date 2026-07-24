@@ -29,6 +29,20 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 [ "$(uname -s)" = "Darwin" ] || { echo "This installer is for macOS. Use install-agent.sh on Linux."; exit 1; }
 
+# --- uninstall: stop + unregister the agent and remove everything it created (issue #34) ---
+if [ "${1:-}" = "--uninstall" ] || [ "${1:-}" = "uninstall" ]; then
+  echo "▸ Removing the SiliconScope Mac agent…"
+  launchctl unload "$PLIST" 2>/dev/null || true
+  rm -f "$PLIST"
+  rm -f "$BIN"
+  # Token + self-signed cert + the private keychain that prompted for a password.
+  rm -rf "$HOME/Library/Application Support/SiliconScope/agent"
+  rm -f /tmp/sscope-agent-mac.log
+  echo "✓ Uninstalled. (The SiliconScope app, if installed, is untouched.)"
+  echo "  On the viewer Mac, right-click this machine in the Fleet sidebar → Remove machine."
+  exit 0
+fi
+
 # Escalate only when the chosen directory isn't ours (i.e. the caller opted into a system path).
 BINDIR="$(dirname "$BIN")"
 mkdir -p "$BINDIR" 2>/dev/null || true
