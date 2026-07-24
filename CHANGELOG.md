@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.0.4 — 2026-07-24
+
+- **The Mac agent no longer prompts for a keychain password.** The agent imports its TLS certificate
+  into a private file keychain that kept macOS's default lock-on-sleep / 5-minute-idle policy, so once
+  the Mac slept the keychain locked and every TLS handshake then popped a "keychain password" dialog,
+  over and over. Auto-lock is now turned off for that keychain, so it never locks and never prompts.
+  ([#34](https://github.com/kennss/SiliconScope/issues/34) — thanks to @iphoneio)
+- **Removing the agent is now supported:** `install-agent-mac.sh --uninstall` stops the LaunchAgent
+  and removes its binary, token, certificate and keychain. Also, the app's "Share this Mac" mode and
+  the headless CLI agent no longer share a config directory, so running both on one Mac can't collide.
+
 ## v4.0.3 — 2026-07-24
 
 - **A machine with no GPU now actually appears.** 4.0.2 fixed the decode, but the UI still required
