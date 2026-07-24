@@ -15,7 +15,7 @@ import Foundation
 import IOKit
 import SiliconScopeCore
 
-private let macAgentVersion = "1.0.0"
+private let macAgentVersion = "1.0.1"
 
 /// Thread-safe holder for the latest encoded MachineMetrics JSON: written on the main actor,
 /// read on the server's connection queue.

@@ -18,7 +18,7 @@ import Foundation
 import IOKit
 import SiliconScopeCore
 
-private let agentVersion = "1.0.0"
+private let agentVersion = "1.0.1"
 private let defaultPort: UInt16 = 7799
 
 /// Thread-safe holder for the latest encoded MachineMetrics JSON (written by the sample loop, read
