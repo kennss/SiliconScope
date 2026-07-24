@@ -115,6 +115,8 @@ Auf einem Mac, an dem du tatsächlich sitzt, brauchst du gar keinen Agent:
 > (Tailscale, VPN, Cloud)? Dorthin kommt mDNS nicht, also per Adresse unter **Add machine…**
 > hinzufügen; lieber Tailscale oder einen SSH-Tunnel als den Port öffentlich freizugeben.
 
+**Einen Agent entfernen** — auf dem betreffenden Rechner den Installer mit `--uninstall` ausführen (`curl -fsSL …/install-agent.sh | sh -s -- --uninstall`, oder lokal `sh install-agent.sh --uninstall`). Er stoppt den Dienst und löscht Binary, Token, Zertifikat und Keychain. Danach auf dem Viewer-Mac in der Fleet-Seitenleiste rechtsklicken → **Forget pairing**.
+
 ## Neu in 3.0
 
 ### 🧠 Prozess-Inspektor — Metriken pro Prozess, ohne sudo

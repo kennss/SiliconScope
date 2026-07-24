@@ -2,7 +2,7 @@
 #
 #  File:      install-agent-mac.sh
 #  Created:   2026-07-22
-#  Updated:   2026-07-22
+#  Updated:   2026-07-24
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  One-line installer for the headless SiliconScope Mac agent (sscope-agent-mac). Fetches
 #             the universal binary from the latest GitHub release, installs it under the user's own

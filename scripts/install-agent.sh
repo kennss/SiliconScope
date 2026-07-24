@@ -2,7 +2,7 @@
 #
 #  File:      install-agent.sh
 #  Created:   2026-07-22
-#  Updated:   2026-07-22
+#  Updated:   2026-07-24
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  THE install entry point for the SiliconScope fleet agent — one URL for every platform.
 #             On macOS it hands off to install-agent-mac.sh; on Linux it detects the CPU arch, fetches
@@ -11,6 +11,7 @@
 #             :7799 + mDNS. It ends by printing ONE pairing link to paste into the Mac app's
 #             "Add machine…" — name, address and token in a single copy.
 #             Intended for:  curl -fsSL <raw-url>/install-agent.sh | sh
+#             Uninstall:     download it and run  sh install-agent.sh --uninstall
 #  Notes:     POSIX sh (no bashisms) for maximum portability. Uses sudo only when not already root —
 #             a systemd SYSTEM service must start at boot without a login session, so root is real
 #             here (unlike the Mac agent, whose LaunchAgent needs none).
@@ -43,6 +44,18 @@ esac
 
 # --- privilege + service identity ---
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+
+# --- uninstall: stop + disable the service and remove everything it created ---
+if [ "${1:-}" = "--uninstall" ] || [ "${1:-}" = "uninstall" ]; then
+  echo "▸ Removing the SiliconScope fleet agent…"
+  $SUDO systemctl disable --now sscope-agent 2>/dev/null || true
+  $SUDO rm -f "$SERVICE" "$BIN"
+  $SUDO systemctl daemon-reload 2>/dev/null || true
+  $SUDO rm -rf /var/lib/sscope-agent   # token + self-signed TLS cert
+  echo "✓ Uninstalled."
+  echo "  On the viewer Mac, right-click this machine in the Fleet sidebar → Forget pairing."
+  exit 0
+fi
 RUN_USER="${SUDO_USER:-$(id -un)}"
 
 # --- obtain the binary (local file or latest release) ---
