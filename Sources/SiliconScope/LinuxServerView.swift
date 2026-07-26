@@ -26,7 +26,7 @@ struct LinuxServerView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: Space.section) {
                 if let m = entry?.metrics {
                     header(m)
                     let g = m.gpus.first
@@ -47,7 +47,7 @@ struct LinuxServerView: View {
                     if let o = m.llm?.ollama, o.running { ollamaCard(o) }
                 }
             }
-            .padding(16)
+            .padding(Space.page)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Theme.bg)
@@ -57,23 +57,23 @@ struct LinuxServerView: View {
     // MARK: - sections
 
     private func header(_ m: MachineMetrics) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.card) {
             Image(systemName: "server.rack")
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: Space.hair) {
                 Text(m.hostname).font(.system(.title3, design: .monospaced).bold())
-                Text("\(m.os) · agent \(m.agentVersion)").font(.caption).foregroundStyle(.secondary)
+                Text("\(m.os) · agent \(m.agentVersion)").font(Theme.font(.caption)).foregroundStyle(.secondary)
             }
             Spacer()
             if let u = entry?.lastUpdated {
                 Text("updated \(u.formatted(date: .omitted, time: .standard))")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                    .font(Theme.font(.caption)).foregroundStyle(.tertiary)
             }
         }
     }
 
     private func identityRow(_ m: MachineMetrics, _ g: FleetGPU?) -> some View {
         card {
-            HStack(alignment: .top, spacing: 24) {
+            HStack(alignment: .top, spacing: Space.page) {
                 labelled("CPU", "\(m.cpu.cores) cores")
                 labelled("RAM", gbInt(m.memory.totalBytes))
                 Spacer()
@@ -123,9 +123,9 @@ struct LinuxServerView: View {
                     Sparkline(values: a, color: ca, yDomain: 0...1, fill: true, grid: true)
                     Sparkline(values: b, color: cb, yDomain: 0...1, fill: true)
                 }
-                .frame(height: 84)
+                .frame(height: Layout.Meter.fleetChart)
             } else {
-                Color.clear.frame(height: 84)
+                Color.clear.frame(height: Layout.Meter.fleetChart)
             }
         }
     }
@@ -135,7 +135,7 @@ struct LinuxServerView: View {
             ForEach(g.processes, id: \.pid) { p in
                 HStack {
                     Text("\(p.pid)").font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
-                        .frame(width: 64, alignment: .leading)
+                        .frame(width: Layout.Column.linuxLabel, alignment: .leading)
                     Text(p.name).font(.system(.caption2, design: .monospaced)).lineLimit(1)
                     Spacer()
                     Text(gb(p.vramBytes)).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
@@ -150,10 +150,10 @@ struct LinuxServerView: View {
             ForEach(o.models, id: \.name) { model in
                 HStack {
                     Circle().fill(loadedNames.contains(model.name) ? Color.green : Color.secondary.opacity(0.4))
-                        .frame(width: 6, height: 6)
+                        .frame(width: Layout.Dot.linux, height: Layout.Dot.linux)
                     Text(model.name).font(.system(.caption, design: .monospaced))
                     if loadedNames.contains(model.name) {
-                        Text("loaded").font(.caption2).foregroundStyle(.green)
+                        Text("loaded").font(Theme.font(.caption)).foregroundStyle(.green)
                     }
                     Spacer()
                     Text(gb(model.sizeBytes)).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
@@ -165,18 +165,18 @@ struct LinuxServerView: View {
     // MARK: - building blocks
 
     private func card<Content: View>(_ title: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if let title { Text(title.uppercased()).font(.caption2.bold()).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: Space.row) {
+            if let title { Text(title.uppercased()).font(Theme.font(.sectionMinor)).tracking(Theme.tracking(.sectionMinor)).foregroundStyle(.secondary) }
             content()
         }
-        .padding(12)
+        .padding(Space.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.35)))
+        .background(RoundedRectangle(cornerRadius: Radius.panel).fill(.quaternary.opacity(0.35)))
     }
 
     private func labelled(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: Space.hair) {
+            Text(label).font(Theme.font(.caption)).foregroundStyle(.secondary)
             Text(value).font(.system(.callout, design: .monospaced)).lineLimit(1)
         }
     }

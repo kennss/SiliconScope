@@ -18,11 +18,11 @@ struct ReplayBar: View {
 
     var body: some View {
         let c = controller
-        HStack(spacing: 10) {
+        HStack(spacing: Space.card) {
             // A "REPLAY" status pill (you are NOT live) + a clearly-clickable exit button.
-            Text("REPLAY").font(.system(size: 10, weight: .bold, design: .monospaced))
+            Text("REPLAY").font(Theme.font(.detail, .strong))
                 .foregroundStyle(Theme.accent)
-                .padding(.horizontal, 6).padding(.vertical, 2)
+                .padding(.horizontal, Space.row).padding(.vertical, Space.hair)
                 .background(Theme.accent.opacity(0.15), in: Capsule())
             Button(action: onExit) {
                 Label("Exit to Live", systemImage: "xmark.circle.fill")
@@ -51,7 +51,7 @@ struct ReplayBar: View {
             .menuStyle(.borderlessButton).fixedSize().foregroundStyle(Theme.accent)
 
             Text("\(c.recording.meta.chip) · \(c.count) frames")
-                .font(.caption).foregroundStyle(Theme.dim).lineLimit(1)
+                .font(Theme.font(.caption)).foregroundStyle(Theme.dim).lineLimit(1)
 
             if c.sourceURL != nil {
                 Button { export() } label: { Label("Save", systemImage: "square.and.arrow.up") }
@@ -59,12 +59,12 @@ struct ReplayBar: View {
                     .help("Save this recording (.ssrec + .csv) to ~/SiliconScope")
             }
         }
-        .font(.callout)
+        .font(Theme.font(.emphasis))
         .foregroundStyle(Theme.text)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Space.section)
+        .padding(.vertical, Space.row)
         .background(Theme.panel)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Theme.border), alignment: .top)
+        .overlay(Rectangle().frame(height: Layout.hairline).foregroundStyle(Theme.border), alignment: .top)
     }
 
     /// Save the currently-replayed recording: copy its .ssrec and write a .csv alongside,

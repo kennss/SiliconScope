@@ -122,7 +122,7 @@ struct SettingsView: View {
                 if shareThisMac {
                     if let token = agentToken {
                         LabeledContent("Pairing token") {
-                            HStack(spacing: 6) {
+                            HStack(spacing: Space.row) {
                                 Text(token)
                                     .font(.system(.caption, design: .monospaced))
                                     .textSelection(.enabled).lineLimit(1).truncationMode(.middle)
@@ -134,7 +134,7 @@ struct SettingsView: View {
                             }
                         }
                     } else {
-                        Text("Starting…").font(.caption).foregroundStyle(.secondary)
+                        Text("Starting…").font(Theme.font(.caption)).foregroundStyle(.secondary)
                     }
                 }
             } header: {
@@ -144,7 +144,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400, height: aiRuntimeAPIEnabled ? 820 : 710)
+        .frame(width: Layout.Surface.settingsWidth, height: aiRuntimeAPIEnabled ? Layout.Surface.settingsHeightExpanded : Layout.Surface.settingsHeight)
         .onAppear {
             autoUpdate = UpdaterController.shared.automaticallyChecks
             if shareThisMac { agentToken = MacAgentController.shared.pairingToken }

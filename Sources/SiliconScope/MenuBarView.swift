@@ -22,7 +22,7 @@ struct MenuBarView: View {
 
     var body: some View {
         let snapshot = monitor.snapshot
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.hair) {
             if compactGPU {
                 compactGPURow(snapshot)
             } else {
@@ -30,11 +30,11 @@ struct MenuBarView: View {
             }
 
             Divider()
-                .padding(.bottom, 2)
+                .padding(.bottom, Space.hair)
             // One full-width primary action, then two equal-width secondary buttons — all
             // share PopoverButtonStyle so they match the cards (panel fill, hairline border,
             // mono label) at a uniform height. "Check for Updates…" lives in Settings.
-            VStack(spacing: 7) {
+            VStack(spacing: Space.row) {
                 Button {
                     openMainDashboard()
                 } label: {
@@ -42,7 +42,7 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(PopoverButtonStyle(prominent: true))
 
-                HStack(spacing: 7) {
+                HStack(spacing: Space.row) {
                     Button("Settings") { openAppSettings() }
                         .buttonStyle(PopoverButtonStyle())
                     Button("Quit") { NSApplication.shared.terminate(nil) }
@@ -50,8 +50,8 @@ struct MenuBarView: View {
                 }
             }
         }
-        .padding(14)
-        .frame(width: compactGPU ? 340 : 270)
+        .padding(Space.section)
+        .frame(width: compactGPU ? Layout.Surface.combinedWidthCompactGPU : Layout.Surface.combinedWidth)
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
     }
@@ -59,9 +59,9 @@ struct MenuBarView: View {
     /// Single-line GPU-focused readout: GPU% / GPU W / GPU bandwidth / die °C.
     @ViewBuilder
     private func compactGPURow(_ s: SystemSnapshot) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.card) {
             Text("GPU")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(Theme.font(.body, .strong))
                 .foregroundStyle(Theme.accent)
             compactValue(String(format: "%.0f%%", s.gpu.usagePercent), color: Theme.heat(s.gpu.usage))
             compactSeparator
@@ -73,7 +73,7 @@ struct MenuBarView: View {
                          color: monitor.gpuThrottling ? Theme.heat(1) : Theme.text)
             if monitor.gpuThrottling {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 11))
+                    .font(.system(size: Icon.large))
                     .foregroundStyle(Theme.heat(1))
                     .help("GPU thermal throttling")
             }
@@ -82,12 +82,12 @@ struct MenuBarView: View {
 
     private func compactValue(_ text: String, color: Color = Theme.text) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .medium, design: .monospaced))
+            .font(Theme.font(.emphasis))
             .foregroundStyle(color)
     }
 
     private var compactSeparator: some View {
-        Text("·").font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.faint)
+        Text("·").font(Theme.font(.emphasis)).foregroundStyle(Theme.faint)
     }
 
     /// "Workload" label, qualified with "(est.)" when the bandwidth-bound verdict rests on an
@@ -104,7 +104,7 @@ struct MenuBarView: View {
     @ViewBuilder
     private func fullReadout(_ snapshot: SystemSnapshot) -> some View {
         Text("SiliconScope")
-            .font(.system(size: 13, weight: .bold, design: .monospaced))
+            .font(Theme.font(.headline, .strong))
             .foregroundStyle(Theme.accent)
 
         KV(key: "Workload", value: workloadLabel(snapshot), valueColor: monitor.bottleneck.color)
@@ -139,7 +139,7 @@ struct MenuBarView: View {
     private func metricGraphs(_ s: SystemSnapshot) -> some View {
         let c = MenuBarIcon.barColors.map(Color.init(nsColor:))
         Text("TRENDS")
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(Theme.font(.sectionMinor))
             .foregroundStyle(Theme.faint)
         graphRow("CPU", c[0], monitor.history.pCPU, String(format: "%.0f%%", s.cpu.pUsagePercent),
                  yDomain: 0...1)
@@ -157,16 +157,16 @@ struct MenuBarView: View {
 
     private func graphRow(_ label: String, _ color: Color, _ values: [Double], _ value: String,
                           yDomain: ClosedRange<Double>? = nil) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.row) {
             Text(label)
-                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .font(Theme.font(.caption, .strong))
                 .foregroundStyle(color)
-                .frame(width: 28, alignment: .leading)
+                .frame(width: Layout.Column.trendLabel, alignment: .leading)
             Sparkline(values: values, color: color, height: 15, yDomain: yDomain)
             Text(value)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(Theme.font(.detail, .strong))
                 .foregroundStyle(Theme.dim)
-                .frame(width: 56, alignment: .trailing)
+                .frame(width: Layout.Column.trendValue, alignment: .trailing)
         }
     }
 
@@ -175,21 +175,21 @@ struct MenuBarView: View {
     private func topProcesses(_ s: SystemSnapshot) -> some View {
         let top = s.processes.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(3)
         Text("TOP PROCESSES")
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(Theme.font(.sectionMinor))
             .foregroundStyle(Theme.faint)
         if top.isEmpty {
-            Text("—").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            Text("—").font(Theme.font(.body)).foregroundStyle(Theme.dim)
         } else {
             ForEach(Array(top)) { p in
-                HStack(spacing: 6) {
+                HStack(spacing: Space.row) {
                     Text(p.name)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(Theme.font(.body))
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 0)
                     Text(String(format: "%.0f%%", p.cpuPercent))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(Theme.font(.body, .strong))
                         .foregroundStyle(Theme.heat(min(1, p.cpuPercent / 100)))
                 }
             }

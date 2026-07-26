@@ -52,21 +52,21 @@ struct SiliconScopeRootView: View {
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
             .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Space.row) {
                     if fleet.entries.isEmpty {
                         Label("Searching for agents…", systemImage: "antenna.radiowaves.left.and.right")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(Theme.font(.caption)).foregroundStyle(.secondary)
                     }
                     Button { showAddMachine = true } label: {
                         Label("Add machine…", systemImage: "plus")
-                            .font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+                            .font(Theme.font(.caption)).frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                     .help("Add an off-LAN machine (Tailscale / VPN / cloud) that isn't auto-discovered")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12).padding(.bottom, 8)
+                .padding(.horizontal, Space.section).padding(.bottom, Space.card)
             }
             .sheet(isPresented: $showAddMachine) {
                 AddMachineSheet(
@@ -82,7 +82,7 @@ struct SiliconScopeRootView: View {
                                   onSelectLocal: { selection = .thisMac })
             case .thisMac:
                 DashboardContainer(monitor: monitor)
-                    .frame(minWidth: 640, minHeight: 600)
+                    .frame(minWidth: Layout.Surface.mainWindowMin.width, minHeight: Layout.Surface.mainWindowMin.height)
             case .remote(let id):
                 FleetMachineDetailView(fleet: fleet, machineID: id)
             }
@@ -99,22 +99,22 @@ private struct DeviceSidebarRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 7) {
-            Circle().fill(statusColor).frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 4) {
+        HStack(spacing: Space.row) {
+            Circle().fill(statusColor).frame(width: Layout.Dot.status, height: Layout.Dot.status)
+            VStack(alignment: .leading, spacing: Space.hair) {
+                HStack(spacing: Space.tight) {
                     Text(entry.metrics?.hostname ?? entry.source.label)
-                        .font(.body).lineLimit(1)
+                        .font(Theme.font(.body)).lineLimit(1)
                     Image(systemName: entry.needsPairing ? "lock.slash" : "lock.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: Icon.small))
                         .foregroundStyle(entry.needsPairing ? .orange : .secondary)
                 }
-                Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(subtitle).font(Theme.font(.caption)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
-        .padding(.vertical, 2)
+        .padding(.vertical, Space.hair)
         .contextMenu {
             if !entry.needsPairing {
                 Button("Forget pairing", role: .destructive) { onUnpair(entry.source.label) }

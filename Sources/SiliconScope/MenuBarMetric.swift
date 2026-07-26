@@ -19,12 +19,12 @@ import SiliconScopeCore
 // MARK: - Glyph rendering (NSImage)
 
 enum MenuBarGlyph {
-    private static let height: CGFloat = 18
+    private static let height: CGFloat = Glyph.height
 
     /// Stacked label like iStat ("CPU" → C/P/U). Returns the column width it occupied.
     @discardableResult
     private static func drawStackedLabel(_ text: String, ink: NSColor) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 6.5, weight: .bold)
+        let font = NSFont.systemFont(ofSize: Glyph.stackedLabel, weight: .bold)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.85)]
         let chars = text.map { String($0) as NSString }
         let colW = ceil(chars.map { $0.size(withAttributes: attrs).width }.max() ?? 6)
@@ -104,7 +104,7 @@ enum MenuBarGlyph {
     static func twoLine(label: String, prefix1: String, value1: String,
                         prefix2: String, value2: String, dark: Bool, reserveValue: String) -> NSImage {
         let ink = dark ? NSColor.white : NSColor.black
-        let font = NSFont.systemFont(ofSize: 8.5, weight: .medium)
+        let font = NSFont.systemFont(ofSize: Glyph.value, weight: .medium)
         let pAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.72)]
         let vAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.95)]
         let p1 = prefix1 as NSString, p2 = prefix2 as NSString
@@ -137,7 +137,7 @@ enum MenuBarGlyph {
     static func battery(percent: Double, charging: Bool, plugged: Bool, dark: Bool) -> NSImage {
         let ink = dark ? NSColor.white : NSColor.black
         let pct = max(0, min(100, percent))
-        let font = NSFont.systemFont(ofSize: 9, weight: .medium)
+        let font = NSFont.systemFont(ofSize: Glyph.batteryValue, weight: .medium)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.95)]
         let label = String(format: "%.0f%%", pct) as NSString
         let textW = ceil(label.size(withAttributes: attrs).width)
@@ -262,7 +262,7 @@ struct GraphCaption: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.system(size: 8.5, design: .monospaced)).foregroundStyle(Theme.faint)
+        Text(text).font(Theme.font(.caption)).foregroundStyle(Theme.faint)
     }
 }
 
@@ -271,9 +271,9 @@ struct MenuKV: View {
     var color: Color = Theme.text
     var body: some View {
         HStack {
-            Text(label).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            Text(label).font(Theme.font(.body)).foregroundStyle(Theme.dim)
             Spacer()
-            Text(value).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(color)
+            Text(value).font(Theme.font(.body, .strong)).foregroundStyle(color)
         }
     }
 }
@@ -283,15 +283,15 @@ struct MenuStackedBar: View {
     let segments: [(Double, Color)]
     var body: some View {
         GeometryReader { geo in
-            HStack(spacing: 0) {
+            HStack(spacing: Space.none) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                     Rectangle().fill(seg.1).frame(width: max(0, geo.size.width * seg.0))
                 }
                 Spacer(minLength: 0)
             }
         }
-        .frame(height: 9)
-        .clipShape(RoundedRectangle(cornerRadius: 3))
+        .frame(height: Layout.Meter.stacked)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.pill(Layout.Meter.stacked)))
     }
 }
 
@@ -299,11 +299,11 @@ struct MenuStackedBar: View {
 struct MenuLegendRow: View {
     let color: Color, label: String, value: String
     var body: some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
-            Text(label).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+        HStack(spacing: Space.row) {
+            RoundedRectangle(cornerRadius: Radius.swatch).fill(color).frame(width: Layout.Dot.menuSwatch, height: Layout.Dot.menuSwatch)
+            Text(label).font(Theme.font(.body)).foregroundStyle(Theme.text)
             Spacer()
-            Text(value).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
+            Text(value).font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
         }
     }
 }
@@ -318,18 +318,18 @@ struct MenuMeterRow: View {
     let label: String, value: String
     let fraction: Double, color: Color
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(label).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+        VStack(alignment: .leading, spacing: Space.hair) {
+            HStack(spacing: Space.row) {
+                Text(label).font(Theme.font(.body)).foregroundStyle(Theme.text)
                 Spacer(minLength: 0)
-                Text(value).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                Text(value).font(Theme.font(.detail)).foregroundStyle(Theme.dim)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.06))
                     Capsule().fill(color).frame(width: max(2, geo.size.width * min(1, max(0, fraction))))
                 }
-            }.frame(height: 5)
+            }.frame(height: Layout.Meter.bar)
         }
     }
 }
@@ -365,7 +365,7 @@ struct MenuSectionHeader: View {
     init(_ title: String) { self.title = title }
     var body: some View {
         Text(title.uppercased())
-            .font(.system(size: 10, weight: .bold, design: .monospaced)).tracking(1)
+            .font(Theme.font(.detail, .strong)).tracking(1)
             .foregroundStyle(Theme.accent).frame(maxWidth: .infinity, alignment: .center)
     }
 }
@@ -380,7 +380,7 @@ struct CPUMenuDropdown: View {
         let s = monitor.snapshot
         let e = Color(nsColor: MetricPalette.eCPU)
         let p = Color(nsColor: MetricPalette.pCPU)
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("CPU")
             coreRow("E-cores", s.cpu.eUsage, s.cpu.eUsagePercent, s.cpu.eFreqMHz, e)
             coreRow("P-cores", s.cpu.pUsage, s.cpu.pUsagePercent, s.cpu.pFreqMHz, p)
@@ -395,44 +395,44 @@ struct CPUMenuDropdown: View {
             Divider()
             MenuSectionHeader("Top Processes")
             ForEach(Array(s.processes.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5))) { proc in
-                HStack(spacing: 6) {
-                    Text(proc.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+                HStack(spacing: Space.row) {
+                    Text(proc.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
                         .lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 0)
                     Text(String(format: "%.0f%%", proc.cpuPercent))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(Theme.font(.body, .strong))
                         .foregroundStyle(Theme.heat(min(1, proc.cpuPercent / 100)))
                 }
             }
             Divider()
             MenuActionsFooter()
         }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
     }
 
     private func coreRow(_ label: String, _ v: Double, _ pct: Double, _ mhz: Double, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(label).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+        VStack(alignment: .leading, spacing: Space.hair) {
+            HStack(spacing: Space.row) {
+                Text(label).font(Theme.font(.body)).foregroundStyle(Theme.text)
                 Spacer(minLength: 0)
-                Text(String(format: "%.0f%%", pct)).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
-                Text(String(format: "%.0f MHz", mhz)).font(.system(size: 10.5, design: .monospaced))
-                    .foregroundStyle(Theme.faint).frame(width: 64, alignment: .trailing)
+                Text(String(format: "%.0f%%", pct)).font(Theme.font(.detail)).foregroundStyle(Theme.dim)
+                Text(String(format: "%.0f MHz", mhz)).font(Theme.font(.detail))
+                    .foregroundStyle(Theme.faint).frame(width: Layout.Column.frequency, alignment: .trailing)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.06))
                     Capsule().fill(color).frame(width: max(2, geo.size.width * min(1, max(0, v))))
                 }
-            }.frame(height: 5)
+            }.frame(height: Layout.Meter.bar)
         }
     }
 
     private func kv(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            Text(label).font(Theme.font(.body)).foregroundStyle(Theme.dim)
             Spacer()
-            Text(value).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
+            Text(value).font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
         }
     }
 }
@@ -446,7 +446,7 @@ struct MenuBarPin: View {
     var body: some View {
         Button { isOn.toggle() } label: {
             Image(systemName: isOn ? "menubar.rectangle" : "rectangle.dashed")
-                .font(.system(size: 10.5))
+                .font(.system(size: Icon.medium))
                 .foregroundStyle(isOn ? Theme.accent : Theme.faint)
         }
         .buttonStyle(.plain)
@@ -469,7 +469,7 @@ struct OpenDashboardButton: View {
 /// item isn't required to reach them (it can be hidden via Settings → "Combined (SS)").
 struct MenuActionsFooter: View {
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: Space.row) {
             Button { openAppSettings() } label: {
                 Label("Settings", systemImage: "gearshape")
             }
@@ -488,7 +488,7 @@ struct GPUMenuDropdown: View {
     let monitor: SiliconScopeMonitor
     var body: some View {
         let s = monitor.snapshot
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("GPU / Media / Neural")
             MenuMeterRow(label: "GPU",
                          value: String(format: "%.0f%%  %.1f W  %.0f MHz", s.gpu.usagePercent, s.power.gpuWatts, s.gpu.freqMHz),
@@ -514,7 +514,7 @@ struct GPUMenuDropdown: View {
             Divider()
             MenuActionsFooter()
         }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
     }
 }
 
@@ -532,14 +532,14 @@ struct MEMMenuDropdown: View {
             case .warning:  Color(red: 0.87, green: 0.66, blue: 0.28)   // amber
             case .critical: Color(red: 0.88, green: 0.37, blue: 0.37)   // red
         }
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("Memory")
             HStack {
                 Text(String(format: "%.1f / %.0f GB", m.usedGB, m.totalGB))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
+                    .font(Theme.font(.emphasis)).foregroundStyle(Theme.text)
                 Spacer()
                 Text(String(format: "%.0f%%", m.usedPercent))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(monitor.memoryRisk.color)
+                    .font(Theme.font(.body, .strong)).foregroundStyle(monitor.memoryRisk.color)
             }
             MenuStackedBar(segments: [(m.wiredFraction, wired), (m.activeFraction, active),
                                       (m.compressedFraction, compressed), (m.freeFraction, freeC)])
@@ -560,7 +560,7 @@ struct MEMMenuDropdown: View {
                 MenuSectionHeader("Swap")
                 MenuStackedBar(segments: [(Double(m.swapUsedBytes) / Double(m.swapTotalBytes), wired)])
                 Text(String(format: "%.2f GB of %.2f GB", m.swapUsedGB, Double(m.swapTotalBytes) / 1_073_741_824))
-                    .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                    .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
             }
 
             Divider()
@@ -578,18 +578,18 @@ struct MEMMenuDropdown: View {
                 .sorted { $0.bytes > $1.bytes }
                 .prefix(5)
             ForEach(Array(topMem), id: \.name) { entry in
-                HStack(spacing: 6) {
-                    Text(entry.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+                HStack(spacing: Space.row) {
+                    Text(entry.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
                         .lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 0)
                     Text(memSize(entry.bytes))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(Theme.dim)
+                        .font(Theme.font(.body, .strong)).foregroundStyle(Theme.dim)
                 }
             }
             Divider()
             MenuActionsFooter()
         }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
     }
 }
 
@@ -601,19 +601,19 @@ struct NETMenuDropdown: View {
         let ifaces = InterfaceSampler.sample()
         let connected = ifaces.filter { $0.isConnected }
         let notConnected = ifaces.filter { !$0.isConnected }
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("Network")
             ForEach(connected) { i in
-                HStack(spacing: 6) {
-                    Image(systemName: ifaceIcon(i)).font(.system(size: 11)).foregroundStyle(Theme.accent)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(i.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text).lineLimit(1)
+                HStack(spacing: Space.row) {
+                    Image(systemName: ifaceIcon(i)).font(.system(size: Icon.large)).foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: Space.hair) {
+                        Text(i.name).font(Theme.font(.body)).foregroundStyle(Theme.text).lineLimit(1)
                         if let ip = i.ipv4 {
-                            Text(ip).font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                            Text(ip).font(Theme.font(.caption)).foregroundStyle(Theme.dim)
                         }
                     }
                     Spacer(minLength: 0)
-                    Text("Connected").font(.system(size: 9.5, design: .monospaced)).foregroundStyle(green)
+                    Text("Connected").font(Theme.font(.caption)).foregroundStyle(green)
                 }
             }
             Divider()
@@ -623,23 +623,23 @@ struct NETMenuDropdown: View {
             Sparkline(values: monitor.history.netUp, color: MetricPalette.upC, height: 22)
             HStack {
                 Text("Peak ↓ \(formatRate(monitor.history.netDown.max() ?? 0))")
-                    .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                 Spacer()
                 Text("Peak ↑ \(formatRate(monitor.history.netUp.max() ?? 0))")
-                    .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
             }
             if !notConnected.isEmpty {
                 Divider()
                 MenuSectionHeader("Not Connected")
                 ForEach(notConnected) { i in
-                    Text(i.name).font(.system(size: 10.5, design: .monospaced))
+                    Text(i.name).font(Theme.font(.detail))
                         .foregroundStyle(Theme.dim).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             Divider()
             MenuActionsFooter()
         }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
     }
 
     private func ifaceIcon(_ i: InterfaceInfo) -> String {
@@ -658,7 +658,7 @@ struct SSDMenuDropdown: View {
         let vols = VolumeSampler.sample()
         let local = vols.filter { $0.isLocal }
         let net = vols.filter { !$0.isLocal }
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("Disks")
             ForEach(local) { v in volumeRow(v) }
             if !net.isEmpty {
@@ -675,26 +675,26 @@ struct SSDMenuDropdown: View {
             Divider()
             MenuActionsFooter()
         }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
     }
 
     private func volumeRow(_ v: VolumeInfo) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.hair) {
+            HStack(spacing: Space.row) {
                 Image(systemName: v.isLocal ? "internaldrive" : "externaldrive.connected.to.line.below")
-                    .font(.system(size: 10)).foregroundStyle(Theme.dim)
-                Text(v.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+                    .font(.system(size: Icon.medium)).foregroundStyle(Theme.dim)
+                Text(v.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
                 Text("\(iStatBytes(UInt64(max(0, v.freeBytes)))) free")
-                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+                    .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.06))
                     Capsule().fill(cyan).frame(width: max(2, geo.size.width * v.usedFraction))
                 }
-            }.frame(height: 5)
+            }.frame(height: Layout.Meter.bar)
         }
     }
 }
@@ -709,24 +709,24 @@ struct SensorsMenuDropdown: View {
         let s = monitor.snapshot
         let temp = s.temperature
         let thermal = s.thermal
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("Sensors")
 
             if temp.groups.isEmpty {
                 Text("no sensors available")
-                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                    .font(Theme.font(.body)).foregroundStyle(Theme.dim)
             } else {
                 MenuSectionHeader("Temperatures")
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: Space.tight) {
                         ForEach(temp.groups) { group in
                             HStack {
                                 Text(group.category.rawValue.uppercased())
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .font(Theme.font(.caption, .strong))
                                     .tracking(0.5).foregroundStyle(Theme.faint)
                                 Spacer()
                                 Text("avg \(formatTemperature(group.average, fahrenheit: fahrenheit)) · max \(formatTemperature(group.maximum, fahrenheit: fahrenheit))")
-                                    .font(.system(size: 9, design: .monospaced)).foregroundStyle(Theme.faint)
+                                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                             }
                             ForEach(group.sensors) { sensor in
                                 SensorTempRow(name: sensor.name, celsius: sensor.celsius, fahrenheit: fahrenheit)
@@ -734,7 +734,7 @@ struct SensorsMenuDropdown: View {
                         }
                     }
                 }
-                .frame(maxHeight: 320)
+                .frame(maxHeight: Layout.Surface.dropdownScrollMax)
             }
 
             Divider()
@@ -742,7 +742,7 @@ struct SensorsMenuDropdown: View {
                 MenuSectionHeader("Fans")
                 if thermal.hasFans {
                     Text(thermal.pressure.rawValue.capitalized)
-                        .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                        .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                 }
             }
             if thermal.hasFans {
@@ -750,13 +750,13 @@ struct SensorsMenuDropdown: View {
                     SensorFanRow(label: fanLabel(idx, count: thermal.fanRPMs.count), rpm: rpm)
                 }
             } else {
-                Text("Fanless").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                Text("Fanless").font(Theme.font(.body)).foregroundStyle(Theme.dim)
             }
 
             Divider()
             MenuActionsFooter()
         }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
     }
 
     private func fanLabel(_ idx: Int, count: Int) -> String {
@@ -770,17 +770,17 @@ struct SensorTempRow: View {
     let name: String, celsius: Double, fahrenheit: Bool
     var body: some View {
         let heat = min(1, celsius / 100)
-        HStack(spacing: 8) {
-            Text(name).font(.system(size: 10.5, design: .monospaced))
+        HStack(spacing: Space.card) {
+            Text(name).font(Theme.font(.detail))
                 .foregroundStyle(Theme.dim).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 4)
             Text(formatTemperature(celsius, fahrenheit: fahrenheit))
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.heat(heat)).frame(width: 44, alignment: .trailing)
+                .font(Theme.font(.detail, .strong))
+                .foregroundStyle(Theme.heat(heat)).frame(width: Layout.Column.sensorValue, alignment: .trailing)
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.06))
                 Capsule().fill(Theme.heat(heat)).frame(width: max(2, 60 * min(1, celsius / 110)))
-            }.frame(width: 60, height: 5)
+            }.frame(width: Layout.Column.sensorBar, height: Layout.Meter.bar)
         }
     }
 }
@@ -790,16 +790,16 @@ struct SensorFanRow: View {
     let label: String, rpm: Double
     private let ceiling = 6500.0
     var body: some View {
-        HStack(spacing: 8) {
-            Text(label).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+        HStack(spacing: Space.card) {
+            Text(label).font(Theme.font(.detail)).foregroundStyle(Theme.dim)
             Spacer(minLength: 4)
             Text(String(format: "%.0f rpm", rpm))
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
-                .frame(width: 70, alignment: .trailing)
+                .font(Theme.font(.detail, .strong)).foregroundStyle(Theme.text)
+                .frame(width: Layout.Column.fanValue, alignment: .trailing)
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.06))
                 Capsule().fill(MetricPalette.downC).frame(width: max(2, 60 * min(1, rpm / ceiling)))
-            }.frame(width: 60, height: 5)
+            }.frame(width: Layout.Column.sensorBar, height: Layout.Meter.bar)
         }
     }
 }
@@ -815,22 +815,22 @@ struct BatteryMenuDropdown: View {
         let b = s.battery
         let chargeColor: Color = b.isCharging ? MetricPalette.gpuC
             : (b.percent <= 20 ? Theme.heat(1) : Theme.text)
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("Battery")
 
             if b.hasBattery {
                 HStack {
-                    Text(b.stateLabel).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                    Text(b.stateLabel).font(Theme.font(.body)).foregroundStyle(Theme.dim)
                     Spacer()
                     Text("\(Int(b.percent.rounded()))%")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(chargeColor)
+                        .font(Theme.font(.emphasis, .strong)).foregroundStyle(chargeColor)
                 }
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.06))
                     GeometryReader { geo in
                         Capsule().fill(chargeColor).frame(width: max(2, geo.size.width * b.percent / 100))
                     }
-                }.frame(height: 7)
+                }.frame(height: Layout.Meter.battery)
 
                 Divider()
                 MenuKV(label: "Health", value: b.healthPercent > 0 ? "\(Int(b.healthPercent.rounded()))%" : "—")
@@ -839,7 +839,7 @@ struct BatteryMenuDropdown: View {
                        color: b.condition == "Normal" ? Theme.text : Theme.heat(1))
             } else {
                 Text("No battery (desktop Mac)")
-                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                    .font(Theme.font(.body)).foregroundStyle(Theme.dim)
             }
 
             if !s.peripherals.isEmpty {
@@ -866,10 +866,10 @@ struct BatteryMenuDropdown: View {
                              fraction: s.power.dramWatts / pmax, color: MetricPalette.downC)
             }
             HStack {
-                Text("Total (SoC)").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                Text("Total (SoC)").font(Theme.font(.body)).foregroundStyle(Theme.dim)
                 Spacer()
                 Text(wattStr(s.power.socWatts))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Theme.text)
+                    .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
             }
 
             let energy = s.processes.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(3)
@@ -877,12 +877,12 @@ struct BatteryMenuDropdown: View {
                 Divider()
                 MenuSectionHeader("Apps Using Energy")
                 ForEach(Array(energy)) { proc in
-                    HStack(spacing: 6) {
-                        Text(proc.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+                    HStack(spacing: Space.row) {
+                        Text(proc.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
                             .lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 0)
                         Text(String(format: "%.0f%%", proc.cpuPercent))
-                            .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                            .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                     }
                 }
             }
@@ -890,7 +890,7 @@ struct BatteryMenuDropdown: View {
             Divider()
             MenuActionsFooter()
         }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(width: 260).background(Theme.bg).foregroundStyle(Theme.text)
+        .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
     }
 }
 
@@ -910,19 +910,19 @@ private struct PeripheralBatteryRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 10)).foregroundStyle(Theme.dim).frame(width: 15)
-                Text(device.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.text)
+        VStack(alignment: .leading, spacing: Space.hair) {
+            HStack(spacing: Space.row) {
+                Image(systemName: icon).font(.system(size: Icon.medium)).foregroundStyle(Theme.dim).frame(width: Layout.Control.iconWidth)
+                Text(device.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
                 Text("\(device.percent)%")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(Theme.font(.body, .strong))
                     .foregroundStyle(device.percent <= 20 ? Theme.heat(1) : Theme.text)
             }
             if let detail = device.detail {
-                Text(detail).font(.system(size: 9.5, design: .monospaced))
-                    .foregroundStyle(Theme.dim).padding(.leading, 21)
+                Text(detail).font(Theme.font(.caption))
+                    .foregroundStyle(Theme.dim).padding(.leading, Space.page)
             }
         }
     }

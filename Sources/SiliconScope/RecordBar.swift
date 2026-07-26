@@ -22,9 +22,9 @@ struct RecordBar: View {
         let recording = monitor.isRecording
         let dim = recording && monitor.recordingSampleCount % 2 == 1   // ~1 Hz pulse, no timer
 
-        HStack(spacing: 12) {
+        HStack(spacing: Space.section) {
             Button(action: toggle) {
-                HStack(spacing: 5) {
+                HStack(spacing: Space.tight) {
                     Image(systemName: recording ? "stop.fill" : "record.circle.fill")
                         .foregroundStyle(.red)
                         .opacity(dim ? 0.35 : 1)
@@ -39,11 +39,11 @@ struct RecordBar: View {
                     .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(Theme.text)
                 Text("\(monitor.recordingSampleCount) samples")
-                    .font(.caption)
+                    .font(Theme.font(.caption))
                     .foregroundStyle(Theme.dim)
             } else {
                 Text("Record every metric, then replay it like a DVR")
-                    .font(.caption)
+                    .font(Theme.font(.caption))
                     .foregroundStyle(Theme.faint)
             }
 
@@ -61,12 +61,12 @@ struct RecordBar: View {
                 .menuStyle(.borderlessButton).fixedSize().foregroundStyle(Theme.accent)
             }
         }
-        .font(.callout)
+        .font(Theme.font(.emphasis))
         .foregroundStyle(Theme.text)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Space.section)
+        .padding(.vertical, Space.row)
         .background(Theme.panel)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Theme.border), alignment: .top)
+        .overlay(Rectangle().frame(height: Layout.hairline).foregroundStyle(Theme.border), alignment: .top)
     }
 
     private func toggle() {

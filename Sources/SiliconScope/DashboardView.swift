@@ -104,14 +104,14 @@ struct DashboardContainer: View {
     @ViewBuilder private var content: some View {
         if let replay {
             DashboardView(state: replay.state, onBenchmark: nil)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .safeAreaInset(edge: .bottom, spacing: Space.none) {
                     ReplayBar(controller: replay, onExit: { self.replay = nil })
                 }
         } else if dashVisible {
             DashboardView(state: DashboardState(live: monitor),
                           onBenchmark: { Task { await monitor.runBenchmark() } },
                           onInspect: { monitor.focus($0.pid) })
-                .safeAreaInset(edge: .bottom, spacing: 0) { RecordBar(monitor: monitor) }
+                .safeAreaInset(edge: .bottom, spacing: Space.none) { RecordBar(monitor: monitor) }
         } else {
             // Off-screen: render the frozen last frame, reading nothing from the monitor, so
             // per-tick snapshot changes no longer trigger chart re-renders. (Recording keeps
@@ -167,13 +167,13 @@ struct DashboardView: View {
         // oscillating pressure/throttle never makes the banner flicker in and out (#18).
         let visibleWarnings = shownWarnings.filter { !dismissedWarnings.contains(Self.warningKey($0)) }
         ScrollView {
-            VStack(spacing: 4) {
+            VStack(spacing: Space.tight) {
                 HeaderView(topology: s.topology, power: snapshot.power, battery: snapshot.battery)
 
                 if mode == .remote {
                     // Remote Mac: only the hardware cards a Mac agent sends. Same look as local, minus
                     // network/disk/process/AI-runtime (no data over the wire). Re-paired into 3 rows.
-                    HStack(alignment: .top, spacing: 6) {
+                    HStack(alignment: .top, spacing: Space.row) {
                         AIWorkloadCard(snapshot: snapshot, bottleneck: s.bottleneck, ceilingGBs: s.bandwidthCeilingGBs,
                                        cpuThrottling: s.cpuThrottling, cpuClockDrop: s.cpuClockDropFraction,
                                        gpuThrottling: s.gpuThrottling, gpuClockDrop: s.gpuClockDropFraction,
@@ -184,8 +184,8 @@ struct DashboardView: View {
                                         mediaHistory: s.history.media, aneHistory: s.history.ane,
                                         throttling: s.gpuThrottling)
                     }
-                    .frame(height: 166)
-                    HStack(alignment: .top, spacing: 6) {
+                    .frame(height: Layout.Row.graphed)
+                    HStack(alignment: .top, spacing: Space.row) {
                         CPUCard(cpu: snapshot.cpu, topology: s.topology,
                                 eHistory: s.history.eCPU, pHistory: s.history.pCPU,
                                 throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
@@ -193,14 +193,14 @@ struct DashboardView: View {
                                             bandwidthPeak: s.bandwidthPeakGBs,
                                             memHistory: s.history.memory, bwHistory: s.history.bandwidth)
                     }
-                    .frame(minHeight: 176)
+                    .frame(minHeight: Layout.Row.dense)
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
-                        .frame(minHeight: 120)
+                        .frame(minHeight: Layout.Row.sensorsNarrow)
                 } else {
 
                 // AI cockpit pair, side by side (matches the rest of the 2-column grid and
                 // saves a stacked row of vertical space).
-                HStack(alignment: .top, spacing: 6) {
+                HStack(alignment: .top, spacing: Space.row) {
                     AIWorkloadCard(snapshot: snapshot,
                                    bottleneck: s.bottleneck,
                                    ceilingGBs: s.bandwidthCeilingGBs,
@@ -223,9 +223,9 @@ struct DashboardView: View {
                                   onBenchmark: onBenchmark ?? {},
                                   allowBenchmark: onBenchmark != nil)
                 }
-                .frame(minHeight: 108)
+                .frame(minHeight: Layout.Row.aiCockpit)
 
-                HStack(spacing: 6) {
+                HStack(spacing: Space.row) {
                     CPUCard(cpu: snapshot.cpu, topology: s.topology,
                             eHistory: s.history.eCPU, pHistory: s.history.pCPU,
                             throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
@@ -235,9 +235,9 @@ struct DashboardView: View {
                                     mediaHistory: s.history.media, aneHistory: s.history.ane,
                                     throttling: s.gpuThrottling)
                 }
-                .frame(height: 166)   // fixed: the fill-graph absorbs content changes (shrinks/grows) so the card size stays put
+                .frame(height: Layout.Row.graphed)   // fixed: the fill-graph absorbs content changes (shrinks/grows) so the card size stays put
 
-                HStack(alignment: .top, spacing: 6) {
+                HStack(alignment: .top, spacing: Space.row) {
                     MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
                                         bandwidthPeak: s.bandwidthPeakGBs,
                                         memHistory: s.history.memory, bwHistory: s.history.bandwidth)
@@ -251,18 +251,18 @@ struct DashboardView: View {
                 // constant row set) can exceed a fixed 176 by a few points under some macOS versions'
                 // text metrics and spill into the CPU card (#25, a re-run of #23). Growing to fit the
                 // content makes the overflow structurally impossible — same pattern as the row-1 pair.
-                .frame(minHeight: 176)
+                .frame(minHeight: Layout.Row.dense)
 
-                HStack(spacing: 6) {
+                HStack(spacing: Space.row) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
                     ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect)
                 }
                 // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
                 // needs a bounded height — minHeight lets the whole list expand and balloons the window.
-                .frame(height: 196)
+                .frame(height: Layout.Row.scrolling)
                 }
             }
-            .padding(8)
+            .padding(Space.card)
         }
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
@@ -275,8 +275,8 @@ struct DashboardView: View {
             if showWarningBanner && !visibleWarnings.isEmpty {
                 WarningBanner(warnings: visibleWarnings,
                               onDismiss: { dismissedWarnings.insert(Self.warningKey($0)) })
-                    .padding(.horizontal, 10)
-                    .padding(.top, 6)
+                    .padding(.horizontal, Space.card)
+                    .padding(.top, Space.row)
                     .frame(maxWidth: 620)
                     .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -332,30 +332,30 @@ private struct HeaderView: View {
     @AppStorage("menubar.battery") private var batteryMB = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("SiliconScope").font(.system(size: 14, weight: .bold, design: .monospaced))
+        HStack(alignment: .firstTextBaseline, spacing: Space.card) {
+            Text("SiliconScope").font(Theme.font(.headline, .strong))
             if let t = topology {
-                Text(t.chipName).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                Text(t.chipName).font(Theme.font(.body)).foregroundStyle(Theme.dim)
                 Text("\(t.eCoreCount + t.pCoreCount) cores · \(t.eCoreCount)E+\(t.pCoreCount)P")
-                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .font(Theme.font(.body)).foregroundStyle(Theme.faint)
             }
             Spacer()
             Text(String(format: "%.1f W", power.socWatts))
-                .font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundStyle(Theme.dim)
+                .font(Theme.font(.emphasis)).foregroundStyle(Theme.dim)
             if battery.hasBattery {
-                HStack(spacing: 3) {
+                HStack(spacing: Space.tight) {
                     if battery.isCharging {
-                        Image(systemName: "bolt.fill").font(.system(size: 9)).foregroundStyle(Theme.heat(0.2))
+                        Image(systemName: "bolt.fill").font(.system(size: Icon.small)).foregroundStyle(Theme.heat(0.2))
                     }
                     Text("\(Int(battery.percent.rounded()))%")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(Theme.font(.emphasis))
                         .foregroundStyle(battery.percent < 20 ? Theme.heat(1) : Theme.text)
                     MenuBarPin(isOn: $batteryMB)
                 }
             }
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 2)
+        .padding(.horizontal, Space.tight)
+        .padding(.top, Space.hair)
     }
 }
 
@@ -364,32 +364,32 @@ private struct WarningBanner: View {
     var onDismiss: ((SystemSnapshot.Warning) -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: Space.tight) {
             ForEach(warnings) { warning in
                 let critical = warning.level == .critical
-                HStack(spacing: 8) {
+                HStack(spacing: Space.card) {
                     Image(systemName: critical ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
-                        .font(.system(size: 11))
-                    Text(warning.message).font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                        .font(.system(size: Icon.large))
+                    Text(warning.message).font(Theme.font(.body, .strong))
                     Spacer()
                     if let onDismiss {
                         Button { onDismiss(warning) } label: {
-                            Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).opacity(0.65)
+                            Image(systemName: "xmark").font(.system(size: Icon.medium, weight: .bold)).opacity(0.65)
                         }
                         .buttonStyle(.plain)
                         .help("Dismiss until it clears")
                     }
                 }
                 .foregroundStyle(critical ? Color(red: 1, green: 0.7, blue: 0.7) : Color(red: 1, green: 0.85, blue: 0.6))
-                .padding(.horizontal, 11).padding(.vertical, 7)
+                .padding(.horizontal, Space.section).padding(.vertical, Space.row)
                 .background {
                     // Opaque base so the floating banner cleanly covers the header behind it
                     // (no see-through blending), with the alert tint layered on top.
-                    RoundedRectangle(cornerRadius: 8).fill(Theme.panel)
-                        .overlay(RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: Radius.panel).fill(Theme.panel)
+                        .overlay(RoundedRectangle(cornerRadius: Radius.panel)
                             .fill((critical ? Color.red : Color.orange).opacity(0.18)))
                 }
-                .overlay(RoundedRectangle(cornerRadius: 8)
+                .overlay(RoundedRectangle(cornerRadius: Radius.panel)
                     .strokeBorder((critical ? Color.red : Color.orange).opacity(0.5), lineWidth: 1))
             }
         }
@@ -500,12 +500,12 @@ private struct AIWorkloadCard: View {
 
     var body: some View {
         Card(title: "AI Workload") {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hair) {
                 // Headline: what the workload IS (semantic), above the per-engine breakdown.
-                HStack(spacing: 8) {
-                    Circle().fill(aiVerdict.0).frame(width: 8, height: 8)
+                HStack(spacing: Space.card) {
+                    Circle().fill(aiVerdict.0).frame(width: Layout.Dot.verdict, height: Layout.Dot.verdict)
                     Text(aiVerdict.1)
-                        .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                        .font(Theme.font(.emphasis, .strong))
                         .foregroundStyle(aiVerdict.0)
                         .lineLimit(1).minimumScaleFactor(0.8)
                     Spacer(minLength: 0)
@@ -535,18 +535,18 @@ private struct AIWorkloadCard: View {
     // CPU row with an ACTIONABLE top process: tap → Inspector, right-click → Quit / Force Quit. Same
     // affordance as the Processes card — a fact you can act on, not a suggestion the tool pushes.
     private func cpuRow() -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.card) {
             Text("CPU")
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.faint).frame(width: 42, alignment: .leading)
-            Circle().fill(cpuState.0).frame(width: 7, height: 7)
+                .font(Theme.font(.detail, .strong))
+                .foregroundStyle(Theme.faint).frame(width: Layout.Column.stateLabel, alignment: .leading)
+            Circle().fill(cpuState.0).frame(width: Layout.Dot.status, height: Layout.Dot.status)
             Text(cpuState.1)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .font(Theme.font(.emphasis, .strong))
                 .foregroundStyle(cpuState.0).lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             if let top = topProcess {
                 Text("top: \(top.name) \(Int(top.cpuPercent.rounded()))%")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(Theme.font(.detail))
                     .foregroundStyle(onInspect != nil ? Theme.text : Theme.dim)
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .contentShape(Rectangle())
@@ -564,19 +564,19 @@ private struct AIWorkloadCard: View {
     }
 
     private func stateRow(_ label: String, _ s: (Color, String, String)) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.card) {
             Text(label)
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .font(Theme.font(.detail, .strong))
                 .foregroundStyle(Theme.faint)
-                .frame(width: 42, alignment: .leading)
-            Circle().fill(s.0).frame(width: 7, height: 7)
+                .frame(width: Layout.Column.stateLabel, alignment: .leading)
+            Circle().fill(s.0).frame(width: Layout.Dot.status, height: Layout.Dot.status)
             Text(s.1)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .font(Theme.font(.emphasis, .strong))
                 .foregroundStyle(s.0)
                 .lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             Text(s.2)
-                .font(.system(size: 10, design: .monospaced))
+                .font(Theme.font(.detail))
                 .foregroundStyle(Theme.dim)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
@@ -610,7 +610,7 @@ private struct AIRuntimeCard: View {
 
     var body: some View {
         Card(title: "AI Runtime") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 header
                 if modelPresent { engineLine }
                 modelLine
@@ -624,31 +624,31 @@ private struct AIRuntimeCard: View {
     // (that's how we know the model name + have an endpoint to generate against).
     @ViewBuilder private var benchmarkLine: some View {
         if allowBenchmark, api.status == .ok, api.primaryModel != nil {
-            HStack(spacing: 6) {
+            HStack(spacing: Space.row) {
                 if isBenchmarking {
                     ProgressView().controlSize(.small).scaleEffect(0.7)
                     Text("measuring tok/s…")
-                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+                        .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                 } else if let b = benchmark {
-                    Image(systemName: "bolt.fill").font(.system(size: 9.5)).foregroundStyle(Theme.heat(0.3))
+                    Image(systemName: "bolt.fill").font(.system(size: Icon.small)).foregroundStyle(Theme.heat(0.3))
                     Text(String(format: "%.1f tok/s", b.tokensPerSec))
-                        .font(.system(size: 10.5, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
+                        .font(Theme.font(.detail, .strong)).foregroundStyle(Theme.text)
                     Text(String(format: "· %.0f tok/Wh", b.tokensPerWattHour))
-                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+                        .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                     Button("re-measure", action: onBenchmark)
-                        .font(.system(size: 10, design: .monospaced)).buttonStyle(.plain)
+                        .font(Theme.font(.detail)).buttonStyle(.plain)
                         .foregroundStyle(Theme.accent)
                 } else {
                     Button(action: onBenchmark) {
                         Label("Measure tok/s", systemImage: "bolt")
-                            .font(.system(size: 10.5, design: .monospaced))
+                            .font(Theme.font(.detail))
                     }
                     .buttonStyle(.plain).foregroundStyle(Theme.accent)
                 }
                 Spacer(minLength: 0)
             }
             if let e = benchmarkError {
-                Text(e).font(.system(size: 9.5, design: .monospaced))
+                Text(e).font(Theme.font(.caption))
                     .foregroundStyle(Theme.heat(0.7)).lineLimit(1)
             }
         }
@@ -656,24 +656,24 @@ private struct AIRuntimeCard: View {
 
     @ViewBuilder private var header: some View {
         if runtime.isActive, let kind = runtime.primaryKind {
-            HStack(spacing: 8) {
-                Image(systemName: kind.symbol).font(.system(size: 11)).foregroundStyle(kind.color)
+            HStack(spacing: Space.card) {
+                Image(systemName: kind.symbol).font(.system(size: Icon.large)).foregroundStyle(kind.color)
                 Text(kind.displayName)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(Theme.font(.headline, .strong))
                     .foregroundStyle(Theme.text)
                 Text(String(format: "RAM %.1f GB · CPU %.0f%%",
                             Double(runtime.primaryMemoryBytes) / Self.gb, runtime.cpuPercent(of: kind)))
-                    .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
+                    .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                 if let port = runtime.ollamaEmbeddedPort {
-                    Text(":\(port)").font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                    Text(":\(port)").font(Theme.font(.detail)).foregroundStyle(Theme.faint)
                 }
                 Spacer(minLength: 0)
             }
         } else {
-            HStack(spacing: 8) {
-                Image(systemName: "brain").font(.system(size: 11)).foregroundStyle(Theme.faint)
+            HStack(spacing: Space.card) {
+                Image(systemName: "brain").font(.system(size: Icon.large)).foregroundStyle(Theme.faint)
                 Text("No local AI runtime detected")
-                    .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.dim)
+                    .font(Theme.font(.emphasis)).foregroundStyle(Theme.dim)
                 Spacer(minLength: 0)
             }
         }
@@ -684,20 +684,20 @@ private struct AIRuntimeCard: View {
     // engine-type hint (no GPU% here, to avoid duplicating the GPU card).
     @ViewBuilder private var engineLine: some View {
         if api.isReachable, let split = api.primaryModel?.processorLabel {
-            HStack(spacing: 6) {
-                Text("Offload").font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
-                Text(split).font(.system(size: 10.5, weight: .medium, design: .monospaced))
+            HStack(spacing: Space.row) {
+                Text("Offload").font(Theme.font(.detail)).foregroundStyle(Theme.dim)
+                Text(split).font(Theme.font(.detail, .strong))
                     .foregroundStyle(Theme.text)
                 Spacer(minLength: 0)
             }
         } else {
-            HStack(spacing: 6) {
-                Text("Engine").font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.dim)
-                Text(likelyEngine).font(.system(size: 10.5, weight: .medium, design: .monospaced))
+            HStack(spacing: Space.row) {
+                Text("Engine").font(Theme.font(.detail)).foregroundStyle(Theme.dim)
+                Text(likelyEngine).font(Theme.font(.detail, .strong))
                     .foregroundStyle(Theme.text)
                 if cpuOffloadLikely {
                     Text("· likely CPU offload (est.)")
-                        .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.heat(0.7))
+                        .font(Theme.font(.detail)).foregroundStyle(Theme.heat(0.7))
                 }
                 Spacer(minLength: 0)
             }
@@ -707,14 +707,14 @@ private struct AIRuntimeCard: View {
     // ③ model line: authoritative loaded-model info + tokens/sec, or a status hint.
     @ViewBuilder private var modelLine: some View {
         if api.status == .ok, let m = api.primaryModel {
-            HStack(spacing: 6) {
-                Image(systemName: "cube.fill").font(.system(size: 9.5)).foregroundStyle(Theme.accent)
-                Text(m.name).font(.system(size: 11, weight: .medium, design: .monospaced))
+            HStack(spacing: Space.row) {
+                Image(systemName: "cube.fill").font(.system(size: Icon.small)).foregroundStyle(Theme.accent)
+                Text(m.name).font(Theme.font(.body, .strong))
                     .foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
-                Text(modelDetail(m)).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+                Text(modelDetail(m)).font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                 if let tps = api.tokensPerSec {
                     Text(String(format: "· %.0f tok/s", tps))
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(Theme.font(.detail, .strong))
                         .foregroundStyle(Theme.heat(0.4))
                 }
                 Spacer(minLength: 0)
@@ -736,9 +736,9 @@ private struct AIRuntimeCard: View {
     }
 
     private func runtimeNote(_ text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "info.circle").font(.system(size: 9.5)).foregroundStyle(Theme.faint)
-            Text(text).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim).lineLimit(1)
+        HStack(spacing: Space.row) {
+            Image(systemName: "info.circle").font(.system(size: Icon.small)).foregroundStyle(Theme.faint)
+            Text(text).font(Theme.font(.detail)).foregroundStyle(Theme.dim).lineLimit(1)
             Spacer(minLength: 0)
         }
     }
@@ -753,18 +753,18 @@ private struct AIRuntimeCard: View {
     }
 
     private var budgetLine: some View {
-        HStack(spacing: 8) {
-            Text("Model budget").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+        HStack(spacing: Space.card) {
+            Text("Model budget").font(Theme.font(.body)).foregroundStyle(Theme.dim)
             Text(budgetText)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(Theme.font(.body, .strong))
                 .foregroundStyle(Theme.text)
                 .lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 0)
             if memoryRisk != .ok {
                 Text(memoryRisk.label)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(Theme.font(.detail, .strong))
                     .foregroundStyle(memoryRisk.color)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .padding(.horizontal, Space.row).padding(.vertical, Space.hair)
                     .background(memoryRisk.color.opacity(0.15), in: Capsule())
             }
         }
@@ -908,7 +908,7 @@ private struct MemoryBandwidthCard: View {
 
     var body: some View {
         Card(title: "Memory & Bandwidth", alert: alertColor) {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: Space.card) {
                 memorySection.frame(maxWidth: .infinity, alignment: .leading)
                 Divider().overlay(Theme.border)
                 bandwidthSection
@@ -918,14 +918,14 @@ private struct MemoryBandwidthCard: View {
     }
 
     private var memorySection: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.hair) {
             SubLabel("Memory", menuBarPin: $memMB)
             HStack {
                 Text(String(format: "%.1f / %.0f GB", memory.usedGB, memory.totalGB))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(Theme.font(.emphasis))
                 Spacer()
                 Text(String(format: "%.0f%%", memory.usedPercent))
-                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                    .font(Theme.font(.body)).foregroundStyle(Theme.dim)
             }
             StackedBar(segments: [
                 (memory.wiredFraction, wiredColor),
@@ -938,10 +938,10 @@ private struct MemoryBandwidthCard: View {
             LegendRow(color: compressedColor, key: "Compressed", value: String(format: "%.1f GB", memory.compressedGB))
             LegendRow(color: freeColor, key: "Free", value: String(format: "%.1f GB", memory.freeGB))
             HStack {
-                Text("Pressure").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                Text("Pressure").font(Theme.font(.body)).foregroundStyle(Theme.dim)
                 Spacer()
                 Text(String(format: "%.0f%%", memory.pressurePercent))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(pressureColor)
+                    .font(Theme.font(.body, .strong)).foregroundStyle(pressureColor)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -949,7 +949,7 @@ private struct MemoryBandwidthCard: View {
                     Capsule().fill(pressureColor)
                         .frame(width: max(2, geo.size.width * min(1, memory.pressurePercent / 100)))
                 }
-            }.frame(height: 4)
+            }.frame(height: Layout.Meter.strip)
             KV(key: "App Memory", value: String(format: "%.1f GB", memory.appMemoryGB))
             KV(key: "Cached", value: String(format: "%.1f GB", memory.cachedFilesGB))
             KV(key: "Swap", value: String(format: "%.1f GB", memory.swapUsedGB))
@@ -957,7 +957,7 @@ private struct MemoryBandwidthCard: View {
     }
 
     private var bandwidthSection: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.hair) {
             SubLabel("Bandwidth")
             Bar(label: "Total", value: min(1, bandwidth.totalGBs / max(bandwidthPeak, 1)),
                 detail: String(format: "%.0f GB/s", bandwidth.totalGBs))
@@ -970,7 +970,7 @@ private struct MemoryBandwidthCard: View {
             // sparkline shares this (sparser) column's spare space — labelled, stacked with
             // bandwidth-over-time (same pattern as the Network & Disk card's two graphs). Memory is
             // scaled to total RAM (0...totalGB, a near-constant series); bandwidth auto-scales (GB/s).
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Space.card) {
                 LabeledSparkline(label: "BW", values: bwHistory,
                                  color: Color(red: 0.42, green: 0.66, blue: 0.95))
                 LabeledSparkline(label: "Mem", values: memHistory,
@@ -988,14 +988,14 @@ private struct LabeledSparkline: View {
     let label: String
     let values: [Double]
     let color: Color
-    var height: CGFloat = 18
+    var height: CGFloat = Layout.Meter.labeledSparkline
     var yDomain: ClosedRange<Double>? = nil
     var body: some View {
         // Label sits ABOVE the trend (not overlaid on the line) so it stays readable regardless of
         // where the line happens to be.
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: Space.hair) {
             Text(label)
-                .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                .font(Theme.font(.caption, .strong))
                 .tracking(0.5)
                 .foregroundStyle(color.opacity(0.9))
             Sparkline(values: values, color: color, height: height, yDomain: yDomain)
@@ -1020,7 +1020,7 @@ private struct NetworkDiskCard: View {
 
     var body: some View {
         Card(title: "Network & Disk") {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: Space.card) {
                 networkSection.frame(maxWidth: .infinity, alignment: .leading)
                 Divider().overlay(Theme.border)
                 diskSection.frame(maxWidth: .infinity, alignment: .leading)
@@ -1029,7 +1029,7 @@ private struct NetworkDiskCard: View {
     }
 
     private var networkSection: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.hair) {
             SubLabel("Network", menuBarPin: $netMB)
             KV(key: "↓ Download", value: formatRate(network.downloadBytesPerSec), valueColor: downColor)
             KV(key: "↑ Upload", value: formatRate(network.uploadBytesPerSec), valueColor: upColor)
@@ -1040,7 +1040,7 @@ private struct NetworkDiskCard: View {
     }
 
     private var diskSection: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.hair) {
             SubLabel("Disk", menuBarPin: $ssdMB)
             KV(key: "Read", value: formatRate(disk.readBytesPerSec), valueColor: downColor)
             KV(key: "Write", value: formatRate(disk.writeBytesPerSec), valueColor: upColor)
@@ -1058,9 +1058,9 @@ private struct SubLabel: View {
     var menuBarPin: Binding<Bool>? = nil
     init(_ text: String, menuBarPin: Binding<Bool>? = nil) { self.text = text; self.menuBarPin = menuBarPin }
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.row) {
             Text(text.uppercased())
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .font(Theme.font(.sectionMinor))
                 .tracking(1.2).foregroundStyle(Theme.faint)
             if let pin = menuBarPin { MenuBarPin(isOn: pin) }
             Spacer(minLength: 0)
@@ -1087,30 +1087,30 @@ private struct SensorsCard: View {
 
     var body: some View {
         Card(title: "Sensors", menuBarPin: $sensorsMB) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 16) {
-                    HStack(spacing: 6) {
-                        Text("Pressure").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+            VStack(alignment: .leading, spacing: Space.tight) {
+                HStack(spacing: Space.page) {
+                    HStack(spacing: Space.row) {
+                        Text("Pressure").font(Theme.font(.body)).foregroundStyle(Theme.dim)
                         Text(thermal.pressure.rawValue)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(pressureColor)
+                            .font(Theme.font(.body, .strong)).foregroundStyle(pressureColor)
                     }
-                    HStack(spacing: 6) {
-                        Text("Fans").font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                    HStack(spacing: Space.row) {
+                        Text("Fans").font(Theme.font(.body)).foregroundStyle(Theme.dim)
                         Text(thermal.hasFans
                             ? thermal.fanRPMs.map { String(format: "%.0f", $0) }.joined(separator: " / ") + " rpm"
                             : "fanless")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
+                            .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
                     }
                     Spacer()
                 }
                 Divider().overlay(Theme.border)
                 if temperature.groups.isEmpty {
                     Text("no sensors available")
-                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.dim)
+                        .font(Theme.font(.body)).foregroundStyle(Theme.dim)
                     Spacer(minLength: 0)
                 } else {
                     ScrollView {
-                        VStack(spacing: 2) {
+                        VStack(spacing: Space.hair) {
                             ForEach(temperature.groups) { group in
                                 SensorGroupRow(group: group, fahrenheit: fahrenheit)
                             }
@@ -1130,28 +1130,28 @@ private struct SensorGroupRow: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
-            let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 3) {
+            let columns = [GridItem(.adaptive(minimum: 150), spacing: Space.section)]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: Space.tight) {
                 ForEach(group.sensors) { sensor in
-                    HStack(spacing: 6) {
-                        Text(sensor.name).font(.system(size: 10.5, design: .monospaced))
+                    HStack(spacing: Space.row) {
+                        Text(sensor.name).font(Theme.font(.detail))
                             .foregroundStyle(Theme.dim).lineLimit(1)
                         Spacer(minLength: 4)
                         Text(formatTemperature(sensor.celsius, fahrenheit: fahrenheit))
-                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                            .font(Theme.font(.detail, .strong))
                             .foregroundStyle(Theme.heat(min(1, sensor.celsius / 100)))
                     }
                 }
             }
-            .padding(.top, 4)
+            .padding(.top, Space.tight)
         } label: {
             HStack {
                 Text(group.category.rawValue)
-                    .font(.system(size: 11.5, weight: .medium, design: .monospaced)).foregroundStyle(Theme.text)
-                Text("(\(group.count))").font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
+                Text("(\(group.count))").font(Theme.font(.detail)).foregroundStyle(Theme.faint)
                 Spacer()
                 Text("avg \(formatTemperature(group.average, fahrenheit: fahrenheit)) · max \(formatTemperature(group.maximum, fahrenheit: fahrenheit))")
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .font(Theme.font(.detail))
                     .foregroundStyle(Theme.heat(min(1, group.maximum / 100)))
             }
         }
@@ -1191,40 +1191,40 @@ private struct ProcessCard: View {
 
     var body: some View {
         Card(title: "Processes") {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 10)).foregroundStyle(Theme.faint)
+            VStack(alignment: .leading, spacing: Space.tight) {
+                HStack(spacing: Space.row) {
+                    Image(systemName: "magnifyingglass").font(.system(size: Icon.medium)).foregroundStyle(Theme.faint)
                     TextField("Filter by name", text: $filter)
-                        .textFieldStyle(.plain).font(.system(size: 11, design: .monospaced))
+                        .textFieldStyle(.plain).font(Theme.font(.body))
                     if !filter.isEmpty {
                         Button { filter = "" } label: { Image(systemName: "xmark.circle.fill") }
                             .buttonStyle(.plain).foregroundStyle(Theme.faint)
                     } else if onInspect != nil {
                         Text("tap to inspect")
-                            .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                            .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                     }
                 }
-                .padding(.horizontal, 7).padding(.vertical, 5)
-                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, Space.row).padding(.vertical, Space.tight)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: Radius.control))
 
                 HStack {
-                    Text("PID").frame(width: 56, alignment: .leading)
-                    header("CPU%", .cpu).frame(width: 60, alignment: .trailing)
-                    header("MEMORY", .memory).frame(width: 84, alignment: .trailing)
+                    Text("PID").frame(width: Layout.Column.processPID, alignment: .leading)
+                    header("CPU%", .cpu).frame(width: Layout.Column.processCPU, alignment: .trailing)
+                    header("MEMORY", .memory).frame(width: Layout.Column.processMemory, alignment: .trailing)
                     header("NAME", .name).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .font(Theme.font(.sectionMinor))
 
                 ScrollView {
-                    LazyVStack(spacing: 2) {
+                    LazyVStack(spacing: Space.hair) {
                         ForEach(rows) { process in
                             HStack {
-                                Text("\(process.pid)").frame(width: 56, alignment: .leading).foregroundStyle(Theme.faint)
+                                Text("\(process.pid)").frame(width: Layout.Column.processPID, alignment: .leading).foregroundStyle(Theme.faint)
                                 Text(String(format: "%.1f", process.cpuPercent))
-                                    .frame(width: 60, alignment: .trailing)
+                                    .frame(width: Layout.Column.processCPU, alignment: .trailing)
                                     .foregroundStyle(Theme.heat(min(1, process.cpuPercent / 100)))
                                 Text(String(format: "%.0f MB", process.memoryMB))
-                                    .frame(width: 84, alignment: .trailing).foregroundStyle(Theme.dim)
+                                    .frame(width: Layout.Column.processMemory, alignment: .trailing).foregroundStyle(Theme.dim)
                                 Text(process.name).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
                                 // Trailing Quit affordance — reveals on row hover so the (already
                                 // existing) kill is discoverable without cluttering the table. Sends
@@ -1232,16 +1232,16 @@ private struct ProcessCard: View {
                                 Group {
                                     if allowKill && hoveredPID == process.pid {
                                         Button { pendingKill = process; pendingForce = false } label: {
-                                            Image(systemName: "xmark.circle.fill").font(.system(size: 11))
+                                            Image(systemName: "xmark.circle.fill").font(.system(size: Icon.large))
                                                 .foregroundStyle(Color(red: 0.88, green: 0.37, blue: 0.37))
                                         }
                                         .buttonStyle(.plain)
                                         .help("Kill \(process.name)")
                                     }
                                 }
-                                .frame(width: 16)
+                                .frame(width: Layout.Control.chevronWidth)
                             }
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(Theme.font(.body))
                             .contentShape(Rectangle())
                             .onTapGesture { onInspect?(process) }
                             .onHover { hovering in
@@ -1283,9 +1283,9 @@ private struct ProcessCard: View {
 
     @ViewBuilder private func header(_ title: String, _ key: SortKey) -> some View {
         Button { sortKey = key } label: {
-            HStack(spacing: 2) {
+            HStack(spacing: Space.hair) {
                 Text(title)
-                if sortKey == key { Image(systemName: "chevron.down").font(.system(size: 7)) }
+                if sortKey == key { Image(systemName: "chevron.down").font(.system(size: Icon.micro)) }
             }
         }
         .buttonStyle(.plain)

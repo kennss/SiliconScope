@@ -33,13 +33,13 @@ struct AddMachineSheet: View {
     private var valid: Bool { !trimmedHost.isEmpty && (portValue.map { $0 > 0 && $0 < 65_536 } ?? false) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.section) {
+            HStack(spacing: Space.card) {
                 Image(systemName: "plus.circle.fill").foregroundStyle(.blue)
-                Text("Add a machine").font(.headline)
+                Text("Add a machine").font(Theme.font(.headline))
             }
             Text("Paste the pairing link the agent installer printed — it fills everything in and pairs in one step. Or enter an address by hand for a machine that isn't auto-discovered (Tailscale, a VPN, an SSH tunnel; mDNS only reaches the local subnet). Either way the link is TLS-encrypted and token-authenticated.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(Theme.font(.caption)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
@@ -60,20 +60,20 @@ struct AddMachineSheet: View {
                     Text("Port").foregroundStyle(.secondary)
                     TextField("7799", text: $port)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced)).frame(width: 90).onSubmit(commit)
+                        .font(.system(.body, design: .monospaced)).frame(width: Layout.Column.portField).onSubmit(commit)
                 }
             }
-            .font(.callout)
+            .font(Theme.font(.emphasis))
 
             if link != nil {
                 Label("Pairing link recognized — the token is included, so this machine pairs immediately.",
                       systemImage: "checkmark.seal.fill")
-                    .font(.caption2).foregroundStyle(.green)
+                    .font(Theme.font(.caption)).foregroundStyle(.green)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Label("Over Tailscale, use the tailnet IP (100.x…) or MagicDNS name. Prefer Tailscale / an SSH tunnel over exposing the port to the public internet.",
                       systemImage: "lock.shield")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                    .font(Theme.font(.caption)).foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -84,8 +84,8 @@ struct AddMachineSheet: View {
                     .keyboardShortcut(.defaultAction).disabled(!valid)
             }
         }
-        .padding(20)
-        .frame(width: 440)
+        .padding(Space.page)
+        .frame(width: Layout.Surface.addMachineWidth)
     }
 
     /// A pasted `sscope://pair…` link carries name + address + token, so unpack it into the fields

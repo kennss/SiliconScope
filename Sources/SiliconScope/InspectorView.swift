@@ -23,10 +23,10 @@ struct InspectorView: View {
     var body: some View {
         let d = monitor.focusedDetail
         let h = monitor.focusedHistory
-        VStack(spacing: 0) {
+        VStack(spacing: Space.none) {
             header(d)
             ScrollView {
-                VStack(spacing: 8) {
+                VStack(spacing: Space.card) {
                     if monitor.focusEnded {
                         banner("Process exited", "The focused process is no longer running — last values shown.")
                     }
@@ -38,14 +38,14 @@ struct InspectorView: View {
                     } else if d == nil && !monitor.focusEnded {
                         Text("Sampling…")
                             .font(.system(.callout, design: .monospaced))
-                            .foregroundStyle(Theme.dim).padding(.vertical, 20)
+                            .foregroundStyle(Theme.dim).padding(.vertical, Space.page)
                     }
                     acceleratorsCard()
                 }
-                .padding(10)
+                .padding(Space.card)
             }
         }
-        .frame(width: 460, height: 640)
+        .frame(width: Layout.Surface.inspector.width, height: Layout.Surface.inspector.height)
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
         .confirmationDialog(
@@ -65,25 +65,25 @@ struct InspectorView: View {
     }
 
     private func header(_ d: ProcessDetail?) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: Space.card) {
+            VStack(alignment: .leading, spacing: Space.hair) {
                 Text(d?.name ?? "Process \(monitor.focusedPID.map { "\($0)" } ?? "")")
-                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .font(Theme.font(.headline, .strong))
                 if let d {
-                    HStack(spacing: 6) {
-                        Text("pid \(d.pid)").font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+                    HStack(spacing: Space.row) {
+                        Text("pid \(d.pid)").font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                         if d.uptime > 0 {
-                            Text("· up \(uptime(d.uptime))").font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+                            Text("· up \(uptime(d.uptime))").font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                         }
                         if d.usesANE {
-                            Text("· ANE").font(.system(size: 9, weight: .bold, design: .monospaced))
+                            Text("· ANE").font(Theme.font(.caption, .strong))
                                 .foregroundStyle(Theme.accent)
-                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .padding(.horizontal, Space.tight).padding(.vertical, Space.hair)
                                 .background(Theme.accent.opacity(0.15), in: Capsule())
                         }
                     }
                     if !d.path.isEmpty {
-                        Text(d.path).font(.system(size: 9, design: .monospaced))
+                        Text(d.path).font(Theme.font(.caption))
                             .foregroundStyle(Theme.faint).lineLimit(1).truncationMode(.middle)
                     }
                 }
@@ -99,14 +99,14 @@ struct InspectorView: View {
             }
             Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
         }
-        .padding(12)
+        .padding(Space.section)
         .background(Theme.panel)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Theme.border), alignment: .bottom)
+        .overlay(Rectangle().frame(height: Layout.hairline).foregroundStyle(Theme.border), alignment: .bottom)
     }
 
     @ViewBuilder private func metricCards(_ d: ProcessDetail, _ h: ProcessDetailHistory) -> some View {
         Card(title: "CPU") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "CPU", value: pct(d.cpuPercent))
                 KV(key: "P-core / E-core", value: "\(pct(d.cpuPPercent)) / \(pct(eCore(d)))")
                 KV(key: "Threads", value: "\(d.threads)")
@@ -114,7 +114,7 @@ struct InspectorView: View {
             }
         }
         Card(title: "Compute") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "IPC", value: d.ipc.map { String(format: "%.2f", $0) } ?? "—",
                    valueColor: Theme.accent)
                 KV(key: "Instructions/s", value: si(d.instructionsPerSec))
@@ -123,7 +123,7 @@ struct InspectorView: View {
             }
         }
         Card(title: "Energy") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "Power", value: d.powerWatts.map { String(format: "%.2f W", $0) } ?? "—",
                    valueColor: Theme.accent)
                 KV(key: "Wakeups/s", value: d.wakeupsPerSec.map { String(format: "%.0f", $0) } ?? "—")
@@ -131,25 +131,25 @@ struct InspectorView: View {
             }
         }
         Card(title: "Memory") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "Footprint", value: bytes(d.memoryBytes))
                 KV(key: "Resident", value: bytes(d.residentBytes))
                 Sparkline(values: h.memory, color: Color(red: 0.93, green: 0.46, blue: 0.66), height: 26)
             }
         }
         Card(title: "Neural Engine (ANE)") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "ANE memory", value: d.aneMemoryBytes > 0 ? bytes(d.aneMemoryBytes) : "—",
                    valueColor: d.usesANE ? Theme.accent : Theme.dim)
                 KV(key: "Peak", value: d.aneMemoryPeakBytes > 0 ? bytes(d.aneMemoryPeakBytes) : "—")
                 Text(d.usesANE ? "This process is using the Neural Engine."
                                : "Not using the Neural Engine.")
-                    .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                 if d.aneMemoryBytes > 0 { Sparkline(values: h.aneMemory, color: Theme.accent, height: 26) }
             }
         }
         Card(title: "Disk") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "Read", value: bps(d.diskReadBytesPerSec))
                 KV(key: "Write", value: bps(d.diskWriteBytesPerSec))
                 KV(key: "Open files", value: "\(d.openFiles)")
@@ -160,25 +160,25 @@ struct InspectorView: View {
     private func acceleratorsCard() -> some View {
         let s = monitor.snapshot
         return Card(title: "Accelerators — system-wide") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "GPU", value: String(format: "%.0f%%", s.gpu.usage * 100))
                 KV(key: "ANE power", value: String(format: "%.1f W", s.power.aneWatts))
                 KV(key: "Media engine", value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs))
                 KV(key: "Memory bandwidth", value: String(format: "%.0f GB/s", s.bandwidth.totalGBs))
                 Text("System-wide — macOS doesn't attribute these to a single process (sudoless).")
-                    .font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
             }
         }
     }
 
     private func banner(_ title: String, _ msg: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 11, weight: .semibold, design: .monospaced))
-            Text(msg).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.dim)
+        VStack(alignment: .leading, spacing: Space.hair) {
+            Text(title).font(Theme.font(.body, .strong))
+            Text(msg).font(Theme.font(.detail)).foregroundStyle(Theme.dim)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .padding(Space.card)
+        .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Radius.panel))
     }
 
     // MARK: - formatters

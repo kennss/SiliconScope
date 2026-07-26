@@ -26,7 +26,7 @@ struct FleetOverviewView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 12)], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: Space.section)], spacing: Space.section) {
                 if let local = fleet.localMetrics {
                     FleetTile(hostname: local.hostname, metrics: local, history: fleet.localHistory,
                               needsPairing: false, error: nil, isLocal: true, onTap: onSelectLocal)
@@ -38,17 +38,17 @@ struct FleetOverviewView: View {
                               isLocal: false, onTap: { onSelect(entry.id) })
                 }
             }
-            .padding(16)
+            .padding(Space.page)
 
             if fleet.entries.isEmpty {
-                VStack(spacing: 6) {
+                VStack(spacing: Space.row) {
                     ProgressView().controlSize(.small)
                     Text("Searching for other agents on your network…")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(Theme.font(.caption)).foregroundStyle(.secondary)
                     Text("Install the agent on a machine to see it here.")
-                        .font(.caption2).foregroundStyle(.tertiary)
+                        .font(Theme.font(.caption)).foregroundStyle(.tertiary)
                 }
-                .frame(maxWidth: .infinity).padding(.bottom, 24)
+                .frame(maxWidth: .infinity).padding(.bottom, Space.page)
             }
         }
         .background(Theme.bg)
@@ -67,9 +67,9 @@ private struct FleetTile: View {
     let onTap: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Circle().fill(statusColor).frame(width: 7, height: 7)
+        VStack(alignment: .leading, spacing: Space.row) {
+            HStack(spacing: Space.row) {
+                Circle().fill(statusColor).frame(width: Layout.Dot.status, height: Layout.Dot.status)
                 Text(hostname)
                     .font(.system(.callout, design: .monospaced).bold()).lineLimit(1)
                 Spacer()
@@ -98,7 +98,7 @@ private struct FleetTile: View {
                 if let o = m.llm?.ollama, o.running {
                     let loaded = o.loaded.first?.name
                     Text(loaded.map { "● \($0)" } ?? "\(o.models.count) model(s)")
-                        .font(.caption2).foregroundStyle(loaded != nil ? .green : .secondary).lineLimit(1)
+                        .font(Theme.font(.caption)).foregroundStyle(loaded != nil ? .green : .secondary).lineLimit(1)
                 }
             } else if let e = error {
                 spacerText(e, .red)
@@ -106,9 +106,9 @@ private struct FleetTile: View {
                 spacerText("Connecting…", .secondary)
             }
         }
-        .padding(12)
+        .padding(Space.section)
         .frame(height: tileHeight, alignment: .top)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.4)))
+        .background(RoundedRectangle(cornerRadius: Radius.card).fill(.quaternary.opacity(0.4)))
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
     }
@@ -119,10 +119,10 @@ private struct FleetTile: View {
 
     @ViewBuilder private var cornerGlyph: some View {
         if isLocal {
-            Image(systemName: "laptopcomputer").font(.system(size: 9)).foregroundStyle(.secondary)
+            Image(systemName: "laptopcomputer").font(.system(size: Icon.small)).foregroundStyle(.secondary)
         } else {
             Image(systemName: needsPairing ? "lock.slash" : "lock.fill")
-                .font(.system(size: 9)).foregroundStyle(needsPairing ? .orange : .secondary)
+                .font(.system(size: Icon.small)).foregroundStyle(needsPairing ? .orange : .secondary)
         }
     }
 
@@ -133,7 +133,7 @@ private struct FleetTile: View {
          + dim(" \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W · \(Int(g.temperatureC))°C · ")
          + tag("VRAM", MetricPalette.gpuMemC)
          + dim(" \(gb(g.vramUsedBytes))/\(gb(g.vramTotalBytes))"))
-            .font(.caption2).lineLimit(1)
+            .font(Theme.font(.caption)).lineLimit(1)
     }
 
     private func cpuCaption(_ m: MachineMetrics) -> some View {
@@ -141,7 +141,7 @@ private struct FleetTile: View {
          + dim(" \(Int(m.cpu.usagePercent))% · \(m.cpu.cores) cores · ")
          + tag("RAM", MetricPalette.ramC)
          + dim(" \(gb(m.memory.usedBytes))/\(gb(m.memory.totalBytes))"))
-            .font(.caption2).lineLimit(1)
+            .font(Theme.font(.caption)).lineLimit(1)
     }
 
     private func aneCaption(_ a: FleetApple) -> some View {
@@ -149,7 +149,7 @@ private struct FleetTile: View {
          + dim(String(format: " %.1fW · ", a.aneWatts))
          + tag("BW", MetricPalette.mediaC)
          + dim(String(format: " %.0f GB/s", a.bandwidth.totalGBs)))
-            .font(.caption2).lineLimit(1)
+            .font(Theme.font(.caption)).lineLimit(1)
     }
 
     private func tag(_ s: String, _ c: Color) -> Text { Text(s).foregroundStyle(c).bold() }
@@ -174,7 +174,7 @@ private struct FleetTile: View {
     private func spacerText(_ text: String, _ color: Color) -> some View {
         VStack {
             Spacer()
-            Text(text).font(.caption).foregroundStyle(color).lineLimit(2)
+            Text(text).font(Theme.font(.caption)).foregroundStyle(color).lineLimit(2)
             Spacer()
         }.frame(maxWidth: .infinity)
     }

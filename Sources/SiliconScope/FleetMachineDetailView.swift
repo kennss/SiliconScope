@@ -45,26 +45,26 @@ struct FleetMachineDetailView: View {
     }
 
     private var pairingPrompt: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "lock.slash").font(.largeTitle).foregroundStyle(.orange)
-            Text("Pairing required").font(.headline)
+        VStack(spacing: Space.section) {
+            Image(systemName: "lock.slash").font(.system(size: Icon.hero)).foregroundStyle(.orange)
+            Text("Pairing required").font(Theme.font(.headline))
             Text("Enter this machine's token to connect securely.")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(Theme.font(.emphasis)).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             Button("Pair…") { showPairing = true }
                 .controlSize(.large).buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(24)
+        .padding(Space.page)
         .sheet(isPresented: $showPairing) {
             PairingSheet(name: pairName) { token in fleet.pair(name: pairName, token: token) }
         }
     }
 
     private func placeholder(_ icon: String, _ text: String, _ color: Color) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon).font(.largeTitle).foregroundStyle(color)
-            Text(text).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        VStack(spacing: Space.card) {
+            Image(systemName: icon).font(.system(size: Icon.hero)).foregroundStyle(color)
+            Text(text).font(Theme.font(.emphasis)).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -83,13 +83,13 @@ struct PairingSheet: View {
     private var trimmed: String { token.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.section) {
+            HStack(spacing: Space.card) {
                 Image(systemName: "lock.fill").foregroundStyle(.green)
-                Text("Pair \(name)").font(.headline)
+                Text("Pair \(name)").font(Theme.font(.headline))
             }
             Text("Enter the pairing token from this machine's SiliconScope Settings (Mac) or the install-agent.sh output (Linux). It encrypts and authenticates this connection.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(Theme.font(.caption)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("Pairing token", text: $token)
                 .textFieldStyle(.roundedBorder)
@@ -104,8 +104,8 @@ struct PairingSheet: View {
                     .disabled(trimmed.isEmpty)
             }
         }
-        .padding(20)
-        .frame(width: 400)
+        .padding(Space.page)
+        .frame(width: Layout.Surface.fleetDetailWidth)
     }
 
     private func commit() {

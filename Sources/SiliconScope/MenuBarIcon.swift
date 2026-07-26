@@ -82,7 +82,7 @@ struct MenuBarIcon: View {
     static func glyph(for monitor: SiliconScopeMonitor, dark: Bool) -> NSImage {
         let (values, alert, blinkDim) = barState(for: monitor)
 
-        let height: CGFloat = 18
+        let height: CGFloat = Glyph.height
         let barW: CGFloat = 6.5, gap: CGFloat = 2.0   // bar width doubled (was 3.4)
         let radius: CGFloat = 1.2
         let n = CGFloat(values.count)
@@ -96,7 +96,7 @@ struct MenuBarIcon: View {
         // per-graph label like that — "C/P/U" stacked).
         let letter = "S" as NSString
         let labelAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 7.5, weight: .bold),
+            .font: NSFont.systemFont(ofSize: Glyph.comboLabel, weight: .bold),
             .foregroundColor: inkColor.withAlphaComponent(0.9),
         ]
         let charSize = letter.size(withAttributes: labelAttrs)
