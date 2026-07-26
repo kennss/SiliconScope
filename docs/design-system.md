@@ -447,7 +447,7 @@ Five items, corrected against the source. All are hierarchy problems; none needs
 | **0** | `Layout` census + token definition only (8 heights, 39 widths) | **none — genuinely** | low |
 | **1** | `Theme.Type` / `Space` / `Radius` / `Icon`; convert the 8 atom sites in `Theme.swift` | none | low |
 | **2** ✅ | Replace remaining literals: 154 SwiftUI fonts, 4 AppKit glyph fonts, 34 semantic fonts (D1 req. 3, D3), ~100 spacing/padding/radius, all fixed widths and heights. `Grid` conversion dropped — see §3.4 correction | **intentional normalisation — done** | medium |
-| **3** | Scale-aware tokens; ⌘+/⌘−/⌘0 **and Settings control** (§3.6, D1 req. 1); fold scale into all 8 signatures + `barRows`. Ceiling from Phase 0 measurement (§7 Q1) | zoom works | medium |
+| **3** ✅ | Scale-aware tokens; View-menu ⌘+/⌘=/⌘−/⌘0 **and Settings controls** (D1 req. 1); scale folded into all 8 glyph signatures. Range measured → D4. `barRows` needs no change: the menu-bar height never scales, so a bar still spans 36 pixel rows — zoom changes glyph *width* | zoom works | medium |
 | **4a** | `MenuBarItemConfig` + migration, **in Core, unit-tested** — no UI change | none | medium |
 | **4b** | Settings UI: add / duplicate / delete / configure instances | none by default | **high — the real work** |
 | **5** | Visual grammar §5 | **intended** | medium |
@@ -483,9 +483,17 @@ Menus" requests were actually asking for.
   artefact of v4.0.0's pace, not as an intentional distinction; **their appearance will visibly
   change**, which D2's baseline is expected to show.
 
+- **D4 · Zoom range (2026-07-27, measured)** — **0.9 / 1.0 / 1.15 / 1.3**, with a per-role
+  minimum point size so the smallest step cannot make a role illegible. Measured on the real app
+  at both extremes: at **1.3** the dense Memory column still does not spill (it is a `minHeight`
+  row, so content and container scale together and #25 is structurally impossible), and the
+  window's scaled `mainWindowMin` grows with it. At **0.9** the layout is *better* than at 1.0 for
+  a 640 pt window — "Compressed" stops wrapping and process names stop truncating. Menu-bar glyph
+  scale is capped separately at 1.15, since macOS fixes the menu-bar height and a glyph can only
+  grow wider.
+
 ### Open
-1. **Zoom ceiling** — 1.3 is provisional. Determined by what Phase 0's `Layout` tokens are
-   measured to survive (D1 requirement 2). Blocks phase 3, not phase 2.
+1. ~~**Zoom ceiling**~~ — answered by D4.
 2. **Seed zoom from the OS accessibility setting?** (§3.5, deferred) — needs verification that
    the setting is reliably readable on macOS before it can be designed in.
 3. **Accent palette count** — one dark accent set, or three or four?

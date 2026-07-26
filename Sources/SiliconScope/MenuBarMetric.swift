@@ -373,6 +373,12 @@ struct MenuSectionHeader: View {
 // MARK: - CPU dropdown
 
 struct CPUMenuDropdown: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
 
@@ -485,6 +491,12 @@ struct MenuActionsFooter: View {
 // MARK: - GPU / MEM / NET / SSD dropdowns
 
 struct GPUMenuDropdown: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     var body: some View {
         let s = monitor.snapshot
@@ -519,6 +531,12 @@ struct GPUMenuDropdown: View {
 }
 
 struct MEMMenuDropdown: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     private let wired = Color(red: 0.36, green: 0.62, blue: 0.98)       // blue
     private let active = Color(red: 0.92, green: 0.38, blue: 0.34)      // red (iStat-style)
@@ -594,6 +612,12 @@ struct MEMMenuDropdown: View {
 }
 
 struct NETMenuDropdown: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     private let green = Color(red: 0.40, green: 0.82, blue: 0.55)
     var body: some View {
@@ -651,6 +675,12 @@ struct NETMenuDropdown: View {
 }
 
 struct SSDMenuDropdown: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     private let cyan = Color(red: 0.32, green: 0.82, blue: 0.86)
     var body: some View {
@@ -702,6 +732,12 @@ struct SSDMenuDropdown: View {
 // MARK: - Sensors dropdown (iStat "SENSORS" panel: temps + fans + power)
 
 struct SensorsMenuDropdown: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
 
@@ -809,6 +845,12 @@ struct SensorFanRow: View {
 private func wattStr(_ w: Double) -> String { String(format: "%.2f W", w) }
 
 struct BatteryMenuDropdown: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     var body: some View {
         let s = monitor.snapshot

@@ -65,7 +65,7 @@ final class MetricBarController: NSObject {
                 MenuBarGlyph.bars(label: "CPU", values: cpuBars(m),
                                   colors: [MetricPalette.eCPU, MetricPalette.pCPU], dark: dark)
              },
-             signature: { m, dark in MenuBarSignature.bars("cpu", cpuBars(m), dark: dark) },
+             signature: { m, dark in MenuBarSignature.bars("cpu", cpuBars(m), dark: dark, scale: Double(UIScale.glyph)) },
              dropdown: { m in AnyView(CPUMenuDropdown(monitor: m)) }),
 
         Spec(id: "gpu", key: "menubar.gpu",
@@ -73,7 +73,7 @@ final class MetricBarController: NSObject {
                 MenuBarGlyph.bars(label: "GPU", values: gpuBars(m),
                                   colors: [MetricPalette.gpu, MetricPalette.media, MetricPalette.ane], dark: dark)
              },
-             signature: { m, dark in MenuBarSignature.bars("gpu", gpuBars(m), dark: dark) },
+             signature: { m, dark in MenuBarSignature.bars("gpu", gpuBars(m), dark: dark, scale: Double(UIScale.glyph)) },
              dropdown: { m in AnyView(GPUMenuDropdown(monitor: m)) }),
 
         Spec(id: "mem", key: "menubar.mem",
@@ -84,7 +84,7 @@ final class MetricBarController: NSObject {
                                      dark: dark, reserveValue: "999.9 GB")
              },
              signature: { m, dark in
-                MenuBarSignature.text("mem", [iStatGB(m.snapshot.memory.usedGB), iStatGB(m.snapshot.memory.freeGB)], dark: dark)
+                MenuBarSignature.text("mem", [iStatGB(m.snapshot.memory.usedGB), iStatGB(m.snapshot.memory.freeGB)], dark: dark, scale: Double(UIScale.glyph))
              },
              dropdown: { m in AnyView(MEMMenuDropdown(monitor: m)) }),
 
@@ -97,7 +97,7 @@ final class MetricBarController: NSObject {
              },
              signature: { m, dark in
                 MenuBarSignature.text("net", [iStatRate(m.snapshot.network.downloadBytesPerSec),
-                                              iStatRate(m.snapshot.network.uploadBytesPerSec)], dark: dark)
+                                              iStatRate(m.snapshot.network.uploadBytesPerSec)], dark: dark, scale: Double(UIScale.glyph))
              },
              dropdown: { m in AnyView(NETMenuDropdown(monitor: m)) }),
 
@@ -110,7 +110,7 @@ final class MetricBarController: NSObject {
              },
              signature: { m, dark in
                 MenuBarSignature.text("ssd", [iStatBytes(m.snapshot.disk.totalBytes - m.snapshot.disk.freeBytes),
-                                              iStatBytes(m.snapshot.disk.freeBytes)], dark: dark)
+                                              iStatBytes(m.snapshot.disk.freeBytes)], dark: dark, scale: Double(UIScale.glyph))
              },
              dropdown: { m in AnyView(SSDMenuDropdown(monitor: m)) }),
 
@@ -124,7 +124,7 @@ final class MetricBarController: NSObject {
              },
              signature: { m, dark in
                 let (cpu, p2, v2, f) = sensorGlyphInputs(m)
-                return MenuBarSignature.text("sen", [tempGlyphValue(cpu, f), p2, tempGlyphValue(v2, f)], dark: dark)
+                return MenuBarSignature.text("sen", [tempGlyphValue(cpu, f), p2, tempGlyphValue(v2, f)], dark: dark, scale: Double(UIScale.glyph))
              },
              dropdown: { m in AnyView(SensorsMenuDropdown(monitor: m)) }),
 
@@ -136,7 +136,7 @@ final class MetricBarController: NSObject {
              },
              signature: { m, dark in
                 let b = m.snapshot.battery
-                return MenuBarSignature.text("bat", ["\(Int(b.percent.rounded()))", b.isCharging ? "c" : "", b.isPluggedIn ? "p" : ""], dark: dark)
+                return MenuBarSignature.text("bat", ["\(Int(b.percent.rounded()))", b.isCharging ? "c" : "", b.isPluggedIn ? "p" : ""], dark: dark, scale: Double(UIScale.glyph))
              },
              dropdown: { m in AnyView(BatteryMenuDropdown(monitor: m)) }),
     ]

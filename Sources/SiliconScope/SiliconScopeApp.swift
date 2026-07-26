@@ -74,8 +74,27 @@ struct SiliconScopeApp: App {
     // hiding the combined SS on notch-limited menu bars. (SwiftUI's MenuBarExtra can't: its
     // isInserted: init has no custom-label form for the live glyph, and toggling it loops the
     // main menu.) The monitor is started from the main window's onAppear at launch.
+    init() { UIScale.registerDefaults() }
+
     var body: some Scene {
         mainWindow
+            // Zoom lives in the View menu as well as on ⌘+/⌘−/⌘0, because the shortcut alone is
+            // not reachable: with "Show Dock icon" off the app runs as .accessory and has no menu
+            // bar at all — and Settings actively recommends that mode. Settings carries the same
+            // control (design-system D1, requirement 1).
+            .commands {
+                CommandGroup(after: .toolbar) {
+                    Button("Zoom In")  { UIScale.step(+1) }.keyboardShortcut("+", modifiers: .command)
+                    // "+" is really ⌘⇧= on a US layout, so bind the unshifted key too — that is
+                    // what people actually press, and what Safari/Xcode/Finder accept. Hidden so
+                    // the View menu shows one Zoom In, not two.
+                    Button("Zoom In")  { UIScale.step(+1) }
+                        .keyboardShortcut("=", modifiers: .command).hidden()
+                    Button("Zoom Out") { UIScale.step(-1) }.keyboardShortcut("-", modifiers: .command)
+                    Button("Actual Size") { UIScale.reset() }.keyboardShortcut("0", modifiers: .command)
+                    Divider()
+                }
+            }
         Settings { SettingsView() }
     }
 

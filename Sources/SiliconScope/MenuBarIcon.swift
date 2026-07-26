@@ -76,7 +76,8 @@ struct MenuBarIcon: View {
     static func signature(for monitor: SiliconScopeMonitor, dark: Bool) -> String {
         let st = barState(for: monitor)
         return MenuBarSignature.bars("ss", st.values, dark: dark,
-                                     extra: (st.alert ? "a" : "n") + (st.blinkDim ? "1" : "0"))
+                                     extra: (st.alert ? "a" : "n") + (st.blinkDim ? "1" : "0"),
+                                     scale: Double(UIScale.glyph))
     }
 
     static func glyph(for monitor: SiliconScopeMonitor, dark: Bool) -> NSImage {

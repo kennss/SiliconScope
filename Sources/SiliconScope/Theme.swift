@@ -35,6 +35,80 @@ enum Theme {
     }
 }
 
+// MARK: - UI scale
+
+/// App zoom and layout density — the only scale axis SiliconScope exposes.
+///
+/// **Why not Dynamic Type** (decision D1, docs/design-system.md §3.5): macOS "Larger Text" is an
+/// unbounded input, and this layout is already at its margin — the dense Memory column can exceed
+/// its fixed row height under some macOS text metrics (#25, a re-run of #23). A user who enlarged
+/// system text would re-trigger that overflow having never touched a SiliconScope setting. Owning
+/// the range keeps it clamped and testable.
+///
+/// **Why the store rather than an EnvironmentKey**: an environment value injected at the window
+/// root reaches exactly one of the app's eleven SwiftUI surfaces. The eight menu-bar dropdowns are
+/// each a separate `NSHostingController` root (`MetricBarController.makeEntry`) and Settings is a
+/// sibling `Scene`, so neither inherits it — and those hosting controllers are created once and
+/// never re-made, so anything captured at construction would be stale forever. Every root reads
+/// `@AppStorage(UIScale.zoomKey)` itself to invalidate, and the tokens read the store.
+enum UIScale {
+    static let zoomKey = "ui.zoom"
+    static let densityKey = "ui.density"
+
+    /// Allowed zoom steps.
+    ///
+    /// Floor is 0.9, not 0.85: `.caption` (9 pt) × 0.85 = 7.65 pt monospaced, and the 7 pt
+    /// disclosure chevron would fall to 5.95 pt. Ceiling is **provisional** — the real limit is
+    /// whatever `Layout.Row.dense` is measured to survive (docs/design-system.md §7 Q1).
+    static let steps: [CGFloat] = [0.9, 1.0, 1.15, 1.3]
+
+    static func registerDefaults() {
+        UserDefaults.standard.register(defaults: [zoomKey: 1.0, densityKey: Density.standard.rawValue])
+    }
+
+    /// Current zoom. Read from the store on every access rather than cached: `UserDefaults.standard`
+    /// is an in-memory dictionary after first use, so this is ~100 ns, and reading live means there
+    /// is no observer to keep in sync and no window where a token returns a stale scale.
+    static var current: CGFloat {
+        let v = CGFloat(UserDefaults.standard.double(forKey: zoomKey))
+        guard v > 0 else { return 1 }
+        return min(max(v, steps.first ?? 0.9), steps.last ?? 1.3)
+    }
+
+    static var density: Density {
+        Density(rawValue: UserDefaults.standard.string(forKey: densityKey) ?? "") ?? .standard
+    }
+
+    /// Menu-bar glyph scale, capped independently of `current`. macOS fixes the menu-bar height,
+    /// so a glyph can only grow WIDER — and Part B (#27) will put more items in the bar, where
+    /// width is the scarce resource on a notched Mac.
+    static var glyph: CGFloat { min(current, 1.15) }
+
+    /// Moves zoom one step up (+1) or down (-1). Returns the new value.
+    @discardableResult
+    static func step(_ direction: Int) -> CGFloat {
+        let now = current
+        let i = steps.firstIndex(where: { abs($0 - now) < 0.001 }) ?? steps.firstIndex(of: 1.0) ?? 1
+        let next = steps[min(max(i + direction, 0), steps.count - 1)]
+        UserDefaults.standard.set(Double(next), forKey: zoomKey)
+        return next
+    }
+
+    static func reset() { UserDefaults.standard.set(1.0, forKey: zoomKey) }
+
+    /// Scales a dimension, rounded to a half point so hairlines and 1 pt borders stay crisp.
+    static func scaled(_ value: CGFloat) -> CGFloat { (value * current * 2).rounded() / 2 }
+}
+
+/// Layout density. Affects SPACING only, never type — "smaller text" (zoom) and "tighter layout"
+/// (density) are different wishes, and conflating them into one slider is why a single control
+/// feels wrong. Matches iStat Menus' standard/compact menu-bar spacing split.
+enum Density: String, CaseIterable {
+    case standard, compact
+    var factor: CGFloat { self == .compact ? 0.75 : 1 }
+    var label: String { self == .compact ? "Compact" : "Standard" }
+}
+
 // MARK: - Type tokens
 
 extension Theme {
@@ -101,7 +175,17 @@ extension Theme {
         }
     }
 
+    /// Scaled point size for a role.
+    ///
+    /// Clamped to a per-role floor rather than scaling freely: at the 0.9 step a role already at
+    /// 9 pt lands on 8.1 pt monospaced, which is past legibility on a dense panel. The clamp binds
+    /// only at the smallest step, so it never fights zooming *up*.
     private static func size(_ role: Role) -> CGFloat {
+        let base = baseSize(role)
+        return max((base * UIScale.current * 2).rounded() / 2, floorSize(role))
+    }
+
+    private static func baseSize(_ role: Role) -> CGFloat {
         switch role {
         case .sectionMajor: return 9.5
         case .sectionMinor: return 9
@@ -111,6 +195,15 @@ extension Theme {
         case .body:         return 11
         case .emphasis:     return 12
         case .headline:     return 14
+        }
+    }
+
+    /// Smallest point size a role may render at, whatever the zoom.
+    private static func floorSize(_ role: Role) -> CGFloat {
+        switch role {
+        case .sectionMajor, .sectionMinor, .sectionMenu, .caption: return 8.5
+        case .detail, .body:                                       return 9.5
+        case .emphasis, .headline:                                 return 11
         }
     }
 
@@ -140,34 +233,43 @@ extension Theme {
 /// Applied in phase 2, which is a declared normalisation rather than a no-op: collapsing the 16
 /// padding and 14 spacing literals onto these seven tokens moves some sites by 1–4 pt. Values with
 /// documented intent are pinned instead of collapsed (see `cardGraphGap`).
+///
+/// Phase 3: every token below is scaled by `ui.zoom` AND by `ui.density`. Density touches spacing
+/// only — see `Density`.
 enum Space {
     /// Required exactly-zero — `StackedBar` and `MenuStackedBar` depend on segments touching.
+    /// Never scaled: zero times anything is still zero, but stating it keeps the intent explicit.
     static let none: CGFloat = 0
-    static let hair: CGFloat = 2      // ×16
-    static let tight: CGFloat = 4     // ×12
-    static let row: CGFloat = 6       // ×35 — dominant
-    static let card: CGFloat = 8      // ×16
-    static let section: CGFloat = 12  // ×7
-    static let page: CGFloat = 20     // ×3
+    static var hair: CGFloat    { s(2) }   // ×16
+    static var tight: CGFloat   { s(4) }   // ×12
+    static var row: CGFloat     { s(6) }   // ×35 — dominant
+    static var card: CGFloat    { s(8) }   // ×16
+    static var section: CGFloat { s(12) }  // ×7
+    static var page: CGFloat    { s(20) }  // ×3
     /// Gap between a `Card`'s last row and its fill-graph. Pinned, not collapsed into `section`:
     /// the value is documented as "~one Bar tall" (#24), so it tracks the Bar atom's height
     /// rather than the spacing scale.
-    static let cardGraphGap: CGFloat = 14
+    static var cardGraphGap: CGFloat { s(14) }
+
+    private static func s(_ v: CGFloat) -> CGFloat {
+        (v * UIScale.current * UIScale.density.factor * 2).rounded() / 2
+    }
 }
 
 /// Corner radii. Three surface sizes, not seven arbitrary values.
 enum Radius {
     /// Buttons, text fields and other controls (`PopoverButtonStyle`).
-    static let control: CGFloat = 7
+    static var control: CGFloat { UIScale.scaled(7) }
     /// Inset panels and badges *inside* a card — the warning banner, Inspector badges, Linux
     /// metric blocks, Fleet tiles. The modal radius in the codebase (5 sites at 8).
-    static let panel: CGFloat = 8
+    static var panel: CGFloat { UIScale.scaled(8) }
     /// Cards — the dashboard's top-level surface.
-    static let card: CGFloat = 9
+    static var card: CGFloat { UIScale.scaled(9) }
     /// Legend swatches. Deliberately NOT `height / 2` — these are 8×8 and 9×9 squares with a
     /// softened corner; a pill rule would render them as circles and change the legend's look.
-    static let swatch: CGFloat = 2
-    /// Capsules — meters and tracks, where fully rounded is the intent.
+    static var swatch: CGFloat { UIScale.scaled(2) }
+    /// Capsules — meters and tracks, where fully rounded is the intent. Takes an ALREADY-SCALED
+    /// height, so it must not scale again.
     static func pill(_ height: CGFloat) -> CGFloat { height / 2 }
 }
 
@@ -178,28 +280,34 @@ enum Radius {
 /// macOS fixes the menu-bar height, so a glyph can only ever grow WIDER (docs/design-system.md
 /// §3.6), which is why glyph scale is capped separately from `ui.zoom`.
 enum Glyph {
-    /// Usable menu-bar height. Fixed by macOS — not a design choice, and not scalable.
+    /// Usable menu-bar height. Fixed by macOS — not a design choice, and **never scaled**.
+    /// This is why glyph zoom only widens a glyph, and why `UIScale.glyph` is capped.
     static let height: CGFloat = 18
     /// The vertical per-character label ("C/P/U") that precedes every metric glyph.
-    static let stackedLabel: CGFloat = 6.5
+    static var stackedLabel: CGFloat { g(6.5) }
     /// The combined "SS" glyph's label, one step larger than a per-metric one.
-    static let comboLabel: CGFloat = 7.5
+    static var comboLabel: CGFloat { g(7.5) }
     /// Two-line value rows (MEM / NET / SSD / SEN).
-    static let value: CGFloat = 8.5
+    static var value: CGFloat { g(8.5) }
     /// Battery percentage beside the battery body.
-    static let batteryValue: CGFloat = 9
+    static var batteryValue: CGFloat { g(9) }
+
+    /// Glyph text scales on the capped glyph axis, and never past what the fixed 18 pt height can
+    /// hold — two stacked value rows must still fit.
+    private static func g(_ v: CGFloat) -> CGFloat { (v * UIScale.glyph * 2).rounded() / 2 }
 }
 
 /// SF Symbol point sizes. Separate from `Theme.Role` because a symbol is not text: it has no
 /// weight/tracking axis and does not belong in the type scale.
 enum Icon {
-    static let micro: CGFloat = 7    // disclosure chevrons
-    static let small: CGFloat = 9
-    static let medium: CGFloat = 10
-    static let large: CGFloat = 11
+    /// Disclosure chevrons. Floored at 7 pt — below that a chevron reads as a smudge.
+    static var micro: CGFloat { max(UIScale.scaled(7), 7) }
+    static var small: CGFloat { UIScale.scaled(9) }
+    static var medium: CGFloat { UIScale.scaled(10) }
+    static var large: CGFloat { UIScale.scaled(11) }
     /// Empty-state / error symbols that carry a whole view (Fleet pairing prompts). The only
     /// icon size that is a focal point rather than an adornment.
-    static let hero: CGFloat = 26
+    static var hero: CGFloat { UIScale.scaled(26) }
 }
 
 /// Fixed layout dimensions, named by ROLE rather than by value.
@@ -221,105 +329,105 @@ enum Layout {
     /// Dashboard grid row heights (`DashboardView`).
     enum Row {
         /// AI cockpit pair — **minHeight**. Content-driven, both cards are short.
-        static let aiCockpit: CGFloat = 108
+        static var aiCockpit: CGFloat { UIScale.scaled(108) }
         /// SensorsCard in the narrow/remote variant — **minHeight**.
-        static let sensorsNarrow: CGFloat = 120
+        static var sensorsNarrow: CGFloat { UIScale.scaled(120) }
         /// CPU + Accelerator — **fixed height**. Both cards carry a fill-graph that absorbs
         /// content changes by shrinking/growing, so the card size stays put (#24).
-        static let graphed: CGFloat = 166
+        static var graphed: CGFloat { UIScale.scaled(166) }
         /// Memory/Bandwidth and Network/Disk — **minHeight, never a fixed height**. These cards
         /// are graphless (trends live inside the sections), and the dense Memory column's
         /// intrinsic height (~188 pt) can exceed a fixed 176 by a few points under some macOS
         /// versions' text metrics, spilling into the neighbouring card (#25, a re-run of #23).
         /// Growing to fit makes the overflow structurally impossible.
         /// **This is the row that bounds the zoom ceiling** (docs/design-system.md §7 Q1).
-        static let dense: CGFloat = 176
+        static var dense: CGFloat { UIScale.scaled(176) }
         /// Sensors + Processes — **fixed height**. ProcessCard scrolls its list internally, so it
         /// needs a bounded height; minHeight lets the whole list expand and balloons the window.
-        static let scrolling: CGFloat = 196
+        static var scrolling: CGFloat { UIScale.scaled(196) }
     }
 
     /// Window, sheet and popover sizes.
     enum Surface {
         /// Per-metric menu-bar dropdowns (7 call sites, all identical).
-        static let dropdownWidth: CGFloat = 260
+        static var dropdownWidth: CGFloat { UIScale.scaled(260) }
         /// Ceiling for a scrolling list inside a dropdown (the sensor list), so a machine with
         /// many sensors cannot grow the popover past the screen.
-        static let dropdownScrollMax: CGFloat = 320
+        static var dropdownScrollMax: CGFloat { UIScale.scaled(320) }
         /// Combined "SS" dropdown — wider when the compact GPU layout is on.
-        static let combinedWidth: CGFloat = 270
-        static let combinedWidthCompactGPU: CGFloat = 340
-        static let inspector = CGSize(width: 460, height: 640)
-        static let settingsWidth: CGFloat = 400
-        static let settingsHeight: CGFloat = 710
+        static var combinedWidth: CGFloat { UIScale.scaled(270) }
+        static var combinedWidthCompactGPU: CGFloat { UIScale.scaled(340) }
+        static var inspector: CGSize { CGSize(width: UIScale.scaled(460), height: UIScale.scaled(640)) }
+        static var settingsWidth: CGFloat { UIScale.scaled(400) }
+        static var settingsHeight: CGFloat { UIScale.scaled(710) }
         /// Settings grows when the AI-runtime section is expanded.
-        static let settingsHeightExpanded: CGFloat = 820
-        static let addMachineWidth: CGFloat = 440
-        static let fleetDetailWidth: CGFloat = 400
-        static let mainWindowMin = CGSize(width: 640, height: 600)
+        static var settingsHeightExpanded: CGFloat { UIScale.scaled(820) }
+        static var addMachineWidth: CGFloat { UIScale.scaled(440) }
+        static var fleetDetailWidth: CGFloat { UIScale.scaled(400) }
+        static var mainWindowMin: CGSize { CGSize(width: UIScale.scaled(640), height: UIScale.scaled(600)) }
     }
 
     /// Text-bearing column widths. These are the sites that TRUNCATE to "…" under zoom, so they
     /// must scale — or, better, become intrinsic. The process table is slated to move to `Grid`
     /// + `.gridColumnAlignment` in phase 2, which removes the first three entirely.
     enum Column {
-        static let processPID: CGFloat = 56
-        static let processCPU: CGFloat = 60
-        static let processMemory: CGFloat = 84
+        static var processPID: CGFloat { UIScale.scaled(56) }
+        static var processCPU: CGFloat { UIScale.scaled(60) }
+        static var processMemory: CGFloat { UIScale.scaled(84) }
         /// Engine/state label in the AI cockpit rows.
-        static let stateLabel: CGFloat = 42
+        static var stateLabel: CGFloat { UIScale.scaled(42) }
         /// Menu-bar dropdown trend rows: label column + right-aligned value column.
-        static let trendLabel: CGFloat = 28
-        static let trendValue: CGFloat = 56
+        static var trendLabel: CGFloat { UIScale.scaled(28) }
+        static var trendValue: CGFloat { UIScale.scaled(56) }
         /// CPU dropdown frequency readout.
-        static let frequency: CGFloat = 64
+        static var frequency: CGFloat { UIScale.scaled(64) }
         /// Sensors dropdown: temperature value and fan RPM.
-        static let sensorValue: CGFloat = 44
-        static let fanValue: CGFloat = 70
+        static var sensorValue: CGFloat { UIScale.scaled(44) }
+        static var fanValue: CGFloat { UIScale.scaled(70) }
         /// Linux fleet view metric label.
-        static let linuxLabel: CGFloat = 64
+        static var linuxLabel: CGFloat { UIScale.scaled(64) }
         /// Inline meter track beside a sensor / fan reading in the dropdowns.
-        static let sensorBar: CGFloat = 60
+        static var sensorBar: CGFloat { UIScale.scaled(60) }
         /// Port field in the Add Machine sheet.
-        static let portField: CGFloat = 90
+        static var portField: CGFloat { UIScale.scaled(90) }
     }
 
     /// Meter and chart heights.
     enum Meter {
         /// `Bar`'s capsule track — the app's default meter.
-        static let bar: CGFloat = 5
+        static var bar: CGFloat { UIScale.scaled(5) }
         /// Memory composition strip under the headline figure.
-        static let strip: CGFloat = 4
+        static var strip: CGFloat { UIScale.scaled(4) }
         /// Battery fill in the dropdown.
-        static let battery: CGFloat = 7
+        static var battery: CGFloat { UIScale.scaled(7) }
         /// `MenuStackedBar` in dropdowns.
-        static let stacked: CGFloat = 9
+        static var stacked: CGFloat { UIScale.scaled(9) }
         /// Inline sparkline beside a value.
-        static let sparkline: CGFloat = 26
+        static var sparkline: CGFloat { UIScale.scaled(26) }
         /// `LabeledSparkline`'s trace — shorter than `sparkline` because it sits under a label.
-        static let labeledSparkline: CGFloat = 18
+        static var labeledSparkline: CGFloat { UIScale.scaled(18) }
         /// Fleet dual-series chart.
-        static let fleetChart: CGFloat = 84
+        static var fleetChart: CGFloat { UIScale.scaled(84) }
     }
 
     /// Status dots and legend swatches.
     enum Dot {
-        static let status: CGFloat = 7
-        static let verdict: CGFloat = 8
-        static let swatch: CGFloat = 8
-        static let menuSwatch: CGFloat = 9
-        static let linux: CGFloat = 6
+        static var status: CGFloat { UIScale.scaled(7) }
+        static var verdict: CGFloat { UIScale.scaled(8) }
+        static var swatch: CGFloat { UIScale.scaled(8) }
+        static var menuSwatch: CGFloat { UIScale.scaled(9) }
+        static var linux: CGFloat { UIScale.scaled(6) }
     }
 
     /// Controls.
     enum Control {
         /// `PopoverButtonStyle` — uniform button height across every menu-bar surface.
-        static let buttonHeight: CGFloat = 28
+        static var buttonHeight: CGFloat { UIScale.scaled(28) }
         /// Fleet overview tile minimum.
-        static let tileMinHeight: CGFloat = 26
+        static var tileMinHeight: CGFloat { UIScale.scaled(26) }
         /// Disclosure chevron / leading icon slots.
-        static let chevronWidth: CGFloat = 16
-        static let iconWidth: CGFloat = 15
+        static var chevronWidth: CGFloat { UIScale.scaled(16) }
+        static var iconWidth: CGFloat { UIScale.scaled(15) }
     }
 
     /// A one-point separator rule.

@@ -16,6 +16,12 @@ import AppKit
 import SiliconScopeCore
 
 struct MenuBarView: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     @AppStorage("compactGPUMode") private var compactGPU = false

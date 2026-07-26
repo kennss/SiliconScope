@@ -15,6 +15,12 @@ import SwiftUI
 import AppKit
 
 struct SettingsView: View {
+    // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
+    // Scene, or the window), so it must observe the scale keys itself — an environment
+    // value injected upstream never arrives here. Read only to invalidate on change; the
+    // tokens themselves read the store (see UIScale).
+    @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
+    @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     @AppStorage("refreshInterval") private var refreshInterval = 1.0
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     @AppStorage("compactGPUMode") private var compactGPU = false
@@ -59,6 +65,26 @@ struct SettingsView: View {
                     .onChange(of: showDockIcon) { _, _ in applyDockIconPolicy() }
             } footer: {
                 Text("Turn off the Dock icon to run SiliconScope as a pure menu-bar utility — the dashboard still opens from any menu-bar item's dropdown.")
+            }
+
+            // Zoom and density must be reachable HERE, not only on ⌘+/⌘−/⌘0: with the Dock icon
+            // off the app runs as .accessory and has no menu bar to hang those shortcuts on — and
+            // the footer just above actively recommends that mode.
+            Section {
+                Picker("Zoom", selection: $uiZoom) {
+                    ForEach(UIScale.steps, id: \.self) { step in
+                        Text("\(Int((step * 100).rounded()))%").tag(Double(step))
+                    }
+                }
+                Picker("Density", selection: $uiDensity) {
+                    ForEach(Density.allCases, id: \.rawValue) { d in
+                        Text(d.label).tag(d.rawValue)
+                    }
+                }
+            } header: {
+                Text("Display")
+            } footer: {
+                Text("Zoom scales text and layout together (also ⌘+ / ⌘− / ⌘0). Density adjusts spacing only, leaving text size alone. SiliconScope does not follow the system \"Larger Text\" setting — this dense layout needs a range the app can guarantee.")
             }
 
             Section {

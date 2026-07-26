@@ -27,13 +27,27 @@ public enum MenuBarSignature {
 
     /// Signature for a bar glyph (SS / CPU / GPU): quantized bar heights + appearance. `extra`
     /// carries any non-bar state that changes the pixels (e.g. the SS glyph's alert/blink color).
-    public static func bars(_ id: String, _ fracs: [Double], dark: Bool, extra: String = "") -> String {
-        id + "|" + fracs.map { String(quantize($0)) }.joined(separator: ",") + "|" + extra + (dark ? "d" : "l")
+    public static func bars(_ id: String, _ fracs: [Double], dark: Bool,
+                            extra: String = "", scale: Double = 1) -> String {
+        id + "|" + fracs.map { String(quantize($0)) }.joined(separator: ",")
+           + "|" + extra + (dark ? "d" : "l") + "|" + scaleTag(scale)
     }
 
     /// Signature for a text glyph (MEM / NET / SSD / SEN / battery): the drawn strings + appearance.
     /// Identical formatted strings ⇒ identical pixels, so the strings are the signature.
-    public static func text(_ id: String, _ parts: [String], dark: Bool) -> String {
-        id + "|" + parts.joined(separator: "\u{1}") + "|" + (dark ? "d" : "l")
+    public static func text(_ id: String, _ parts: [String], dark: Bool, scale: Double = 1) -> String {
+        id + "|" + parts.joined(separator: "\u{1}") + "|" + (dark ? "d" : "l") + "|" + scaleTag(scale)
+    }
+
+    /// ⚠️ The glyph scale MUST be part of every signature. `MetricBarController.sync` re-rasterises
+    /// only when the signature changes, and `lastSig` is reset only when an item is created or
+    /// destroyed — so a zoom change that did not alter any value would otherwise leave every
+    /// menu-bar glyph stale for the life of the process.
+    ///
+    /// Note that `barRows` does NOT need to scale: macOS fixes the menu-bar height, so `Glyph.height`
+    /// is never scaled and a bar still spans the same 36 pixel rows. Zoom changes a glyph's WIDTH
+    /// (the stacked label and value text grow), which is exactly what this tag catches.
+    private static func scaleTag(_ scale: Double) -> String {
+        String(Int((scale * 100).rounded()))
     }
 }
