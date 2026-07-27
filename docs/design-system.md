@@ -3,10 +3,11 @@
 > Design for closing **#19 (app zoom / scale-aware pass)** and **#27 (menu-bar visualisation
 > consistency)** with one system rather than two patches.
 >
-> **Status (2026-07-27): phases 0–4b are shipped in the working tree; #19 and #27 are closed by
-> them.** Building 4a corrected §4.2 (a mode needs a renderer, not only a series) and building 4b
-> corrected §4.6 (the hardcoded label width was clipping shipped glyphs at every zoom step above
-> 100 %). Remaining: phase 5, the visual grammar.
+> **Status (2026-07-27): the pass is complete — phases 0 through 5 are shipped in the working
+> tree, closing #19, #27 and the "make it read like an instrument" requests.** Each build
+> corrected its own section: 4a corrected §4.2 (a mode needs a renderer, not only a series), 4b
+> corrected §4.6 (a hardcoded label width was clipping shipped glyphs at every zoom step above
+> 100 %), and 5 corrected §5.2 (see the correction there).
 >
 > **v2 (2026-07-26, decision D1 added 2026-07-27)** — v1 was audited against the source twice
 > (fact-check + adversarial design review) and failed on five blockers. This revision records
@@ -430,6 +431,20 @@ Five items, corrected against the source. All are hierarchy problems; none needs
    their labels — the problem is worse than stated. Only a few values are promoted to 12 medium
    (`DashboardView.swift:344, 351, 922`). → one `.headline` per card.
 
+   #### ⚠️ Correction found in 5 — swap the two sizes; do not raise both
+   `KV` and `LegendRow` *already* have the right grammar (key `dim`, value `text`, one size).
+   **`Bar` was the only outlier**, so the fix is to match them, not to invent a new hierarchy.
+   Raising the detail to `.body` alongside an 11 pt label widened every row, and the Disk column's
+   `free 1.61 TB / 4.00 TB` immediately wrapped to two lines. Shipped instead: label → `.detail`
+   + `dim`, value → `.body` + `text` — the row's total width demand is unchanged. The disk string
+   also became `2.39 / 4.00 TB` (`formatBytesOfTotal`), one unit for a part and its whole, the
+   same shape the Memory card already used.
+
+   **"One `.headline` per card" applies only where a single primary reading already exists** — the
+   Memory card's `37.4 / 64 GB`. CPU, GPU, Network & Disk and Sensors have no one number that
+   summarises them, and promoting a synthesised total would add a reading rather than rank the
+   existing ones. Typography ranks what is there; it does not create data.
+
 3. **One chart primitive, four ad-hoc configurations.** v1 claimed four grammars; there is
    exactly one — `Sparkline` (`Theme.swift:248-307`) unconditionally draws area **and** line
    (`:296-300`), with no line-only mode. The defect is call-site configuration:
@@ -478,7 +493,7 @@ Five items, corrected against the source. All are hierarchy problems; none needs
 | **3** ✅ | Scale-aware tokens; View-menu ⌘+/⌘=/⌘−/⌘0 **and Settings controls** (D1 req. 1); scale folded into all 8 glyph signatures. Range measured → D4. `barRows` needs no change: the menu-bar height never scales, so a bar still spans 36 pixel rows — zoom changes glyph *width* | zoom works | medium |
 | **4a** ✅ | `MenuBarItemConfig` + `MenuBarItemStore` + migration, **in Core, unit-tested** (19 tests); the renderer became data-driven (`MenuBarItemRenderer`) and all 15 legacy **write** paths were removed. `GlyphMode.value` needed a renderer that did not exist — added as `MenuBarGlyph.oneLine`, see §4.2 correction | **none — verified A/B** | medium |
 | **4b** ✅ | Settings UI: add / duplicate / delete / configure instances. Channel controls are **derived from `GlyphMode.arity`** — fixed arity becomes N ordered pickers, a range becomes a bounded toggle set — so no metric is special-cased and a new mode needs no new UI | none by default | **high — the real work** |
-| **5** | Visual grammar §5 | **intended** | medium |
+| **5** ✅ | Visual grammar §5 — accent card titles, row hierarchy inverted, `Sparkline` reduced to two roles with the axis on the data, `Bar(encoding:)` replacing the `??` fall-through, Sensors trend in the graph slot | **intended** | medium |
 
 ### ⚠️ v1's "phases 1–2 are provably no-ops" was false
 

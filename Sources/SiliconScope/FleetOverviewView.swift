@@ -160,10 +160,7 @@ private struct FleetTile: View {
     private func miniChart(_ a: [Double], _ ca: Color, _ b: [Double], _ cb: Color) -> some View {
         Group {
             if history.count >= 2 {
-                ZStack {
-                    Sparkline(values: a, color: ca, yDomain: 0...1, fill: true, grid: true)
-                    Sparkline(values: b, color: cb, yDomain: 0...1, fill: true)
-                }
+                Sparkline([Trace(a, ca), Trace(b, cb)], role: .trend)
             } else {
                 Color.clear
             }

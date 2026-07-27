@@ -441,10 +441,8 @@ struct CPUMenuDropdown: View {
             coreRow("E-cores", s.cpu.eUsage, s.cpu.eUsagePercent, s.cpu.eFreqMHz, e)
             coreRow("P-cores", s.cpu.pUsage, s.cpu.pUsagePercent, s.cpu.pFreqMHz, p)
             GraphCaption("E (amber) / P (blue) usage · 60s")
-            ZStack {   // E (amber) + P (blue) usage history, overlaid
-                Sparkline(values: monitor.history.eCPU, color: e, height: 32, yDomain: 0...1)
-                Sparkline(values: monitor.history.pCPU, color: p, height: 32, yDomain: 0...1)
-            }
+            Sparkline([Trace(monitor.history.eCPU, e), Trace(monitor.history.pCPU, p)],
+                      role: .inline(height: Layout.Meter.sparklineDropdown, axis: .fraction))
             kv("Temperature", formatTemperature(s.temperature.cpuCelsius, fahrenheit: fahrenheit))
             kv("Load avg", SystemInfo.loadAverageString())
             kv("Uptime", SystemInfo.uptimeString())
@@ -565,14 +563,12 @@ struct GPUMenuDropdown: View {
                          value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs),
                          fraction: min(1, s.bandwidth.mediaGBs / max(monitor.mediaPeakGBs, 0.5)), color: MetricPalette.mediaC)
             GraphCaption("GPU (green) / GPU mem (cyan) / ANE (purple) / Media (orange) · 60s")
-            ZStack {   // all four normalized to 0...1 (each vs its tracked peak)
-                Sparkline(values: monitor.history.gpu, color: MetricPalette.gpuC, height: 30, yDomain: 0...1)
-                Sparkline(values: monitor.history.gpuMem, color: MetricPalette.gpuMemC, height: 30, yDomain: 0...1)
-                Sparkline(values: monitor.history.ane.map { min(1, $0 / max(monitor.anePeakWatts, 0.1)) },
-                          color: MetricPalette.aneC, height: 30, yDomain: 0...1)
-                Sparkline(values: monitor.history.media.map { min(1, $0 / max(monitor.mediaPeakGBs, 0.5)) },
-                          color: MetricPalette.mediaC, height: 30, yDomain: 0...1)
-            }
+            // All four normalized to 0...1 (each against its tracked peak) so one axis serves them.
+            Sparkline([Trace(monitor.history.gpu, MetricPalette.gpuC),
+                       Trace(monitor.history.gpuMem, MetricPalette.gpuMemC),
+                       Trace(monitor.history.ane.map { min(1, $0 / max(monitor.anePeakWatts, 0.1)) }, MetricPalette.aneC),
+                       Trace(monitor.history.media.map { min(1, $0 / max(monitor.mediaPeakGBs, 0.5)) }, MetricPalette.mediaC)],
+                      role: .inline(height: Layout.Meter.sparklineDropdown, axis: .fraction))
             Divider()
             MenuActionsFooter()
         }
@@ -692,9 +688,9 @@ struct NETMenuDropdown: View {
             }
             Divider()
             MenuKV(label: "↓ Download", value: formatRate(n.downloadBytesPerSec), color: MetricPalette.downC)
-            Sparkline(values: monitor.history.netDown, color: MetricPalette.downC, height: 22)
+            Sparkline(monitor.history.netDown, color: MetricPalette.downC, role: .inline(height: Layout.Meter.sparklinePair))
             MenuKV(label: "↑ Upload", value: formatRate(n.uploadBytesPerSec), color: MetricPalette.upC)
-            Sparkline(values: monitor.history.netUp, color: MetricPalette.upC, height: 22)
+            Sparkline(monitor.history.netUp, color: MetricPalette.upC, role: .inline(height: Layout.Meter.sparklinePair))
             HStack {
                 Text("Peak ↓ \(formatRate(monitor.history.netDown.max() ?? 0))")
                     .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
@@ -749,9 +745,9 @@ struct SSDMenuDropdown: View {
             Divider()
             MenuSectionHeader("Activity")
             MenuKV(label: "Read", value: formatRate(d.readBytesPerSec), color: MetricPalette.downC)
-            Sparkline(values: monitor.history.diskRead, color: MetricPalette.downC, height: 22)
+            Sparkline(monitor.history.diskRead, color: MetricPalette.downC, role: .inline(height: Layout.Meter.sparklinePair))
             MenuKV(label: "Write", value: formatRate(d.writeBytesPerSec), color: MetricPalette.upC)
-            Sparkline(values: monitor.history.diskWrite, color: MetricPalette.upC, height: 22)
+            Sparkline(monitor.history.diskWrite, color: MetricPalette.upC, role: .inline(height: Layout.Meter.sparklinePair))
             Divider()
             MenuActionsFooter()
         }
@@ -855,7 +851,7 @@ struct SensorsMenuDropdown: View {
 struct SensorTempRow: View {
     let name: String, celsius: Double, fahrenheit: Bool
     var body: some View {
-        let heat = min(1, celsius / 100)
+        let heat = min(1, celsius / Theme.hotCelsius)
         HStack(spacing: Space.card) {
             Text(name).font(Theme.font(.detail))
                 .foregroundStyle(Theme.dim).lineLimit(1).truncationMode(.tail)

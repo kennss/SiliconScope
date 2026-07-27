@@ -194,7 +194,8 @@ struct DashboardView: View {
                                             memHistory: s.history.memory, bwHistory: s.history.bandwidth)
                     }
                     .frame(minHeight: Layout.Row.dense)
-                    SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
+                    SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
+                                dieHistory: s.history.dieTemp)
                         .frame(minHeight: Layout.Row.sensorsNarrow)
                 } else {
 
@@ -254,7 +255,8 @@ struct DashboardView: View {
                 .frame(minHeight: Layout.Row.dense)
 
                 HStack(spacing: Space.row) {
-                    SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal)
+                    SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
+                                dieHistory: s.history.dieTemp)
                     ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect)
                 }
                 // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
@@ -813,21 +815,18 @@ private struct CPUCard: View {
         // DVFS ceiling. Border = salience, line = the instrument reading.
         Card(title: "CPU", menuBarPin: menuBarItems.pin(.cpu), alert: throttling ? alertColor : nil) {
             Bar(label: "E-cores", value: cpu.eUsage,
-                detail: String(format: "%.0f%%  %.0f MHz", cpu.eUsagePercent, cpu.eFreqMHz), color: eColor)
+                detail: String(format: "%.0f%%  %.0f MHz", cpu.eUsagePercent, cpu.eFreqMHz), encoding: .identity(eColor))
             Bar(label: "P-cores", value: cpu.pUsage,
-                detail: String(format: "%.0f%%  %.0f MHz", cpu.pUsagePercent, cpu.pFreqMHz), color: pColor)
+                detail: String(format: "%.0f%%  %.0f MHz", cpu.pUsagePercent, cpu.pFreqMHz), encoding: .identity(pColor))
 
             if throttling {
                 Bar(label: "P ceiling", value: pMaxMHz > 0 ? cpu.pFreqMHz / pMaxMHz : 0,
                     detail: String(format: "%.0f / %.0f MHz · −%.0f%% (thermal)",
                                    cpu.pFreqMHz, pMaxMHz, clockDrop * 100),
-                    color: Theme.dim)
+                    encoding: .identity(Theme.dim))
             }
         } graph: {
-            ZStack {
-                Sparkline(values: eHistory, color: eColor, yDomain: 0...1, fill: true, grid: true)
-                Sparkline(values: pHistory, color: pColor, yDomain: 0...1, fill: true)
-            }
+            Sparkline([Trace(eHistory, eColor), Trace(pHistory, pColor)], role: .trend)
         }
     }
 }
@@ -856,22 +855,19 @@ private struct AcceleratorCard: View {
              alert: throttling ? Color(red: 0.88, green: 0.37, blue: 0.37) : nil) {
             Bar(label: "GPU", value: gpu.usage,
                 detail: String(format: "%.0f%%  %.1f W  %.0f MHz", gpu.usagePercent, power.gpuWatts, gpu.freqMHz),
-                color: gpuColor)
+                encoding: .identity(gpuColor))
             Bar(label: "GPU memory", value: gpu.inUseMemoryFraction,
-                detail: String(format: "%.1f GB in use", gpu.inUseMemoryGB), color: memColor)
+                detail: String(format: "%.1f GB in use", gpu.inUseMemoryGB), encoding: .identity(memColor))
             Bar(label: "ANE est.", value: min(1, power.aneWatts / max(anePeak, 0.1)),
-                detail: String(format: "%.1f W", power.aneWatts), color: aneColor)
+                detail: String(format: "%.1f W", power.aneWatts), encoding: .identity(aneColor))
             Bar(label: "Media", value: min(1, bandwidth.mediaGBs / max(mediaPeak, 0.5)),
-                detail: String(format: "%.1f GB/s", bandwidth.mediaGBs), color: mediaColor)
+                detail: String(format: "%.1f GB/s", bandwidth.mediaGBs), encoding: .identity(mediaColor))
         } graph: {
-            ZStack {
-                Sparkline(values: gpuHistory, color: gpuColor, yDomain: 0...1, fill: true, grid: true)
-                Sparkline(values: gpuMemHistory, color: memColor, yDomain: 0...1, fill: true)
-                Sparkline(values: aneHistory.map { min(1, $0 / max(anePeak, 0.1)) },
-                          color: aneColor, yDomain: 0...1, fill: true)
-                Sparkline(values: mediaHistory.map { min(1, $0 / max(mediaPeak, 0.5)) },
-                          color: mediaColor, yDomain: 0...1, fill: true)
-            }
+            Sparkline([Trace(gpuHistory, gpuColor),
+                       Trace(gpuMemHistory, memColor),
+                       Trace(aneHistory.map { min(1, $0 / max(anePeak, 0.1)) }, aneColor),
+                       Trace(mediaHistory.map { min(1, $0 / max(mediaPeak, 0.5)) }, mediaColor)],
+                      role: .trend)
         }
     }
 }
@@ -886,6 +882,12 @@ private struct MemoryBandwidthCard: View {
     let bwHistory: [Double]
     // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
     @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
+
+    /// Identity colour of the bandwidth series — shared by the "Total" bar and the "BW" trace so
+    /// the two readings of the same metric are recognisably one thing.
+    static let bandwidthColor = Color(red: 0.42, green: 0.66, blue: 0.95)
+    /// Identity colour of the memory-used series, shared the same way with the "Mem" trace.
+    static let memoryTrendColor = Color(red: 0.66, green: 0.60, blue: 0.96)
 
     private let wiredColor = Color(red: 0.36, green: 0.62, blue: 0.98)
     private let activeColor = Color(red: 0.34, green: 0.74, blue: 0.62)
@@ -925,8 +927,11 @@ private struct MemoryBandwidthCard: View {
         VStack(alignment: .leading, spacing: Space.hair) {
             SubLabel("Memory", menuBarPin: menuBarItems.pin(.memory))
             HStack {
+                // The card's single headline: one focal reading per card, so the eye has a place
+                // to land before the legend rows (§5.2). Cards without one primary number keep
+                // their flat row hierarchy rather than inventing a figure to promote.
                 Text(String(format: "%.1f / %.0f GB", memory.usedGB, memory.totalGB))
-                    .font(Theme.font(.emphasis))
+                    .font(Theme.font(.headline, .strong))
                 Spacer()
                 Text(String(format: "%.0f%%", memory.usedPercent))
                     .font(Theme.font(.body)).foregroundStyle(Theme.dim)
@@ -963,8 +968,13 @@ private struct MemoryBandwidthCard: View {
     private var bandwidthSection: some View {
         VStack(alignment: .leading, spacing: Space.hair) {
             SubLabel("Bandwidth")
+            // Identity, not state: `bandwidthPeak` is an OBSERVED rolling peak, so the fraction
+            // saturates against itself and a heat ramp would sit red whenever the machine is at
+            // its own recent maximum — regardless of how much of the chip's real bandwidth that
+            // is. That is a normalisation limit, not a warning (§5.4). Matches the "BW" trace.
             Bar(label: "Total", value: min(1, bandwidth.totalGBs / max(bandwidthPeak, 1)),
-                detail: String(format: "%.0f GB/s", bandwidth.totalGBs))
+                detail: String(format: "%.0f GB/s", bandwidth.totalGBs),
+                encoding: .identity(Self.bandwidthColor))
             KV(key: "CPU", value: String(format: "%.0f GB/s", bandwidth.cpuGBs))
             KV(key: "GPU", value: String(format: "%.0f GB/s", bandwidth.gpuGBs))
             KV(key: "Media", value: String(format: "%.0f GB/s", bandwidth.mediaGBs))
@@ -975,11 +985,9 @@ private struct MemoryBandwidthCard: View {
             // bandwidth-over-time (same pattern as the Network & Disk card's two graphs). Memory is
             // scaled to total RAM (0...totalGB, a near-constant series); bandwidth auto-scales (GB/s).
             VStack(alignment: .leading, spacing: Space.card) {
-                LabeledSparkline(label: "BW", values: bwHistory,
-                                 color: Color(red: 0.42, green: 0.66, blue: 0.95))
-                LabeledSparkline(label: "Mem", values: memHistory,
-                                 color: Color(red: 0.66, green: 0.60, blue: 0.96),
-                                 yDomain: 0...max(memory.totalGB, 1))
+                LabeledSparkline(label: "BW", values: bwHistory, color: Self.bandwidthColor)
+                LabeledSparkline(label: "Mem", values: memHistory, color: Self.memoryTrendColor,
+                                 axis: .ceiling(max(memory.totalGB, 1)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -993,7 +1001,7 @@ private struct LabeledSparkline: View {
     let values: [Double]
     let color: Color
     var height: CGFloat = Layout.Meter.labeledSparkline
-    var yDomain: ClosedRange<Double>? = nil
+    var axis: ChartAxis = .auto
     var body: some View {
         // Label sits ABOVE the trend (not overlaid on the line) so it stays readable regardless of
         // where the line happens to be.
@@ -1002,7 +1010,7 @@ private struct LabeledSparkline: View {
                 .font(Theme.font(.caption, .strong))
                 .tracking(0.5)
                 .foregroundStyle(color.opacity(0.9))
-            Sparkline(values: values, color: color, height: height, yDomain: yDomain)
+            Sparkline(values, color: color, role: .inline(height: height, axis: axis))
         }
     }
 }
@@ -1038,8 +1046,8 @@ private struct NetworkDiskCard: View {
             KV(key: "↓ Download", value: formatRate(network.downloadBytesPerSec), valueColor: downColor)
             KV(key: "↑ Upload", value: formatRate(network.uploadBytesPerSec), valueColor: upColor)
             Spacer(minLength: 4)
-            Sparkline(values: downHistory, color: downColor, height: 22)
-            Sparkline(values: upHistory, color: upColor, height: 22)
+            Sparkline(downHistory, color: downColor, role: .inline(height: Layout.Meter.sparklinePair))
+            Sparkline(upHistory, color: upColor, role: .inline(height: Layout.Meter.sparklinePair))
         }
     }
 
@@ -1048,11 +1056,16 @@ private struct NetworkDiskCard: View {
             SubLabel("Disk", menuBarPin: menuBarItems.pin(.disk))
             KV(key: "Read", value: formatRate(disk.readBytesPerSec), valueColor: downColor)
             KV(key: "Write", value: formatRate(disk.writeBytesPerSec), valueColor: upColor)
+            // State, deliberately: a disk has no identity colour and "how full" IS the reading.
+            // "used / total", the same shape as the Memory card's headline figure. The old
+            // "free X / total Y" ran past the Disk column and truncated once the value took the
+            // row's larger type; free space is still readable as the bar's unfilled length.
             Bar(label: "Used", value: disk.usedFraction,
-                detail: "free \(formatBytes(disk.freeBytes)) / \(formatBytes(disk.totalBytes))")
+                detail: formatBytesOfTotal(disk.totalBytes - disk.freeBytes, disk.totalBytes),
+                encoding: .state)
             Spacer(minLength: 4)
-            Sparkline(values: readHistory, color: downColor, height: 22)
-            Sparkline(values: writeHistory, color: upColor, height: 22)
+            Sparkline(readHistory, color: downColor, role: .inline(height: Layout.Meter.sparklinePair))
+            Sparkline(writeHistory, color: upColor, role: .inline(height: Layout.Meter.sparklinePair))
         }
     }
 }
@@ -1077,6 +1090,10 @@ private struct SubLabel: View {
 private struct SensorsCard: View {
     let temperature: TemperatureSample
     let thermal: ThermalSample
+    /// Die temperature over time, in °C. Fills the card's spare space via `Card`'s graph slot —
+    /// the sensor list is a scroller of runtime groups, so on machines that report few sensors the
+    /// card used to end in dead space. Row-height policy is untouched (#23/#25/#16 pinned it).
+    let dieHistory: [Double]
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
     @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
@@ -1124,6 +1141,15 @@ private struct SensorsCard: View {
                     .frame(maxHeight: .infinity)
                 }
             }
+        } graph: {
+            // Normalised against `Theme.hotCelsius` so the trace keeps `.trend`'s 0…1 axis and
+            // reads as thermal headroom rather than as an auto-scaled shape — a flat 45 °C line
+            // stretched to fill the chart would look like a machine in trouble.
+            // The trace takes the heat colour of the CURRENT reading: this chart IS the
+            // temperature, so colour here is the state channel (§5.4), not decoration.
+            Sparkline(dieHistory.map { min(1, $0 / Theme.hotCelsius) },
+                      color: Theme.heat(min(1, (dieHistory.last ?? 0) / Theme.hotCelsius)),
+                      role: .trend)
         }
     }
 }
@@ -1144,7 +1170,7 @@ private struct SensorGroupRow: View {
                         Spacer(minLength: 4)
                         Text(formatTemperature(sensor.celsius, fahrenheit: fahrenheit))
                             .font(Theme.font(.detail, .strong))
-                            .foregroundStyle(Theme.heat(min(1, sensor.celsius / 100)))
+                            .foregroundStyle(Theme.heat(min(1, sensor.celsius / Theme.hotCelsius)))
                     }
                 }
             }
@@ -1157,7 +1183,7 @@ private struct SensorGroupRow: View {
                 Spacer()
                 Text("avg \(formatTemperature(group.average, fahrenheit: fahrenheit)) · max \(formatTemperature(group.maximum, fahrenheit: fahrenheit))")
                     .font(Theme.font(.detail))
-                    .foregroundStyle(Theme.heat(min(1, group.maximum / 100)))
+                    .foregroundStyle(Theme.heat(min(1, group.maximum / Theme.hotCelsius)))
             }
         }
         .tint(Theme.dim)

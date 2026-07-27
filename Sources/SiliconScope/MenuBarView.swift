@@ -148,27 +148,27 @@ struct MenuBarView: View {
             .font(Theme.font(.sectionMinor))
             .foregroundStyle(Theme.faint)
         graphRow("CPU", c[0], monitor.history.pCPU, String(format: "%.0f%%", s.cpu.pUsagePercent),
-                 yDomain: 0...1)
+                 axis: .fraction)
         graphRow("GPU", c[1], monitor.history.gpu, String(format: "%.0f%%", s.gpu.usagePercent),
-                 yDomain: 0...1)
+                 axis: .fraction)
         graphRow("ANE", c[2], monitor.history.ane, String(format: "%.1f W", s.power.aneWatts),
-                 yDomain: 0...max(monitor.anePeakWatts, 0.1))
+                 axis: .ceiling(max(monitor.anePeakWatts, 0.1)))
         graphRow("MED", c[3], monitor.history.media, String(format: "%.1f GB/s", s.bandwidth.mediaGBs),
-                 yDomain: 0...max(monitor.mediaPeakGBs, 0.5))
+                 axis: .ceiling(max(monitor.mediaPeakGBs, 0.5)))
         graphRow("MEM", c[4], monitor.history.memFraction, String(format: "%.0f%%", s.memory.usedPercent),
-                 yDomain: 0...1)
+                 axis: .fraction)
         graphRow("MBW", c[5], monitor.history.bandwidth, String(format: "%.0f GB/s", s.bandwidth.totalGBs),
-                 yDomain: 0...max(monitor.bandwidthPeakGBs, 1))
+                 axis: .ceiling(max(monitor.bandwidthPeakGBs, 1)))
     }
 
     private func graphRow(_ label: String, _ color: Color, _ values: [Double], _ value: String,
-                          yDomain: ClosedRange<Double>? = nil) -> some View {
+                          axis: ChartAxis = .auto) -> some View {
         HStack(spacing: Space.row) {
             Text(label)
                 .font(Theme.font(.caption, .strong))
                 .foregroundStyle(color)
                 .frame(width: Layout.Column.trendLabel, alignment: .leading)
-            Sparkline(values: values, color: color, height: 15, yDomain: yDomain)
+            Sparkline(values, color: color, role: .inline(height: Layout.Meter.sparklineListRow, axis: axis))
             Text(value)
                 .font(Theme.font(.detail, .strong))
                 .foregroundStyle(Theme.dim)

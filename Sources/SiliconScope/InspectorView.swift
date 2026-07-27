@@ -110,7 +110,7 @@ struct InspectorView: View {
                 KV(key: "CPU", value: pct(d.cpuPercent))
                 KV(key: "P-core / E-core", value: "\(pct(d.cpuPPercent)) / \(pct(eCore(d)))")
                 KV(key: "Threads", value: "\(d.threads)")
-                Sparkline(values: h.cpu, color: Theme.accent, height: 26)
+                Sparkline(h.cpu, color: Theme.accent, role: .inline(height: Layout.Meter.sparkline))
             }
         }
         Card(title: "Compute") {
@@ -119,7 +119,7 @@ struct InspectorView: View {
                    valueColor: Theme.accent)
                 KV(key: "Instructions/s", value: si(d.instructionsPerSec))
                 KV(key: "Cycles/s", value: si(d.cyclesPerSec))
-                Sparkline(values: h.ipc, color: Color(red: 0.74, green: 0.53, blue: 0.99), height: 26)
+                Sparkline(h.ipc, color: Color(red: 0.74, green: 0.53, blue: 0.99), role: .inline(height: Layout.Meter.sparkline))
             }
         }
         Card(title: "Energy") {
@@ -127,14 +127,14 @@ struct InspectorView: View {
                 KV(key: "Power", value: d.powerWatts.map { String(format: "%.2f W", $0) } ?? "—",
                    valueColor: Theme.accent)
                 KV(key: "Wakeups/s", value: d.wakeupsPerSec.map { String(format: "%.0f", $0) } ?? "—")
-                Sparkline(values: h.power, color: Color(red: 0.98, green: 0.62, blue: 0.30), height: 26)
+                Sparkline(h.power, color: Color(red: 0.98, green: 0.62, blue: 0.30), role: .inline(height: Layout.Meter.sparkline))
             }
         }
         Card(title: "Memory") {
             VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "Footprint", value: bytes(d.memoryBytes))
                 KV(key: "Resident", value: bytes(d.residentBytes))
-                Sparkline(values: h.memory, color: Color(red: 0.93, green: 0.46, blue: 0.66), height: 26)
+                Sparkline(h.memory, color: Color(red: 0.93, green: 0.46, blue: 0.66), role: .inline(height: Layout.Meter.sparkline))
             }
         }
         Card(title: "Neural Engine (ANE)") {
@@ -145,7 +145,7 @@ struct InspectorView: View {
                 Text(d.usesANE ? "This process is using the Neural Engine."
                                : "Not using the Neural Engine.")
                     .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
-                if d.aneMemoryBytes > 0 { Sparkline(values: h.aneMemory, color: Theme.accent, height: 26) }
+                if d.aneMemoryBytes > 0 { Sparkline(h.aneMemory, color: Theme.accent, role: .inline(height: Layout.Meter.sparkline)) }
             }
         }
         Card(title: "Disk") {

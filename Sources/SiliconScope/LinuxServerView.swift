@@ -119,11 +119,10 @@ struct LinuxServerView: View {
         card(title) {
             caption.fixedSize(horizontal: false, vertical: true)
             if history.count >= 2 {
-                ZStack {
-                    Sparkline(values: a, color: ca, yDomain: 0...1, fill: true, grid: true)
-                    Sparkline(values: b, color: cb, yDomain: 0...1, fill: true)
-                }
-                .frame(height: Layout.Meter.fleetChart)
+                // `.trend` fills its container, so a fixed frame gives the card a fixed-height
+                // chart while keeping the trend role's shared axis and gridlines.
+                Sparkline([Trace(a, ca), Trace(b, cb)], role: .trend)
+                    .frame(height: Layout.Meter.fleetChart)
             } else {
                 Color.clear.frame(height: Layout.Meter.fleetChart)
             }

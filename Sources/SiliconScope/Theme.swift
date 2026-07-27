@@ -26,6 +26,22 @@ enum Theme {
     static let faint  = Color(red: 0.34, green: 0.37, blue: 0.42)
     static let accent = Color(red: 0.36, green: 0.62, blue: 0.98)
 
+    /// Reference temperature in °C at which the heat ramp reads fully hot. Apple publishes no
+    /// thermal limit for these dies, so this is the app's own reference — named here so every
+    /// temperature colour and the Sensors trend axis agree instead of each carrying a literal.
+    static let hotCelsius: Double = 100
+
+    /// Load → green/amber/red. SiliconScope carries colour in exactly THREE channels, and this
+    /// ramp is legitimate in each — but only when chosen, never as a fallback for an omitted
+    /// argument (docs/design-system.md §5.4):
+    ///
+    /// - **fill** — a meter's filled length (`Bar(encoding: .state)`, the memory-pressure strip).
+    ///   Only where the metric has no identity colour, or where the state *is* the identity.
+    /// - **border** — a card's edge (`Card(alert:)`). Reserved for a condition that must be
+    ///   findable at a glance across the whole dashboard, which is why it is not used for values.
+    /// - **text** — a value's foreground (process CPU %, sensor temperature, low battery). Often
+    ///   the only channel available: a 5 pt capsule cannot carry a legible border, and the 18 pt
+    ///   menu-bar glyph's badge slot is already spent on charge state.
     static func heat(_ fraction: Double) -> Color {
         switch fraction {
         case ..<0.55: return Color(red: 0.34, green: 0.74, blue: 0.49)
@@ -409,6 +425,14 @@ enum Layout {
         static var sparkline: CGFloat { UIScale.scaled(26) }
         /// `LabeledSparkline`'s trace — shorter than `sparkline` because it sits under a label.
         static var labeledSparkline: CGFloat { UIScale.scaled(18) }
+        /// Paired row traces (Network ↓/↑, Disk read/write): two stacked in one row's height, so
+        /// each is shorter than a lone `sparkline`.
+        static var sparklinePair: CGFloat { UIScale.scaled(22) }
+        /// A dropdown's chart. Taller than a dashboard row's because a popover column has the
+        /// space and the chart is the panel's main content. Normalises the retired 30/32 split.
+        static var sparklineDropdown: CGFloat { UIScale.scaled(32) }
+        /// Trace inside a compact list row in the combined popover.
+        static var sparklineListRow: CGFloat { UIScale.scaled(15) }
         /// Fleet dual-series chart.
         static var fleetChart: CGFloat { UIScale.scaled(84) }
     }
@@ -513,6 +537,21 @@ func formatBytes(_ bytes: UInt64) -> String {
     return "\(bytes) B"
 }
 
+/// "2.39 / 4.00 TB" — a part and its whole, sharing ONE unit, scaled by the WHOLE so the two
+/// numbers are directly comparable. The same shape as the Memory card's "37.8 / 64 GB".
+///
+/// Formatting each side separately ("2.39 TB / 4.00 TB") repeats the unit and is what pushed the
+/// Disk row past its column and into a truncation (§5.2's type change made the row wider).
+func formatBytesOfTotal(_ part: UInt64, _ total: UInt64) -> String {
+    let t = Double(total)
+    let (scale, unit, decimals): (Double, String, Int) =
+        t >= 1_000_000_000_000 ? (1_000_000_000_000, "TB", 2)
+        : t >= 1_000_000_000   ? (1_000_000_000, "GB", 0)
+        : t >= 1_000_000       ? (1_000_000, "MB", 0)
+        : (1, "B", 0)
+    return String(format: "%.\(decimals)f / %.\(decimals)f %@", Double(part) / scale, t / scale, unit)
+}
+
 struct Card<Content: View, Graph: View>: View {
     let title: String
     var menuBarPin: Binding<Bool>? = nil   // when set, a switch in the title promotes the card to the menu bar
@@ -537,10 +576,15 @@ struct Card<Content: View, Graph: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.hair) {
             HStack(spacing: Space.row) {
+                // Accent, held back. Every card title was `Theme.faint` — the same grey as a
+                // footnote — so nothing separated a card's name from its smallest print (§5.1).
+                // The dropdowns already resolve this with `MenuSectionHeader`'s full accent; a
+                // dashboard shows eight titles at once, so it takes the same hue at lower
+                // intensity rather than eight saturated headers.
                 Text(title.uppercased())
                     .font(Theme.font(.sectionMajor))
                     .tracking(Theme.tracking(.sectionMajor))
-                    .foregroundStyle(Theme.faint)
+                    .foregroundStyle(Theme.accent.opacity(0.70))
                 Spacer(minLength: 0)
                 if let pin = menuBarPin { MenuBarPin(isOn: pin) }
             }
@@ -575,27 +619,60 @@ extension Card where Graph == EmptyView {
 
 /// A thin labelled progress bar (0...1).
 struct Bar: View {
+    /// What the bar's COLOUR means.
+    ///
+    /// ⚠️ A `Bar` must not change encoding based on whether an argument was passed. The retired
+    /// `color ?? Theme.heat(value)` fall-through meant 2 of 9 call sites silently read as a state
+    /// ramp while the other 7 read as identity — the same visual grammar carrying two meanings,
+    /// decided by an omission (docs/design-system.md §5.4).
+    enum Encoding {
+        /// The colour names WHAT this is (E-cores amber, GPU green, ANE purple). The reading is
+        /// the bar's length; the colour is a label and never moves.
+        case identity(Color)
+        /// The colour IS the reading, on `Theme.heat`'s green→amber→red ramp. Correct only where
+        /// the metric has no identity colour of its own — disk fullness is the one such bar.
+        ///
+        /// State is derived from the bar's own `value`: every call site in the app fills and
+        /// colours from the same number. A bar whose length and state diverge (a usage bar tinted
+        /// by pressure) would need `.state(of:)`; none exists, so it is not modelled.
+        case state
+    }
+
     let label: String
     let value: Double
     let detail: String
-    /// Optional fixed fill color; defaults to the load-based heat ramp when nil.
-    var color: Color? = nil
+    let encoding: Encoding
+
+    private var fillColor: Color {
+        switch encoding {
+        case .identity(let color): return color
+        case .state:               return Theme.heat(value)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.hair) {
+            // Label recedes, reading leads — the same row grammar `KV` and `LegendRow` already
+            // use. `Bar` was the outlier: its label was BIGGER (11 vs 10.5) and brighter than the
+            // number beside it, so every card asked you to read the caption first (§5.2).
+            //
+            // The two sizes are SWAPPED rather than both raised to `.body`: the row's total width
+            // demand is unchanged, which matters because the Disk column's detail ("free 1.61 TB /
+            // 4.00 TB") wraps to two lines the moment the row asks for more room.
             HStack(spacing: Space.row) {
                 Text(label)
-                    .font(Theme.font(.body))
-                    .foregroundStyle(Theme.text)
-                Spacer()
-                Text(detail)
                     .font(Theme.font(.detail))
                     .foregroundStyle(Theme.dim)
+                Spacer()
+                Text(detail)
+                    .font(Theme.font(.body))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.06))
-                    Capsule().fill(color ?? Theme.heat(value))
+                    Capsule().fill(fillColor)
                         .frame(width: max(2, geo.size.width * min(1, max(0, value))))
                 }
             }
@@ -652,37 +729,98 @@ struct KV: View {
     }
 }
 
-struct Sparkline: View {
+/// One series in a chart: the numbers and the colour that identifies them.
+///
+/// Several traces in ONE `Sparkline` are overlaid on a shared axis — which is what makes them
+/// comparable. Stacking two `Sparkline`s in a `ZStack` (the retired idiom) gave each its own axis
+/// and drew the gridlines twice.
+struct Trace {
     let values: [Double]
-    var color: Color = Theme.accent
-    var height: CGFloat = 26
-    /// Fixed Y range. When nil, the trace auto-scales to the data's own min...max (good for series
-    /// that vary). Set it (e.g. 0...1) for near-constant series like memory usage, where
-    /// auto-scaling would amplify a flat line to fill the whole height.
-    var yDomain: ClosedRange<Double>? = nil
-    /// Expand to fill the available space instead of a fixed height — so a card with few Bars
-    /// (e.g. CPU) uses its full lower area rather than leaving a gap above a short chart (#24).
-    var fill: Bool = false
-    /// Dotted horizontal gridlines behind the trace, for easier reading of the level (#24).
-    var grid: Bool = false
+    let color: Color
+
+    init(_ values: [Double], _ color: Color) {
+        self.values = values
+        self.color = color
+    }
+}
+
+/// The axis a chart is read on. This is a property of the DATA, not a per-call-site preference.
+enum ChartAxis {
+    /// 0…1. Utilisation series must not auto-scale: a flat 3 % line stretched to fill the chart
+    /// reads as saturation, which is the opposite of what happened.
+    case fraction
+    /// 0…ceiling, for a series with a known maximum (memory against installed RAM).
+    case ceiling(Double)
+    /// The data's own min…max. Correct for rates — bytes/s has no ceiling to scale against, so
+    /// there is nothing to normalise to and the shape is the whole message.
+    case auto
+
+    /// Bounds over EVERY trace, so overlaid series stay comparable.
+    func bounds(_ traces: [Trace]) -> (lo: Double, hi: Double) {
+        switch self {
+        case .fraction:          return (0, 1)
+        case .ceiling(let top):  return (0, max(top, .ulpOfOne))
+        case .auto:
+            let all = traces.flatMap(\.values)
+            return (all.min() ?? 0, all.max() ?? 1)
+        }
+    }
+}
+
+/// Where a chart sits, which decides its size and decoration. Call sites choose a ROLE; they never
+/// set fill / grid / height by hand, which is how the same primitive ended up with four ad-hoc
+/// configurations (docs/design-system.md §5.3).
+enum ChartRole {
+    /// A card's background trend: fills the card's spare space below the rows (#24) and carries
+    /// gridlines. Always read on a 0…1 axis — every trend series in the app is a utilisation
+    /// fraction, so there is no axis choice to make here.
+    case trend
+    /// An inline trace in a row or dropdown: a fixed height from a `Layout.Meter` token, no
+    /// gridlines (there is not enough height for them to be legible).
+    case inline(height: CGFloat, axis: ChartAxis = .auto)
+}
+
+/// Line + area trend chart. The line-and-area form is SiliconScope's identity (btop's, not iStat's
+/// histogram) and is deliberately not configurable.
+struct Sparkline: View {
+    let traces: [Trace]
+    let role: ChartRole
+
+    init(_ traces: [Trace], role: ChartRole) {
+        self.traces = traces
+        self.role = role
+    }
+
+    /// Single-series convenience — the common case.
+    init(_ values: [Double], color: Color = Theme.accent, role: ChartRole) {
+        self.init([Trace(values, color)], role: role)
+    }
+
+    private var axis: ChartAxis {
+        switch role {
+        case .trend:                   return .fraction
+        case .inline(_, let axis):     return axis
+        }
+    }
+
+    private var showsGrid: Bool {
+        if case .trend = role { return true }
+        return false
+    }
 
     // Drawn with a Canvas instead of Swift Charts: ~13 live sparklines rebuilt every tick made
     // Charts' mark/scale/plot view-graph the dominant energy cost (docs/energy-optimization.md
     // FIX 1). A Canvas is a single draw closure — same look, far cheaper per redraw.
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { ctx, size in
-            guard values.count > 1, size.width > 0, size.height > 0 else { return }
-            let lo = yDomain?.lowerBound ?? (values.min() ?? 0)
-            let hi = yDomain?.upperBound ?? (values.max() ?? 1)
+            guard size.width > 0, size.height > 0 else { return }
+            let (lo, hi) = axis.bounds(traces)
             let span = hi - lo
             let flat = span <= .ulpOfOne          // degenerate/flat series → center (not floor)
-            let stepX = size.width / CGFloat(values.count - 1)
-            func point(_ i: Int) -> CGPoint {
-                let norm = flat ? 0.5 : (values[i] - lo) / span
-                return CGPoint(x: CGFloat(i) * stepX, y: (1 - CGFloat(norm)) * size.height)
-            }
-            // Dotted horizontal gridlines behind the trace (#24): 3 evenly-spaced interior lines.
-            if grid {
+
+            // Dotted horizontal gridlines behind every trace (#24): 3 evenly-spaced interior lines,
+            // drawn ONCE for the chart rather than once per series.
+            if showsGrid {
                 var g = Path()
                 for k in 1...3 {
                     let y = size.height * CGFloat(k) / 4
@@ -691,36 +829,46 @@ struct Sparkline: View {
                 ctx.stroke(g, with: .color(Theme.dim.opacity(0.40)),
                            style: StrokeStyle(lineWidth: 0.6, dash: [2, 3]))
             }
-            // Line trace.
-            var line = Path()
-            line.move(to: point(0))
-            for i in 1..<values.count { line.addLine(to: point(i)) }
-            // Area = the line closed down to the baseline, filled with a top→bottom gradient.
-            var area = line
-            area.addLine(to: CGPoint(x: size.width, y: size.height))
-            area.addLine(to: CGPoint(x: 0, y: size.height))
-            area.closeSubpath()
-            ctx.fill(area, with: .linearGradient(
-                Gradient(colors: [color.opacity(0.28), .clear]),
-                startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
-            ctx.stroke(line, with: .color(color),
-                       style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+
+            for trace in traces where trace.values.count > 1 {
+                let stepX = size.width / CGFloat(trace.values.count - 1)
+                func point(_ i: Int) -> CGPoint {
+                    let norm = flat ? 0.5 : (trace.values[i] - lo) / span
+                    return CGPoint(x: CGFloat(i) * stepX, y: (1 - CGFloat(norm)) * size.height)
+                }
+                var line = Path()
+                line.move(to: point(0))
+                for i in 1..<trace.values.count { line.addLine(to: point(i)) }
+                // Area = the line closed down to the baseline, filled with a top→bottom gradient.
+                var area = line
+                area.addLine(to: CGPoint(x: size.width, y: size.height))
+                area.addLine(to: CGPoint(x: 0, y: size.height))
+                area.closeSubpath()
+                ctx.fill(area, with: .linearGradient(
+                    Gradient(colors: [trace.color.opacity(0.28), .clear]),
+                    startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
+                ctx.stroke(line, with: .color(trace.color),
+                           style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+            }
         }
-        .modifier(SparkSize(fill: fill, height: height))
+        .modifier(SparkSize(role: role))
         // Decorative trace: hide from accessibility (the numeric value is shown as text on the
         // card). Skips the per-tick SwiftUI accessibility-node recompute on every live sparkline.
         .accessibilityHidden(true)
     }
 }
 
-/// Sizes a Sparkline: fill the available space (bottom-anchored charts that grow into the card's
-/// spare area) or a fixed height (inline sparklines in a column).
+/// Sizes a Sparkline from its role: `.trend` fills the card's spare area, `.inline` takes a fixed
+/// height.
 private struct SparkSize: ViewModifier {
-    let fill: Bool
-    let height: CGFloat
+    let role: ChartRole
     func body(content: Content) -> some View {
-        if fill { content.frame(maxWidth: .infinity, maxHeight: .infinity) }
-        else    { content.frame(height: height) }
+        switch role {
+        case .trend:
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .inline(let height, _):
+            content.frame(height: height)
+        }
     }
 }
 
