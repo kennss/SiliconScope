@@ -177,7 +177,8 @@ struct DashboardView: View {
                         AIWorkloadCard(snapshot: snapshot, bottleneck: s.bottleneck, ceilingGBs: s.bandwidthCeilingGBs,
                                        cpuThrottling: s.cpuThrottling, cpuClockDrop: s.cpuClockDropFraction,
                                        gpuThrottling: s.gpuThrottling, gpuClockDrop: s.gpuClockDropFraction,
-                                       memoryRisk: s.memoryRisk, onInspect: nil, allowKill: false)
+                                       memoryRisk: s.memoryRisk, activity: s.activity,
+                                       onInspect: nil, allowKill: false)
                         AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth,
                                         anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
                                         gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
@@ -210,6 +211,7 @@ struct DashboardView: View {
                                    gpuThrottling: s.gpuThrottling,
                                    gpuClockDrop: s.gpuClockDropFraction,
                                    memoryRisk: s.memoryRisk,
+                                   activity: s.activity,
                                    onInspect: onInspect,
                                    allowKill: onBenchmark != nil)
                     AIRuntimeCard(runtime: snapshot.aiRuntime,
@@ -414,6 +416,9 @@ private struct AIWorkloadCard: View {
     let gpuThrottling: Bool
     let gpuClockDrop: Double
     let memoryRisk: MemoryBudget.Risk
+    /// Latched activity — the WORDS come from here, the numbers from `snapshot`. A raw threshold on
+    /// a live sample made the GPU row alternate active/idle every tick around its busy line.
+    let activity: EngineActivity
     var onInspect: ((ProcessRow) -> Void)? = nil   // tap the top process → focus it in the Inspector
     var allowKill = false                           // false in replay — recorded PIDs are stale
     @State private var pendingKill: ProcessRow?
@@ -438,7 +443,7 @@ private struct AIWorkloadCard: View {
     private var aiVerdict: (Color, String) {
         if snapshot.power.aneWatts > 1.5 { return (aneColor, "ANE (CoreML)") }
         if snapshot.aiModelActive        { return (gpuActiveColor, "LLM (GPU/Metal)") }
-        if snapshot.gpuComputeBusy {
+        if activity.gpu {
             return (gpuActiveColor, snapshot.bandwidth.mediaGBs > 0.5 ? "GPU active — incl. video" : "GPU active")
         }
         return (Theme.dim, "Idle")
@@ -448,34 +453,36 @@ private struct AIWorkloadCard: View {
     // element — describe the driver, and let the user act on it if they choose (never judge/suggest).
     private var cpuState: (Color, String) {
         if cpuThrottling { return (alertColor, "Throttled") }
-        if snapshot.cpu.pUsage > 0.5 || snapshot.cpu.eUsage > 0.7 { return (cpuActiveColor, "Active") }
-        return (Theme.dim, "Idle")
+        // Thresholds and their hysteresis live in `EngineActivity.Threshold`. They were 0.5 / 0.7
+        // here — high enough that E-cores at 64 % with a process burning 199 % read as "Idle",
+        // directly under the top process that said otherwise.
+        return activity.cpu ? (cpuActiveColor, "Active") : (Theme.dim, "Idle")
     }
 
     // The accelerator cluster is shown as three EXPLICIT engine rows (GPU / ANE / Media) so each is
     // honestly labelled — no "ANE active" sitting under a "GPU" label. Each dot is coloured when its
     // engine does genuine work, dim when idle. This is the AI-workload lens: at a glance you see WHICH
     // engine a workload lands on (e.g. CoreML ASR → ANE active while the GPU stays idle).
+    // ⚠️ The reading is shown in EVERY state, idle included. These rows used to print a verdict and
+    // hide its evidence, so "GPU idle" beside a GPU card reading 12 % looked like a contradiction —
+    // when the honest answer is that 12 % at 0.1 W and 389 MHz (the minimum clock) IS idle silicon,
+    // and the numbers say so on sight. Instrument, not nanny: never assert a state without the
+    // measurement that produced it.
     private var gpuEngine: (Color, String, String) {
+        let reading = String(format: "%.0f%% · %.1f W", snapshot.gpu.usagePercent, snapshot.power.gpuWatts)
         if gpuThrottling {
             return (alertColor, "throttled",
                     String(format: "%.0f MHz · −%.0f%%", snapshot.gpu.freqMHz, gpuClockDrop * 100))
         }
-        if snapshot.gpuComputeBusy {
-            return (gpuActiveColor, "active",
-                    String(format: "%.0f%% · %.1f W", snapshot.gpu.usagePercent, snapshot.power.gpuWatts))
-        }
-        return (Theme.dim, "idle", "")
+        return activity.gpu ? (gpuActiveColor, "active", reading) : (Theme.dim, "idle", reading)
     }
     private var aneEngine: (Color, String, String) {
-        snapshot.power.aneWatts > 0.5
-            ? (aneColor, "active", String(format: "%.1f W", snapshot.power.aneWatts))
-            : (Theme.dim, "idle", "")
+        let reading = String(format: "%.1f W", snapshot.power.aneWatts)
+        return activity.ane ? (aneColor, "active", reading) : (Theme.dim, "idle", reading)
     }
     private var mediaEngine: (Color, String, String) {
-        snapshot.bandwidth.mediaGBs > 0.1
-            ? (mediaColor, "active", String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs))
-            : (Theme.dim, "idle", "")
+        let reading = String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs)
+        return activity.media ? (mediaColor, "active", reading) : (Theme.dim, "idle", reading)
     }
 
     private var bwFraction: Double { ceilingGBs > 0 ? min(1, snapshot.bandwidth.totalGBs / ceilingGBs) : 0 }
@@ -729,6 +736,10 @@ private struct AIRuntimeCard: View {
                 }
                 Spacer(minLength: 0)
             }
+        } else if runtime.isActive, runtime.primaryKind?.servesAPI == false {
+            // An on-device app (Core ML in-process, no port). There is no server to start and no
+            // tok/s to poll, so say what it IS rather than offering an action that cannot exist.
+            runtimeNote("on-device app — runs Core ML in-process, no local server")
         } else if runtime.isActive {
             // Only annotate API status when a runtime was actually detected — with none,
             // the header already says "No local AI runtime detected" (avoid redundancy).

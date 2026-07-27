@@ -546,6 +546,24 @@ up two different pictures.
    screen with colour carrying no information; neutral makes amber and red the only colours that
    ever ask for attention. `Palette.State.good` survives for the one place "good" is worth saying
    out loud — charging.
+4. **Volume is a function of area.** A 1 pt line can be vivid; a 300 × 5 pt block of the same
+   colour cannot, and a chart's area fill is larger still. `Ink.fill` derives the quiet form
+   (saturation × 0.62, brightness × 0.86) — derived, not hand-picked, so a new colour cannot
+   forget to have one. Applied inside the atoms (`Bar`, `StackedBar`, `Sparkline`'s area), so no
+   call site chooses: **large surfaces quiet, thin marks full**.
+
+### 6.1a Hue was right; volume was not
+
+The first palette fixed *which* colours exist and *what they mean*, and still read as a toy. The
+census explains why: **77 % average saturation at 64 % lightness, seven of nine above 66 %** — a
+set where every colour shouts equally, so none is emphasis. btop can be saturated because a
+terminal draws thin glyphs; these bars are solid blocks. Retuned to **54 % average with a wider
+spread**, hues unchanged except one:
+
+**Memory moved 334° → 320°, pink → mauve.** The bubblegum tone came from the combined glyph, where
+memory is a 6 px sliver; blown up to a dashboard bar and a four-row legend it was the most childish
+thing on screen. 320° also keeps a **40° margin from `State.critical`** — the obvious "deeper rose"
+at 348° would have sat 12° from alert red and broken rule 3.
 
 `Ink` holds each colour once and exposes both `Color` and `NSColor`, so a glyph and a card cannot
 disagree again. After the pass, **6 colour literals remain in the app** — the structural ones.

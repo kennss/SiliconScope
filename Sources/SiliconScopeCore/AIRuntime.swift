@@ -16,6 +16,15 @@ import Foundation
 
 public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
     case ollama, llamaCpp, lmStudio, mlx, rapidMLX, jan, gpt4all, vllm, exo, omlx
+    /// On-device AI **apps** rather than model servers: they run Core ML / WhisperKit inference on
+    /// the ANE and never open a port. Detected because the question this card answers is "what is
+    /// driving the silicon", and an ASR app driving the Neural Engine is exactly that — indeed the
+    /// workload SiliconScope was built to watch in the first place.
+    case spectalo, spectaling
+    /// An AI process a NEWER build recognised and this one does not. Decode-only: `match` never
+    /// returns it. Without it, one unknown raw value fails the whole `SystemSnapshot` and takes a
+    /// recording down with it — the same trap `GlyphMode` hit.
+    case other
 
     public var displayName: String {
         switch self {
@@ -29,7 +38,31 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         case .vllm:     return "vLLM"
         case .exo:      return "exo"
         case .omlx:     return "oMLX"
+        case .spectalo:   return "Spectalo"
+        case .spectaling: return "SpectaLing"
+        case .other:      return "AI runtime"
         }
+    }
+
+    /// Whether this runtime can expose a local HTTP API at all.
+    ///
+    /// The on-device apps cannot: they run Core ML in-process and never open a port, so telling
+    /// their user to "start its local server" is advice for a thing that does not exist. A monitor
+    /// that instructs is already past describing (instrument, not nanny) — instructing something
+    /// impossible is worse.
+    public var servesAPI: Bool {
+        switch self {
+        case .spectalo, .spectaling, .other: return false
+        default:                             return true
+        }
+    }
+
+    /// Tolerant decoding — an unrecognised runtime becomes `.other` instead of failing its
+    /// container. Recordings carry this enum inside every frame's snapshot, so a value written by a
+    /// newer build must not make the whole file unreadable.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = AIRuntimeKind(rawValue: raw) ?? .other
     }
 
     /// Classifies a process. Bundle/path identity wins over basename (basenames collide —
@@ -45,6 +78,11 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if p.contains("/Jan.app/") || p.contains("/jan/") { return .jan }
         if p.contains("/GPT4All.app/") || p.contains("/gpt4all/") { return .gpt4all }
         if p.contains("/oMLX.app/") || p.contains("/omlx.app/") { return .omlx }
+        // Calida Lab's own on-device AI apps. Bundle identity only — their executables are plain
+        // names ("Spectalo", "SpectaLing") that a basename rule could collide with, and both ship
+        // debug builds from DerivedData whose paths still carry the bundle.
+        if p.contains("/Spectalo.app/") { return .spectalo }
+        if p.contains("/SpectaLing.app/") { return .spectaling }
 
         // Stage 2 — basename / args (only reached when Stage 1 found nothing).
         let base = (p as NSString).lastPathComponent

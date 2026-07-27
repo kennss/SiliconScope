@@ -28,6 +28,7 @@ final class SiliconScopeMonitor {
     private var lastIngest: DispatchTime?
 
     var history: MetricsEngine.History { engine.history }
+    var activity: EngineActivity { engine.activity }
     var bandwidthPeakGBs: Double { engine.bandwidthPeakGBs }
     var mediaPeakGBs: Double { engine.mediaPeakGBs }
     var anePeakWatts: Double { engine.anePeakWatts }

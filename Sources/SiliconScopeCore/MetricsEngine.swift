@@ -73,6 +73,9 @@ public final class MetricsEngine {
     // Latest ingested snapshot — the basis for the snapshot-dependent computed verdicts.
     public private(set) var latest = SystemSnapshot()
     public private(set) var history = History()
+    /// Latched per-engine activity — see `EngineActivity`. Derived over TIME, so it lives with the
+    /// engine rather than on the (stateless) snapshot.
+    public private(set) var activity = EngineActivity()
 
     // Chip-agnostic bar scaling: track observed peaks instead of hardcoding per-chip maxima.
     public private(set) var bandwidthPeakGBs: Double = 80
@@ -105,6 +108,7 @@ public final class MetricsEngine {
         gpuClockPeakMHz = max(s.gpu.freqMHz, gpuClockPeakMHz * Self.gpuClockPeakDecay)
         updateMemoryRates(s.memory, dt: dt)
         history.push(s)
+        activity.update(s)
     }
 
     /// Clears rate state so the next frame emits no spurious delta (e.g. after a (re)start).

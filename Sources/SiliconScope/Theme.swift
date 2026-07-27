@@ -86,8 +86,57 @@ extension Theme {
 struct Ink {
     let r, g, b: Double
     init(_ r: Double, _ g: Double, _ b: Double) { (self.r, self.g, self.b) = (r, g, b) }
+
+    /// Recovers the components of a `Color` so a primitive can quieten whatever it was handed.
+    /// Needed because the atoms (`Bar`, `StackedBar`, `Sparkline`) receive colours, not tokens —
+    /// the area rule has to apply wherever the colour came from, not only to palette members.
+    init(_ color: Color) {
+        let ns = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+        (r, g, b) = (Double(ns.redComponent), Double(ns.greenComponent), Double(ns.blueComponent))
+    }
     var color: Color { Color(red: r, green: g, blue: b) }
     var ns: NSColor { NSColor(srgbRed: r, green: g, blue: b, alpha: 1) }
+
+    /// The same colour, quieter — for LARGE areas.
+    ///
+    /// ⚠️ **Volume is a function of area.** A 1 pt line can be vivid; a 300 × 5 pt block of the
+    /// same colour cannot, and a chart's area fill is larger still. btop gets away with saturated
+    /// colour because a terminal draws thin glyphs; our bars are solid. Applying one intensity to
+    /// both is what made the dashboard read as a toy — nine hues all shouting at the same volume,
+    /// so nothing was emphasis.
+    ///
+    /// Derived, not hand-picked: one rule, so a new colour cannot forget to have a quiet form.
+    var fill: Ink {
+        let (h, sat, bri) = Ink.hsb(r, g, b)
+        return Ink.fromHSB(h, sat * 0.62, bri * 0.86)
+    }
+
+    // Pure arithmetic — no colour-space objects. `fill` is read on the 1 Hz path.
+    private static func hsb(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double, Double) {
+        let hi = max(r, g, b), lo = min(r, g, b), d = hi - lo
+        var h = 0.0
+        if d > 0 {
+            if hi == r      { h = (g - b) / d + (g < b ? 6 : 0) }
+            else if hi == g { h = (b - r) / d + 2 }
+            else            { h = (r - g) / d + 4 }
+            h /= 6
+        }
+        return (h, hi > 0 ? d / hi : 0, hi)
+    }
+
+    private static func fromHSB(_ h: Double, _ s: Double, _ v: Double) -> Ink {
+        if s <= 0 { return Ink(v, v, v) }
+        let i = Int(h * 6), f = h * 6 - Double(i)
+        let p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f))
+        switch i % 6 {
+        case 0:  return Ink(v, t, p)
+        case 1:  return Ink(q, v, p)
+        case 2:  return Ink(p, v, t)
+        case 3:  return Ink(p, q, v)
+        case 4:  return Ink(t, p, v)
+        default: return Ink(v, p, q)
+        }
+    }
 }
 
 /// The app's colours, by MEANING. Nothing outside this enum may declare one.
@@ -108,25 +157,35 @@ enum Palette {
 
     // MARK: Identity — what a series IS
 
+    // ⚠️ Tuned for VOLUME as well as hue. The first set averaged 77 % saturation at 64 % lightness
+    // — seven of nine above 66 % — which is a palette where every colour shouts equally and none
+    // is emphasis. These average 54 %, with a deliberately wider spread so some are quieter than
+    // others. Hue (meaning) is unchanged except `memory`; only intensity moved.
+
     /// Efficiency cores. Yellower than `media` so the two ambers separate at glyph size.
-    static let eCPU      = Ink(0.95, 0.74, 0.34)
+    static let eCPU      = Ink(0.84, 0.66, 0.32)   // 39°  s62 l57
     /// Performance cores, and the CPU subsystem generally.
-    static let pCPU      = Ink(0.36, 0.62, 0.98)
-    static let gpu       = Ink(0.40, 0.82, 0.55)
+    static let pCPU      = Ink(0.33, 0.55, 0.87)   // 215° s68 l60
+    static let gpu       = Ink(0.35, 0.75, 0.49)   // 141° s44 l55
     /// GPU-resident memory. Sky, between the GPU's green and the CPU's blue.
-    static let vram      = Ink(0.28, 0.74, 0.95)
-    static let ane       = Ink(0.74, 0.53, 0.99)
+    static let vram      = Ink(0.30, 0.65, 0.82)   // 199° s57 l56
+    static let ane       = Ink(0.60, 0.42, 0.82)   // 267° s52 l62 — was s96 l76, a neon
     /// Main memory as a subsystem — its trend, its sensor group, its composition ramp.
-    static let memory    = Ink(0.93, 0.46, 0.66)
+    ///
+    /// ⚠️ Mauve at 320°, not pink at 334°. The bubblegum tone was chosen from the combined glyph,
+    /// where memory is a 6 px sliver; blown up to a dashboard bar and a four-row legend it was the
+    /// most childish thing on screen. 320° also keeps a **40° margin from `State.critical`** — a
+    /// dusty rose any nearer to red would read as an alert.
+    static let memory    = Ink(0.72, 0.40, 0.61)   // 320° s36 l56
     /// Memory bandwidth: a rate THROUGH memory, so it is its own colour rather than a step of
     /// `memory` — the combined glyph shows both at once.
-    static let bandwidth = Ink(0.32, 0.82, 0.86)
+    static let bandwidth = Ink(0.30, 0.73, 0.76)   // 184° s48 l53
 
     /// Inbound flow: download, disk read.
-    static let flowIn    = Ink(0.34, 0.74, 0.62)
+    static let flowIn    = Ink(0.30, 0.70, 0.58)   // 162° s40 l50
     /// Outbound flow and throughput: upload, disk write — and the Media Engine, which is
     /// throughput too. One orange, one meaning, instead of two that differed by 3 %.
-    static let flowOut   = Ink(0.97, 0.60, 0.28)
+    static let flowOut   = Ink(0.86, 0.54, 0.26)   // 28°  s68 l56
 
     // MARK: Composition — one quantity, subdivided
 
@@ -134,9 +193,9 @@ enum Palette {
     /// `memory`, not three unrelated identities, so the bar reads as 64 GB divided rather than as
     /// four things that happen to be adjacent.
     enum Memory {
-        static let wired      = Ink(0.72, 0.28, 0.48)
-        static let active     = Ink(0.93, 0.46, 0.66)
-        static let compressed = Ink(0.97, 0.72, 0.83)
+        static let wired      = Ink(0.54, 0.22, 0.43)   // 320° l38
+        static let active     = Ink(0.72, 0.40, 0.61)   // 320° l56 — the memory hue itself
+        static let compressed = Ink(0.81, 0.69, 0.77)   // 320° l75
         /// Free space is an absence — neutral, never a hue.
         static var free: Color { Color.white.opacity(0.10) }
     }
@@ -597,10 +656,22 @@ extension AIRuntimeKind {
         case .mlx:      return "cpu.fill"
         case .rapidMLX: return "hare.fill"
         case .exo:      return "point.3.connected.trianglepath.dotted"   // distributed cluster
-        case .jan, .gpt4all, .vllm, .omlx: return "brain"
+        // On-device apps, not servers: a waveform reads as "audio in, text out", which is what
+        // both of these do on the Neural Engine.
+        case .spectalo:   return "captions.bubble.fill"
+        case .spectaling: return "waveform"
+        case .jan, .gpt4all, .vllm, .omlx, .other: return "brain"
         }
     }
-    var color: Color { Theme.accent }
+
+    /// Servers take the accent; the on-device apps take the ANE's own colour, because that is the
+    /// engine they light up and the card sits beside the one that shows it.
+    var color: Color {
+        switch self {
+        case .spectalo, .spectaling: return Palette.ane.color
+        default:                     return Theme.accent
+        }
+    }
 }
 
 /// Identity colour per sensor group, so the Sensors card's chart and its rows agree: each row
@@ -769,10 +840,13 @@ struct Bar: View {
     let detail: String
     let encoding: Encoding
 
+    /// Volume by area: the filled capsule is one of the largest colour surfaces on the dashboard,
+    /// so it takes the quiet form of its identity. The row's VALUE beside it keeps the full tone —
+    /// a thin mark can be vivid where a block cannot.
     private var fillColor: Color {
         switch encoding {
-        case .identity(let color): return color
-        case .state:               return Theme.heat(value)
+        case .identity(let color): return Ink(color).fill.color
+        case .state:               return Theme.heat(value)   // already a muted ramp
         }
     }
 
@@ -816,7 +890,10 @@ struct StackedBar: View {
         GeometryReader { geo in
             HStack(spacing: Space.none) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    segment.color.frame(width: max(0, geo.size.width * min(1, segment.fraction)))
+                    // Quiet form — this bar spans the card. Its legend swatches keep the full tone,
+                    // which is what lets an 8 pt square still identify its segment.
+                    Ink(segment.color).fill.color
+                        .frame(width: max(0, geo.size.width * min(1, segment.fraction)))
                 }
             }
         }
@@ -970,8 +1047,9 @@ struct Sparkline: View {
                 area.addLine(to: CGPoint(x: size.width, y: size.height))
                 area.addLine(to: CGPoint(x: 0, y: size.height))
                 area.closeSubpath()
+                // Area quiet, line full: the fill is the large surface, the stroke is the mark.
                 ctx.fill(area, with: .linearGradient(
-                    Gradient(colors: [trace.color.opacity(0.28), .clear]),
+                    Gradient(colors: [Ink(trace.color).fill.color.opacity(0.26), .clear]),
                     startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
                 ctx.stroke(line, with: .color(trace.color),
                            style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))

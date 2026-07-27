@@ -29,6 +29,8 @@ struct DashboardState {
     let cpuClockDropFraction: Double
     let cpuThrottling: Bool
     let memoryRisk: MemoryBudget.Risk
+    /// Latched per-engine activity, so the AI Workload rows do not flip every tick.
+    let activity: EngineActivity
     // Live-only display (nil/false in replay).
     let isBenchmarking: Bool
     let benchmark: BenchmarkRecord?
@@ -49,6 +51,7 @@ struct DashboardState {
         cpuClockDropFraction = m.cpuClockDropFraction
         cpuThrottling = m.cpuThrottling
         memoryRisk = m.memoryRisk
+        activity = m.activity
         isBenchmarking = m.isBenchmarking
         benchmark = m.benchmarkForCurrentModel
         benchmarkError = m.benchmarkError
@@ -75,6 +78,11 @@ struct DashboardState {
         bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: rec.meta.topology, bandwidthPeakGBs: d.bandwidthPeakGBs)
         bottleneck = MetricsEngine.bottleneck(latest: s, history: h, bandwidthPeakGBs: d.bandwidthPeakGBs, throttling: throttling)
         memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: d.memorySwapOutRate, compressionRate: d.memoryCompressionRate)
+        // Replayed frames are a real time series, so the latch is run over them — the same window
+        // the live engine would have seen, which keeps replay honest against live.
+        var latched = EngineActivity()
+        for frame in rec.frames[max(0, i - 8)...i] { latched.update(frame.snapshot) }
+        activity = latched
         isBenchmarking = false
         benchmark = nil
         benchmarkError = nil
@@ -100,6 +108,9 @@ struct DashboardState {
         bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: topo, bandwidthPeakGBs: bandwidthPeakGBs)
         bottleneck = MetricsEngine.bottleneck(latest: s, history: history, bandwidthPeakGBs: bandwidthPeakGBs, throttling: throttling)
         memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: 0, compressionRate: 0)
+        // No time series over the wire yet, so there is nothing to latch over — seed from the
+        // sample instead of pretending to a history this surface does not have.
+        activity = EngineActivity(instant: s)
         isBenchmarking = false
         benchmark = nil
         benchmarkError = nil
