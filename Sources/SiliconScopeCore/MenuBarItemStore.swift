@@ -147,11 +147,24 @@ public final class MenuBarItemStore {
 
     /// Decodes and repairs. A stored item whose mode was retired is repaired to the metric's
     /// defaults, never dropped: a user's menu bar must not lose an entry because of a schema change.
+    ///
+    /// ⚠️ Decoded ELEMENT BY ELEMENT. `decode([MenuBarItemConfig].self)` fails the whole array if a
+    /// single element does not decode — one item written by a newer build, or naming a case this
+    /// build does not know, would empty the entire menu bar. Losing one item is a blemish; losing
+    /// all of them looks like the app uninstalled itself.
     private func decode() -> [MenuBarItemConfig] {
         guard let data = defaults.data(forKey: Self.itemsKey),
-              let stored = try? JSONDecoder().decode([MenuBarItemConfig].self, from: data)
+              let elements = try? JSONDecoder().decode([FailableItem].self, from: data)
         else { return [] }
-        return stored.map { $0.repaired() }
+        return elements.compactMap(\.value).map { $0.repaired() }
+    }
+
+    /// Decodes one item, turning a failure into `nil` instead of failing its container.
+    private struct FailableItem: Decodable {
+        let value: MenuBarItemConfig?
+        init(from decoder: Decoder) throws {
+            value = try? MenuBarItemConfig(from: decoder)
+        }
     }
 
     // MARK: - Migration

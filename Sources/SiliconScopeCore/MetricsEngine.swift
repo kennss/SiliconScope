@@ -27,7 +27,11 @@ public final class MetricsEngine {
         public var ane: [Double] = []          // Watts
         public var media: [Double] = []        // GB/s (Media Engine)
         public var bandwidth: [Double] = []    // GB/s
-        public var dieTemp: [Double] = []      // Celsius
+        public var dieTemp: [Double] = []      // Celsius (CPU sensor average)
+        /// Per-category sensor maxima in °C, keyed by the category the machine actually reports —
+        /// a fanless Air has no GPU group, a Mac mini no battery. `dieTemp` covers only the CPU,
+        /// so a chart of "the sensors" needs this.
+        public var sensorGroups: [SensorCategory: [Double]] = [:]
         public var memory: [Double] = []       // GB used
         public var memFraction: [Double] = []  // 0...1 (used / total) — plotted on a fixed 0...1 axis
         public var netDown: [Double] = []      // bytes/s
@@ -47,6 +51,12 @@ public final class MetricsEngine {
             roll(&media, s.bandwidth.mediaGBs)
             roll(&bandwidth, s.bandwidth.totalGBs)
             roll(&dieTemp, s.temperature.cpuCelsius)
+            // The card lists one row per group; this gives each row a series to be drawn from.
+            for group in s.temperature.groups {
+                var series = sensorGroups[group.category] ?? []
+                roll(&series, group.maximum)
+                sensorGroups[group.category] = series
+            }
             roll(&memory, s.memory.usedGB)
             roll(&memFraction, s.memory.usedFraction)
             roll(&netDown, s.network.downloadBytesPerSec)

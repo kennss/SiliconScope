@@ -37,16 +37,26 @@ struct MenuBarItemsSettings: View {
         } header: {
             Text("Menu bar items")
         } footer: {
-            Text("A metric can appear more than once — for example CPU as bars and again as a history graph. Reorder items by ⌘-dragging them in the menu bar; macOS remembers the position. Turn everything off to run SiliconScope with no menu-bar presence — Settings stays reachable from the Dock icon.")
+            Text("Add gives you a metric you don't have yet. To show one twice — CPU as bars and again as a graph — use Duplicate on its row, then change the copy's style. Reorder items by ⌘-dragging them in the menu bar; macOS remembers the position. Remove them all to run SiliconScope with no menu-bar presence — Settings stays reachable from the Dock icon.")
         }
     }
 
     /// Add is a menu rather than a row per metric: the list is the state, and eight permanent
     /// "add" rows would read as eight items.
+    ///
+    /// A metric already in the menu bar is shown DISABLED rather than hidden, so the list is always
+    /// the same eight rows in the same order and the greyed ones answer "where is CPU?" by
+    /// themselves.
+    ///
+    /// "Add" means add something you do not have. A metric CAN appear more than once — that is the
+    /// point of the instance model — but the second one comes from **Duplicate** on the existing
+    /// row, which starts from that item's configuration instead of from the metric's defaults.
+    /// Offering it here too made adding a duplicate look like an ordinary add.
     private var addMenu: some View {
         Menu {
             ForEach(MetricKind.allCases, id: \.self) { metric in
                 Button(metric.settingsLabel) { model.append(metric) }
+                    .disabled(model.isPinned(metric))
             }
         } label: {
             Label("Add item", systemImage: "plus")
@@ -72,9 +82,13 @@ private struct MenuBarItemRow: View {
                 Text(item.metric.settingsLabel)
                     .font(Theme.font(.body))
                 Spacer()
+                // One line, always: a wrapped summary makes that row taller than its neighbours
+                // and the list stops reading as a list of equals.
                 Text(summary)
                     .font(Theme.font(.caption))
                     .foregroundStyle(Theme.dim)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
     }
@@ -110,11 +124,12 @@ private struct MenuBarItemRow: View {
     @ViewBuilder
     private var channelControls: some View {
         let arity = item.mode.arity
-        let choices = item.metric.channels
+        // Mode-aware: a histogram may only draw channels that have a series behind them.
+        let choices = item.metric.channels(for: item.mode)
         if choices.count > 1 && arity.lowerBound == arity.upperBound {
             // Exactly N ordered slots: which series is drawn on which row.
             ForEach(0..<arity.lowerBound, id: \.self) { slot in
-                Picker(slotLabel(slot, of: arity.lowerBound), selection: channelBinding(slot)) {
+                Picker(slotLabel(slot, of: arity.lowerBound), selection: channelBinding(slot, choices)) {
                     ForEach(choices, id: \.self) { channel in
                         Text(channel.settingsLabel).tag(channel)
                     }
@@ -154,11 +169,12 @@ private struct MenuBarItemRow: View {
                 })
     }
 
-    private func channelBinding(_ slot: Int) -> Binding<DataChannel> {
-        Binding(get: { item.channels.indices.contains(slot) ? item.channels[slot] : item.metric.channels[0] },
+    private func channelBinding(_ slot: Int, _ choices: [DataChannel]) -> Binding<DataChannel> {
+        let fallback = choices.first ?? item.metric.channels[0]
+        return Binding(get: { item.channels.indices.contains(slot) ? item.channels[slot] : fallback },
                 set: { channel in
                     var channels = item.channels
-                    while channels.count <= slot { channels.append(item.metric.channels[0]) }
+                    while channels.count <= slot { channels.append(fallback) }
                     channels[slot] = channel
                     var edited = item
                     edited.channels = channels
@@ -173,7 +189,7 @@ private struct MenuBarItemRow: View {
                     if on {
                         guard channels.count < arity.upperBound else { return }
                         // Keep the metric's declared order so bar colours stay in a stable sequence.
-                        channels = item.metric.channels.filter { channels.contains($0) || $0 == channel }
+                        channels = item.metric.channels(for: item.mode).filter { channels.contains($0) || $0 == channel }
                     } else {
                         guard channels.count > arity.lowerBound else { return }
                         channels.removeAll { $0 == channel }
@@ -187,12 +203,16 @@ private struct MenuBarItemRow: View {
     /// Trims or pads a channel selection to fit a newly chosen mode, preferring what the user
     /// already picked over the metric's defaults.
     private func fitted(_ channels: [DataChannel], to mode: GlyphMode, of metric: MetricKind) -> [DataChannel] {
-        var fitted = channels.filter(metric.channels.contains)
+        let allowed = metric.channels(for: mode)
+        var fitted = channels.filter(allowed.contains)
         if fitted.count > mode.arity.upperBound {
             fitted = Array(fitted.prefix(mode.arity.upperBound))
         }
-        for candidate in metric.defaultChannels + metric.channels where fitted.count < mode.arity.lowerBound {
-            if !fitted.contains(candidate) { fitted.append(candidate) }
+        // Switching Disk from "Two lines · Used, Free" to a histogram drops both — neither has a
+        // series — so the padding pass must fill from what the NEW mode allows, not from the
+        // metric's defaults, or the item would repair itself back to a chart of nothing.
+        for candidate in metric.defaultChannels + allowed where fitted.count < mode.arity.lowerBound {
+            if allowed.contains(candidate), !fitted.contains(candidate) { fitted.append(candidate) }
         }
         return fitted
     }

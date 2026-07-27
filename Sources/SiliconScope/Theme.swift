@@ -256,7 +256,9 @@ enum Space {
     /// Required exactly-zero — `StackedBar` and `MenuStackedBar` depend on segments touching.
     /// Never scaled: zero times anything is still zero, but stating it keeps the intent explicit.
     static let none: CGFloat = 0
-    static var hair: CGFloat    { s(2) }   // ×16
+    // Row gap inside a card. Was 2; tightened to 1 — at 2 the rows of a dense card read as a list
+    // of separate things rather than as one instrument panel, which is the look this app is for.
+    static var hair: CGFloat    { s(1) }   // ×16
     static var tight: CGFloat   { s(4) }   // ×12
     static var row: CGFloat     { s(6) }   // ×35 — dominant
     static var card: CGFloat    { s(8) }   // ×16
@@ -492,6 +494,21 @@ extension AIRuntimeKind {
         }
     }
     var color: Color { Theme.accent }
+}
+
+/// Identity colour per sensor group, so the Sensors card's chart and its rows agree: each row
+/// carries a swatch in the colour of its own line. Lives here (UI layer) for the same reason
+/// `Bottleneck.color` does — `SiliconScopeCore` stays SwiftUI-free.
+extension SensorCategory {
+    var color: Color {
+        switch self {
+        case .cpu:     return Color(red: 0.36, green: 0.62, blue: 0.98)   // blue, as in the CPU card
+        case .gpu:     return Color(red: 0.40, green: 0.82, blue: 0.55)   // green, as in the GPU card
+        case .memory:  return Color(red: 0.66, green: 0.60, blue: 0.96)   // violet, as in the memory trend
+        case .battery: return Color(red: 0.95, green: 0.70, blue: 0.30)   // amber
+        case .other:   return Theme.dim
+        }
+    }
 }
 
 extension MemoryBudget.Risk {

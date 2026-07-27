@@ -43,12 +43,10 @@ enum MenuBarItemRenderer {
                                      colors: config.channels.map { color($0) },
                                      dark: dark)
 
-        case .histogram:
-            let channel = config.channels.first ?? config.metric.defaultChannels[0]
-            return MenuBarGlyph.histogram(label: config.metric.glyphLabel,
-                                          values: series(channel, m),
-                                          color: color(channel),
-                                          dark: dark)
+        case .graph:
+            return MenuBarGlyph.line(label: config.metric.glyphLabel,
+                                     series: graphSeries(config, m).map { ($0.values, $0.color) },
+                                     dark: dark)
 
         case .twoLine:
             let rows = resolvedRows(config, m)
@@ -83,10 +81,11 @@ enum MenuBarItemRenderer {
         case .bars:
             return MenuBarSignature.bars(id, config.channels.map { fraction($0, m) }, dark: dark, scale: scale)
 
-        case .histogram:
-            let channel = config.channels.first ?? config.metric.defaultChannels[0]
-            // The whole visible window matters: a histogram redraws when any of its 11 bars moves.
-            return MenuBarSignature.bars(id, Array(series(channel, m).suffix(11)), dark: dark, scale: scale)
+        case .graph:
+            // The whole visible window matters: the chart redraws when any sample in it moves, and
+            // every series is part of the same picture.
+            let visible = graphSeries(config, m).flatMap { Array($0.values.suffix(30)) }
+            return MenuBarSignature.bars(id, visible, dark: dark, scale: scale)
 
         case .twoLine, .value:
             let rows = resolvedRows(config, m)
@@ -198,7 +197,7 @@ enum MenuBarItemRenderer {
     /// The channel as a 0...1 bar fill.
     ///
     /// ⚠️ Rate channels have NO ceiling to fill against, so they return 0 rather than an invented
-    /// number — and `MetricKind.supportedModes` never offers `bars`/`histogram` for a rate metric,
+    /// number — and `MetricKind.supportedModes` never offers `bars` for a rate metric,
     /// so this is unreachable rather than merely harmless.
     private static func fraction(_ channel: DataChannel, _ m: SiliconScopeMonitor) -> Double {
         let s = m.snapshot
@@ -222,9 +221,39 @@ enum MenuBarItemRenderer {
         }
     }
 
-    /// History for `histogram`, normalised to 0...1 — `MenuBarGlyph.histogram` clamps and has no
-    /// auto-scaler, so a series in Watts or GB/s must be divided by its peak here.
-    private static func series(_ channel: DataChannel, _ m: SiliconScopeMonitor) -> [Double] {
+    // MARK: - Graph series
+
+    private struct GraphSeries { let values: [Double]; let color: NSColor }
+
+    /// The item's series for `.graph`, each normalised to 0...1.
+    ///
+    /// ⚠️ Channels with no ceiling share ONE maximum across the item. Normalising ↓ and ↑
+    /// separately would make both peak at full height and erase the fact that one is ten times the
+    /// other — the chart would say "both busy" no matter the traffic.
+    private static func graphSeries(_ config: MenuBarItemConfig, _ m: SiliconScopeMonitor) -> [GraphSeries] {
+        let raw = config.channels.map { (channel: $0, values: rawSeries($0, m)) }
+        let sharedPeak = raw.filter { scalesToWindow($0.channel) }.flatMap(\.values).max() ?? 0
+        return raw.map { entry in
+            guard scalesToWindow(entry.channel) else {
+                return GraphSeries(values: entry.values, color: color(entry.channel))
+            }
+            let scaled = sharedPeak > 0 ? entry.values.map { min(1, max(0, $0) / sharedPeak) }
+                                        : entry.values.map { _ in 0.0 }
+            return GraphSeries(values: scaled, color: color(entry.channel))
+        }
+    }
+
+    /// True when the channel has no ceiling of its own and must be scaled against the window.
+    private static func scalesToWindow(_ channel: DataChannel) -> Bool {
+        switch channel {
+        case .networkDown, .networkUp, .diskRead, .diskWrite, .socPower: return true
+        default: return false
+        }
+    }
+
+    /// History for a channel. Series that HAVE a ceiling arrive already at 0...1; the ceiling-less
+    /// ones arrive raw, for `graphSeries` to scale together.
+    private static func rawSeries(_ channel: DataChannel, _ m: SiliconScopeMonitor) -> [Double] {
         let h = m.history
         switch channel {
         case .cpuEfficiency:   return h.eCPU
@@ -235,9 +264,19 @@ enum MenuBarItemRenderer {
         case .anePower:        return h.ane.map { min(1, $0 / max(m.anePeakWatts, 0.1)) }
         case .memoryUsed:      return h.memFraction
         case .memoryFree:      return h.memFraction.map { 1 - $0 }
-        default:
-            // No history series exists for disk space, per-sensor temperature, battery % or the
-            // rates — which is why `supportedModes` does not offer `histogram` for those metrics.
+        // `dieTemp` is fed from `temperature.cpuCelsius` — the CPU sensor, which is this channel.
+        // Scaled against the app's own hot reference rather than the window, so the line means
+        // thermal headroom and a machine idling at 45 °C does not look like one at its limit.
+        case .sensorPrimaryTemp: return h.dieTemp.map { min(1, $0 / Theme.hotCelsius) }
+        // Raw — no ceiling exists. `graphSeries` scales these against the window.
+        case .networkDown:     return h.netDown
+        case .networkUp:       return h.netUp
+        case .diskRead:        return h.diskRead
+        case .diskWrite:       return h.diskWrite
+        case .socPower:        return h.soc
+        // No series exists for disk space, the second sensor reading, memory pressure or battery %
+        // — `DataChannel.hasHistory` says so, and `channels(for: .graph)` filters them out.
+        case .memoryPressure, .diskUsed, .diskFree, .sensorSecondaryTemp, .batteryPercent:
             return []
         }
     }

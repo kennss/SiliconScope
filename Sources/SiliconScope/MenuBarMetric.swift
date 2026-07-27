@@ -55,29 +55,50 @@ enum MenuBarGlyph {
         return colW
     }
 
-    /// Stacked label + a mini history histogram (CPU / GPU). `values` are 0...1.
-    static func histogram(label: String, values: [Double], color: NSColor, dark: Bool) -> NSImage {
+    /// Stacked label + a line-and-area trace of the recent window, ONE LINE PER SERIES. Values are
+    /// already normalised to 0...1 by the caller.
+    ///
+    /// Replaces the bar histogram this mode used to draw. Line + area is SiliconScope's chart form
+    /// on every other surface (docs/design-system.md §5.3 keeps it deliberately, and rejects
+    /// iStat's histogram), and — the reason it matters here — **lines compose**: ↓ and ↑ read
+    /// clearly in ONE glyph, where two bar charts would have to be two menu-bar items.
+    static func line(label: String, series: [(values: [Double], color: NSColor)], dark: Bool) -> NSImage {
         let ink = dark ? NSColor.white : NSColor.black
-        let barCount = 11
-        let barW: CGFloat = 2.0, barGap: CGFloat = 1.0, gap: CGFloat = 2.5
-        let barsW = CGFloat(barCount) * barW + CGFloat(barCount - 1) * barGap
         let labelW = stackedLabelWidth(label)
-        let width = ceil(labelW + gap + barsW) + 1
+        let gap: CGFloat = 2.5, chartW: CGFloat = 30, inset: CGFloat = 1.5
+        let width = ceil(labelW + gap + chartW) + 1
         let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             let w = drawStackedLabel(label, ink: ink)
             let originX = w + gap
-            let track = ink.withAlphaComponent(0.14)
-            let vals = Array(values.suffix(barCount))
-            for i in 0..<barCount {
-                let x = originX + CGFloat(i) * (barW + barGap)
-                track.setFill()
-                NSBezierPath(rect: NSRect(x: x, y: 0, width: barW, height: height)).fill()
-                let idx = i - (barCount - vals.count)
-                if idx >= 0, idx < vals.count {
-                    let v = max(0, min(1, vals[idx]))
-                    color.setFill()
-                    NSBezierPath(rect: NSRect(x: x, y: 0, width: barW, height: max(1.5, height * CGFloat(v)))).fill()
+            // Baseline: an idle machine draws a flat line ON something, so an empty chart reads as
+            // "nothing happening" rather than as a rendering failure.
+            ink.withAlphaComponent(0.16).setFill()
+            NSBezierPath(rect: NSRect(x: originX, y: 0, width: chartW, height: 0.75)).fill()
+
+            for s in series {
+                let vals = Array(s.values.suffix(30))
+                guard vals.count > 1 else { continue }
+                let stepX = chartW / CGFloat(vals.count - 1)
+                func point(_ i: Int) -> NSPoint {
+                    let v = min(1, max(0, vals[i]))
+                    return NSPoint(x: originX + CGFloat(i) * stepX,
+                                   y: inset + CGFloat(v) * (height - inset * 2))
                 }
+                let trace = NSBezierPath()
+                trace.move(to: point(0))
+                for i in 1..<vals.count { trace.line(to: point(i)) }
+                // Area first, then the line over it: at 18 pt a bare 1 pt stroke is too thin to
+                // read at a glance, and the fill is what gives the glyph its weight.
+                let area = trace.copy() as! NSBezierPath
+                area.line(to: NSPoint(x: originX + chartW, y: 0))
+                area.line(to: NSPoint(x: originX, y: 0))
+                area.close()
+                s.color.withAlphaComponent(0.24).setFill()
+                area.fill()
+                s.color.setStroke()
+                trace.lineWidth = 1
+                trace.lineJoinStyle = .round
+                trace.stroke()
             }
             return true
         }

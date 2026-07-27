@@ -172,11 +172,11 @@ final class MenuBarItemStoreTests: XCTestCase {
 
     func testItemsRoundTripThroughDefaults() {
         let store = MenuBarItemStore(defaults: defaults)
-        store.replaceAll(with: [MenuBarItemConfig(metric: .gpu, mode: .histogram, channels: [.gpuUtilisation])])
+        store.replaceAll(with: [MenuBarItemConfig(metric: .gpu, mode: .graph, channels: [.gpuUtilisation])])
 
         let reloaded = MenuBarItemStore(defaults: defaults)
         XCTAssertEqual(reloaded.items.count, 1)
-        XCTAssertEqual(reloaded.items.first?.mode, .histogram)
+        XCTAssertEqual(reloaded.items.first?.mode, .graph)
         XCTAssertEqual(reloaded.items.first?.channels, [.gpuUtilisation])
     }
 
@@ -197,6 +197,37 @@ final class MenuBarItemStoreTests: XCTestCase {
         XCTAssertTrue(item.isValid)
     }
 
+    /// The mode was called "histogram" while it drew bars. A config written then must still
+    /// decode — a String-backed Codable enum throws on an unknown value, and one throwing element
+    /// fails the WHOLE array, which for this type means an empty menu bar.
+    func testPreReleaseHistogramRawValueStillDecodesAsGraph() throws {
+        let json = """
+        [{"id":"\(UUID().uuidString)","metric":"cpu","mode":"histogram","channels":["cpuPerformance"]}]
+        """
+        defaults.set(Data(json.utf8), forKey: MenuBarItemStore.itemsKey)
+        defaults.set(MenuBarItemStore.currentSchemaVersion, forKey: MenuBarItemStore.schemaVersionKey)
+
+        let store = MenuBarItemStore(defaults: defaults)
+        let item = try XCTUnwrap(store.items.first)
+        XCTAssertEqual(item.mode, .graph)
+        XCTAssertTrue(item.isValid)
+    }
+
+    /// One undecodable item must cost one item, not the whole menu bar — the difference between a
+    /// blemish and the app looking uninstalled.
+    func testOneUndecodableItemDoesNotEmptyTheList() {
+        let json = """
+        [{"id":"\(UUID().uuidString)","metric":"cpu","mode":"bars","channels":["cpuEfficiency","cpuPerformance"]},
+         {"id":"\(UUID().uuidString)","metric":"cpu","mode":"teleport","channels":["cpuPerformance"]},
+         {"id":"\(UUID().uuidString)","metric":"battery","mode":"icon","channels":["batteryPercent"]}]
+        """
+        defaults.set(Data(json.utf8), forKey: MenuBarItemStore.itemsKey)
+        defaults.set(MenuBarItemStore.currentSchemaVersion, forKey: MenuBarItemStore.schemaVersionKey)
+
+        let store = MenuBarItemStore(defaults: defaults)
+        XCTAssertEqual(store.items.map(\.metric), [.cpu, .battery])
+    }
+
     /// Corrupt JSON must not crash or wipe the schema version; it degrades to an empty list.
     func testCorruptStoredDataDegradesToEmpty() {
         defaults.set(Data("not json".utf8), forKey: MenuBarItemStore.itemsKey)
@@ -209,11 +240,40 @@ final class MenuBarItemStoreTests: XCTestCase {
     // MARK: - Model rules
 
     /// `bars` for a rate metric would be a fill bar with no ceiling to fill against — the model
-    /// refuses it, which is the no-invented-numbers rule expressed in the type system.
-    func testRateMetricsRejectBarsAndHistogram() {
-        XCTAssertFalse(MetricKind.network.supportedModes.contains(.bars))
-        XCTAssertFalse(MetricKind.network.supportedModes.contains(.histogram))
-        XCTAssertFalse(MetricKind.disk.supportedModes.contains(.histogram))
+    /// refuses it, which is the no-invented-numbers rule expressed in the type system. A histogram
+    /// is different: it shows shape, not level, so it IS offered once the renderer can scale a
+    /// ceiling-less series against the window's own maximum.
+    func testRateMetricsRejectBarsButAllowGraph() {
+        for metric in [MetricKind.network, .disk] {
+            XCTAssertFalse(metric.supportedModes.contains(.bars), "\(metric) must not offer bars")
+            XCTAssertTrue(metric.supportedModes.contains(.graph), "\(metric) should offer a graph")
+        }
+        XCTAssertTrue(MetricKind.sensors.supportedModes.contains(.graph))
+        // Nothing records battery % over time, so it stays off.
+        XCTAssertFalse(MetricKind.battery.supportedModes.contains(.graph))
+    }
+
+    /// A graph may only draw channels that have a series. Disk records read/write but not
+    /// used/free, so offering the mode must not also offer a chart of nothing.
+    func testGraphChannelsAreRestrictedToThoseWithHistory() {
+        XCTAssertEqual(MetricKind.disk.channels(for: .graph), [.diskRead, .diskWrite])
+        XCTAssertEqual(MetricKind.disk.channels(for: .twoLine), MetricKind.disk.channels)
+        XCTAssertEqual(MetricKind.sensors.channels(for: .graph), [.sensorPrimaryTemp])
+        XCTAssertEqual(MetricKind.memory.channels(for: .graph), [.memoryUsed, .memoryFree])
+        for metric in MetricKind.allCases where metric.supportedModes.contains(.graph) {
+            XCTAssertFalse(metric.channels(for: .graph).isEmpty,
+                           "\(metric) offers a graph but has no graphable channel")
+        }
+    }
+
+    /// Selecting a seriesless channel for a graph is invalid, and repairs rather than drawing
+    /// an empty chart.
+    func testGraphOfASeriesLessChannelIsInvalid() {
+        let bad = MenuBarItemConfig(metric: .disk, mode: .graph, channels: [.diskUsed])
+        XCTAssertFalse(bad.isValid)
+        XCTAssertTrue(bad.repaired().isValid)
+        let good = MenuBarItemConfig(metric: .disk, mode: .graph, channels: [.diskRead])
+        XCTAssertTrue(good.isValid)
     }
 
     /// Every metric's own defaults must be valid, or a freshly added item would render as garbage.

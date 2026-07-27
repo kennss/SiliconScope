@@ -46,18 +46,23 @@ public enum MetricKind: String, Codable, CaseIterable, Sendable {
     /// dieTemp/memory/memFraction/netDown/netUp/diskRead/diskWrite, and nothing else:
     ///
     /// - there is no history series for disk *space*, per-sensor temperature or battery %, so
-    ///   `histogram` is not offered there;
-    /// - the rate series are not 0...1 and `MenuBarGlyph.histogram` only clamps — it has no
-    ///   auto-scaler — so rate metrics do not get `histogram` until one exists;
+    ///   `graph` is not offered for those channels;
+    /// - a rate series is not 0...1 and has no ceiling, so it is scaled against the window's own
+    ///   maximum by the renderer — which is why rates now DO get `graph`;
     /// - `bars` is never offered for a rate: a fill bar of "MB/s" would be a lie, because there is
     ///   no ceiling to fill against. The type system enforces the product's no-invented-numbers rule.
     public var supportedModes: [GlyphMode] {
         switch self {
         case .combined:               return [.composite]
-        case .cpu, .gpu, .memory:     return [.bars, .histogram, .twoLine, .value]
-        case .network:                return [.twoLine, .value]
-        case .disk:                   return [.twoLine, .value]
-        case .sensors:                return [.twoLine, .value]
+        case .cpu, .gpu, .memory:     return [.bars, .graph, .twoLine, .value]
+        // Rates and temperature DO get `graph`: their series exist, and the renderer scales a
+        // series with no ceiling against the window's own maximum. What they still do not get is
+        // `bars` — a fill bar of "MB/s" would need a ceiling to fill against, and there is none.
+        case .network:                return [.graph, .twoLine, .value]
+        case .disk:                    return [.graph, .twoLine, .value]
+        case .sensors:                return [.graph, .twoLine, .value]
+        // No `graph`: nothing records battery % over time, and at a 60-sample window it would be
+        // a flat line even if it did.
         case .battery:                return [.icon, .value, .twoLine]
         }
     }
@@ -74,6 +79,15 @@ public enum MetricKind: String, Codable, CaseIterable, Sendable {
         case .sensors:  return [.sensorPrimaryTemp, .sensorSecondaryTemp]
         case .battery:  return [.batteryPercent]
         }
+    }
+
+    /// Channels this metric can draw from **in a given mode**.
+    ///
+    /// ⚠️ Whether a channel can be graphed is a property of the CHANNEL, not of the metric: Disk
+    /// records read/write over time but not used/free, so offering `graph` for the Disk item
+    /// while still listing "Used" would let the user pick a chart with no series behind it.
+    public func channels(for mode: GlyphMode) -> [DataChannel] {
+        mode == .graph ? channels.filter(\.hasHistory) : channels
     }
 
     /// The two-letter-ish stacked label drawn before the glyph ("C/P/U").
@@ -135,13 +149,17 @@ public enum MetricKind: String, Codable, CaseIterable, Sendable {
 // MARK: - Mode
 
 /// How an item is drawn. Each case maps to a renderer that already exists in `MenuBarGlyph` —
-/// including `histogram`, which was fully built but unreachable because every metric was welded to
-/// one mode.
+/// including the graph, which was built but unreachable because every metric was welded to one
+/// mode.
 public enum GlyphMode: String, Codable, CaseIterable, Sendable {
     /// Stacked label + thick value bars, one per channel.
     case bars
-    /// Stacked label + a mini history histogram.
-    case histogram
+    /// Stacked label + a line trace of the recent window, ONE LINE PER CHANNEL.
+    ///
+    /// Line + area is SiliconScope's chart form everywhere else (docs/design-system.md §5.3); the
+    /// menu bar was the last place drawing bars. Lines also compose: ↓ and ↑ share one glyph,
+    /// where two bar charts would have to be two menu-bar items.
+    case graph
     /// Stacked label + two "prefix … value" rows.
     case twoLine
     /// Stacked label + a single value.
@@ -157,7 +175,8 @@ public enum GlyphMode: String, Codable, CaseIterable, Sendable {
     public var arity: ClosedRange<Int> {
         switch self {
         case .bars:      return 1...4
-        case .histogram: return 1...1
+        // Several lines share one chart — that is the point of a line over a bar.
+        case .graph:     return 1...4
         case .twoLine:   return 2...2
         case .value:     return 1...1
         case .icon:      return 1...1
@@ -165,10 +184,29 @@ public enum GlyphMode: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Accepts the pre-release name for `.graph`.
+    ///
+    /// ⚠️ A `String`-backed `Codable` enum throws on any value it does not know, and one throwing
+    /// element fails the WHOLE array — which for this type means an empty menu bar. The mode was
+    /// called "histogram" while it drew bars, so any config written by a development build in that
+    /// window still decodes.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if let mode = GlyphMode(rawValue: raw) {
+            self = mode
+        } else if raw == "histogram" {
+            self = .graph
+        } else {
+            throw DecodingError.dataCorruptedError(in: container,
+                                                   debugDescription: "unknown glyph mode \"\(raw)\"")
+        }
+    }
+
     public var label: String {
         switch self {
         case .bars:      return "Bars"
-        case .histogram: return "History graph"
+        case .graph:     return "History graph"
         case .twoLine:   return "Two lines"
         case .value:     return "Value"
         case .icon:      return "Icon"
@@ -262,9 +300,27 @@ public enum DataChannel: String, Codable, CaseIterable, Sendable {
         case .diskFree:            return "Free"
         case .diskRead:            return "Read"
         case .diskWrite:           return "Write"
-        case .sensorPrimaryTemp:   return "CPU temperature"
-        case .sensorSecondaryTemp: return "GPU / battery temperature"
+        // Kept short: these two are the longest channel names in the app, and the Settings row
+        // shows "<style> · <channels>" on ONE line — the full "GPU / battery temperature" wrapped
+        // that row to two lines and made the Sensors item taller than every other.
+        case .sensorPrimaryTemp:   return "CPU temp"
+        case .sensorSecondaryTemp: return "GPU / battery temp"
         case .batteryPercent:      return "Charge"
+        }
+    }
+
+    /// Whether `MetricsEngine.History` carries a series for this channel — which is exactly what
+    /// decides whether it can be drawn as a `graph`.
+    ///
+    /// The five that cannot: memory pressure and disk used/free are levels nothing rolls into a
+    /// series; the sensors' SECOND reading is not recorded (only `dieTemp`, which is the CPU
+    /// sensor); and battery % has no series at all.
+    public var hasHistory: Bool {
+        switch self {
+        case .memoryPressure, .diskUsed, .diskFree, .sensorSecondaryTemp, .batteryPercent:
+            return false
+        default:
+            return true
         }
     }
 
@@ -295,7 +351,9 @@ public struct MenuBarItemConfig: Codable, Identifiable, Equatable, Sendable {
     /// the metric, and the channel count fits the mode's arity.
     public var isValid: Bool {
         guard metric.supportedModes.contains(mode) else { return false }
-        guard channels.allSatisfy(metric.channels.contains) else { return false }
+        // `channels(for:)` and not `channels`: a graph of a channel with no series would draw an
+        // empty chart rather than fail, which is the worst kind of wrong.
+        guard channels.allSatisfy(metric.channels(for: mode).contains) else { return false }
         return mode.arity.contains(channels.count)
     }
 

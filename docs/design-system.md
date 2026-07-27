@@ -337,9 +337,10 @@ diskRead/Write(B/s).
 
 | Family | `supportedModes` | Note |
 |---|---|---|
-| CPU, GPU, Memory | `bars`, `histogram`, `twoLine`, `value` | history exists and is 0…1 |
-| Network, Disk I/O, Bandwidth | `twoLine`, `value` | `histogram` **deferred** until an auto-scaling normaliser exists |
-| Disk space, Sensors, Battery | `twoLine`, `value`, `icon` | no history series |
+| CPU, GPU, Memory | `bars`, `graph`, `twoLine`, `value` | history exists and is 0…1 |
+| Network, Disk I/O | `graph`, `twoLine`, `value` | **shipped** — see the second correction below |
+| Sensors | `graph`, `twoLine`, `value` | `dieTemp` is the CPU sensor; the second reading is not recorded |
+| Disk space, Battery | `twoLine`, `value`, `icon` | no history series at all |
 
 A fill bar of "MB/s" stays impossible — there is no ceiling to fill against, so `bars` is never
 offered for rate metrics. The type system enforces the product's no-invented-numbers rule.
@@ -357,8 +358,32 @@ size token — a single row owns the full 18 pt height, so reusing the two-row s
 rather than by retiring `value` from `supportedModes`: `value` is the narrowest way to show a metric,
 which is exactly what a full menu bar needs.
 
-**`supportedModes` must therefore be backed by BOTH a series and a renderer.** `histogram` for rate
-metrics is still deferred — that one is missing a normaliser, not a renderer.
+**`supportedModes` must therefore be backed by BOTH a series and a renderer.**
+
+#### ⚠️ Second correction — the deferral was one function long, and the gate was on the wrong type
+
+"`histogram` deferred until an auto-scaling normaliser exists" made the missing normaliser sound
+structural. It was ~4 lines: scale a ceiling-less series against the window's own maximum, which is
+what `ChartAxis.auto` already does on the dashboard. Rates and temperature now have a graph, and
+the same series reads the same way in both places.
+
+Two things the build corrected in turn:
+
+1. **Graphability is a property of the CHANNEL, not the metric.** Disk records read/write but not
+   used/free, so a metric-level gate would offer "Disk · graph" and still list "Used" — a chart of
+   nothing. `DataChannel.hasHistory` + `MetricKind.channels(for:)` decide it per channel, and
+   `isValid` uses the mode-aware list.
+2. **The form was wrong, and §5.3 already said so.** The mode drew BARS while §5.3 keeps line+area
+   as SiliconScope's chart form and explicitly rejects iStat's histogram — the menu bar was the one
+   surface still contradicting it. Now `MenuBarGlyph.line`, which also **composes**: ↓ and ↑ share
+   one glyph, where two bar charts had to be two menu-bar items. Ceiling-less series in one item
+   share ONE maximum, or both directions peak at full height and the chart says "both busy"
+   regardless of the traffic.
+
+Renaming `.histogram` → `.graph` surfaced a Codable trap worth keeping: a `String`-backed enum
+throws on an unknown value, and **one throwing element fails the whole array** — an empty menu bar.
+The old raw value is accepted, and the store now decodes element by element, so a single bad item
+costs one item.
 
 ### 4.3 Ordering — macOS owns it
 
@@ -404,8 +429,8 @@ metric would create two live subscribers.
 
 ### 4.6 What this unlocks
 
-`MenuBarGlyph.histogram` becomes reachable. #27's request becomes a setting. Future metric
-requests become configuration.
+The graph mode becomes reachable — and, once reached, became a line chart (§4.2). #27's request
+becomes a setting. Future metric requests become configuration.
 
 **The `labelW` estimate was wrong, and not only in `histogram`.** All four renderers reserved a
 hardcoded 7 or 8 pt for the stacked label while the draw block positioned content at its REAL

@@ -195,7 +195,7 @@ struct DashboardView: View {
                     }
                     .frame(minHeight: Layout.Row.dense)
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
-                                dieHistory: s.history.dieTemp)
+                                groupHistory: s.history.sensorGroups)
                         .frame(minHeight: Layout.Row.sensorsNarrow)
                 } else {
 
@@ -256,7 +256,7 @@ struct DashboardView: View {
 
                 HStack(spacing: Space.row) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
-                                dieHistory: s.history.dieTemp)
+                                groupHistory: s.history.sensorGroups)
                     ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect)
                 }
                 // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
@@ -1090,10 +1090,13 @@ private struct SubLabel: View {
 private struct SensorsCard: View {
     let temperature: TemperatureSample
     let thermal: ThermalSample
-    /// Die temperature over time, in °C. Fills the card's spare space via `Card`'s graph slot —
-    /// the sensor list is a scroller of runtime groups, so on machines that report few sensors the
-    /// card used to end in dead space. Row-height policy is untouched (#23/#25/#16 pinned it).
-    let dieHistory: [Double]
+    /// One temperature series per sensor group, °C. Fills the card's spare space via `Card`'s
+    /// graph slot — the sensor list is a scroller of runtime groups, so on machines that report few
+    /// sensors the card used to end in dead space. Row-height policy is untouched (#23/#25/#16).
+    ///
+    /// One line PER GROUP, not one line for the CPU: the card lists three or four groups, so a
+    /// single trace answered a question the card was not asking.
+    let groupHistory: [SensorCategory: [Double]]
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
     @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
@@ -1142,14 +1145,16 @@ private struct SensorsCard: View {
                 }
             }
         } graph: {
-            // Normalised against `Theme.hotCelsius` so the trace keeps `.trend`'s 0…1 axis and
-            // reads as thermal headroom rather than as an auto-scaled shape — a flat 45 °C line
-            // stretched to fill the chart would look like a machine in trouble.
-            // The trace takes the heat colour of the CURRENT reading: this chart IS the
-            // temperature, so colour here is the state channel (§5.4), not decoration.
-            Sparkline(dieHistory.map { min(1, $0 / Theme.hotCelsius) },
-                      color: Theme.heat(min(1, (dieHistory.last ?? 0) / Theme.hotCelsius)),
-                      role: .trend)
+            // Normalised against `Theme.hotCelsius` so the traces keep `.trend`'s 0…1 axis, share
+            // ONE scale — which is what makes "the GPU runs hotter than the CPU" visible — and read
+            // as thermal headroom. Auto-scaling would stretch a flat 45 °C line to fill the chart
+            // and make an idle machine look like one in trouble.
+            // Colour is identity here, not state: with several lines the reader needs to know WHICH
+            // sensor group each one is, and the row's swatch says so.
+            Sparkline(temperature.groups.compactMap { group in
+                guard let series = groupHistory[group.category], series.count > 1 else { return nil }
+                return Trace(series.map { min(1, $0 / Theme.hotCelsius) }, group.category.color)
+            }, role: .trend)
         }
     }
 }
@@ -1177,6 +1182,10 @@ private struct SensorGroupRow: View {
             .padding(.top, Space.tight)
         } label: {
             HStack {
+                // Matches this group's line in the card's chart.
+                RoundedRectangle(cornerRadius: Radius.swatch)
+                    .fill(group.category.color)
+                    .frame(width: Layout.Dot.swatch, height: Layout.Dot.swatch)
                 Text(group.category.rawValue)
                     .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
                 Text("(\(group.count))").font(Theme.font(.detail)).foregroundStyle(Theme.faint)
