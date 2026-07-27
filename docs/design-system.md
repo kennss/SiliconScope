@@ -3,8 +3,10 @@
 > Design for closing **#19 (app zoom / scale-aware pass)** and **#27 (menu-bar visualisation
 > consistency)** with one system rather than two patches.
 >
-> **Status (2026-07-27): phases 0–3 and 4a are shipped in the working tree.** Phase 4a's build
-> corrected §4.2 — see the correction there. Remaining: 4b (Settings UI for instances) and 5.
+> **Status (2026-07-27): phases 0–4b are shipped in the working tree; #19 and #27 are closed by
+> them.** Building 4a corrected §4.2 (a mode needs a renderer, not only a series) and building 4b
+> corrected §4.6 (the hardcoded label width was clipping shipped glyphs at every zoom step above
+> 100 %). Remaining: phase 5, the visual grammar.
 >
 > **v2 (2026-07-26, decision D1 added 2026-07-27)** — v1 was audited against the source twice
 > (fact-check + adversarial design review) and failed on five blockers. This revision records
@@ -401,9 +403,16 @@ metric would create two live subscribers.
 
 ### 4.6 What this unlocks
 
-`MenuBarGlyph.histogram` becomes reachable (its `labelW: CGFloat = 7` width estimate has never
-executed — measure on first enable, `:47-49` vs `:30`). #27's request becomes a setting. Future
-metric requests become configuration.
+`MenuBarGlyph.histogram` becomes reachable. #27's request becomes a setting. Future metric
+requests become configuration.
+
+**The `labelW` estimate was wrong, and not only in `histogram`.** All four renderers reserved a
+hardcoded 7 or 8 pt for the stacked label while the draw block positioned content at its REAL
+width. `Glyph.stackedLabel` scales with zoom, so measuring it gives 7.0 pt for "MEM" at 100 %
+(exactly the reserve, zero margin), 8 pt at 125 % and 10 pt at 150 % — the value column was being
+clipped at every zoom step above 100 %, in shipped `twoLine` glyphs, not only in the unreachable
+one. Replaced by `MenuBarGlyph.stackedLabelWidth(_:)`, measured from the same font the label is
+drawn with.
 
 ---
 
@@ -468,7 +477,7 @@ Five items, corrected against the source. All are hierarchy problems; none needs
 | **2** ✅ | Replace remaining literals: 154 SwiftUI fonts, 4 AppKit glyph fonts, 34 semantic fonts (D1 req. 3, D3), ~100 spacing/padding/radius, all fixed widths and heights. `Grid` conversion dropped — see §3.4 correction | **intentional normalisation — done** | medium |
 | **3** ✅ | Scale-aware tokens; View-menu ⌘+/⌘=/⌘−/⌘0 **and Settings controls** (D1 req. 1); scale folded into all 8 glyph signatures. Range measured → D4. `barRows` needs no change: the menu-bar height never scales, so a bar still spans 36 pixel rows — zoom changes glyph *width* | zoom works | medium |
 | **4a** ✅ | `MenuBarItemConfig` + `MenuBarItemStore` + migration, **in Core, unit-tested** (19 tests); the renderer became data-driven (`MenuBarItemRenderer`) and all 15 legacy **write** paths were removed. `GlyphMode.value` needed a renderer that did not exist — added as `MenuBarGlyph.oneLine`, see §4.2 correction | **none — verified A/B** | medium |
-| **4b** | Settings UI: add / duplicate / delete / configure instances | none by default | **high — the real work** |
+| **4b** ✅ | Settings UI: add / duplicate / delete / configure instances. Channel controls are **derived from `GlyphMode.arity`** — fixed arity becomes N ordered pickers, a range becomes a bounded toggle set — so no metric is special-cased and a new mode needs no new UI | none by default | **high — the real work** |
 | **5** | Visual grammar §5 | **intended** | medium |
 
 ### ⚠️ v1's "phases 1–2 are provably no-ops" was false

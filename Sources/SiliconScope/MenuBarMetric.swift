@@ -22,10 +22,27 @@ import SiliconScopeCore
 enum MenuBarGlyph {
     private static let height: CGFloat = Glyph.height
 
+    private static func stackedLabelFont() -> NSFont {
+        NSFont.systemFont(ofSize: Glyph.stackedLabel, weight: .bold)
+    }
+
+    /// Width the stacked label will occupy — **measured, never estimated**.
+    ///
+    /// ⚠️ Every renderer used to reserve a hardcoded 7 or 8 pt for it. At 100 % zoom that was
+    /// merely tight ("MEM" measures exactly 7.0), but the label is drawn at `Glyph.stackedLabel`,
+    /// which scales: at 125 % "MEM" is 8 pt and at 150 % it is 10 pt. The draw block positions
+    /// content at the label's REAL width, so the reserved image was too narrow and the value
+    /// column was clipped — a zoom bug that only appears on the wider labels.
+    static func stackedLabelWidth(_ text: String) -> CGFloat {
+        let attrs: [NSAttributedString.Key: Any] = [.font: stackedLabelFont()]
+        let chars = text.map { String($0) as NSString }
+        return ceil(chars.map { $0.size(withAttributes: attrs).width }.max() ?? 6)
+    }
+
     /// Stacked label like iStat ("CPU" → C/P/U). Returns the column width it occupied.
     @discardableResult
     private static func drawStackedLabel(_ text: String, ink: NSColor) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: Glyph.stackedLabel, weight: .bold)
+        let font = stackedLabelFont()
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.85)]
         let chars = text.map { String($0) as NSString }
         let colW = ceil(chars.map { $0.size(withAttributes: attrs).width }.max() ?? 6)
@@ -44,8 +61,7 @@ enum MenuBarGlyph {
         let barCount = 11
         let barW: CGFloat = 2.0, barGap: CGFloat = 1.0, gap: CGFloat = 2.5
         let barsW = CGFloat(barCount) * barW + CGFloat(barCount - 1) * barGap
-        // measure label column once (re-measured in the draw block; cheap)
-        let labelW: CGFloat = 7
+        let labelW = stackedLabelWidth(label)
         let width = ceil(labelW + gap + barsW) + 1
         let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             let w = drawStackedLabel(label, ink: ink)
@@ -76,7 +92,7 @@ enum MenuBarGlyph {
         let barW: CGFloat = 6.5, gap: CGFloat = 2.0, radius: CGFloat = 1.2
         let n = CGFloat(values.count)
         let barsW = barW * n + gap * (n - 1)
-        let labelW: CGFloat = 8, lgap: CGFloat = 3
+        let labelW = stackedLabelWidth(label), lgap: CGFloat = 3
         let width = ceil(labelW + lgap + barsW) + 1
         let track = ink.withAlphaComponent(0.16)
         let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
@@ -113,7 +129,8 @@ enum MenuBarGlyph {
         let prefixW = ceil(max(p1.size(withAttributes: pAttrs).width, p2.size(withAttributes: pAttrs).width))
         let valueW = ceil(max((reserveValue as NSString).size(withAttributes: vAttrs).width,
                               v1.size(withAttributes: vAttrs).width, v2.size(withAttributes: vAttrs).width))
-        let gap: CGFloat = 3, innerGap: CGFloat = 4, labelW: CGFloat = 7
+        let gap: CGFloat = 3, innerGap: CGFloat = 4
+        let labelW = stackedLabelWidth(label)
         let width = ceil(labelW + gap + prefixW + innerGap + valueW) + 2
         let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             let w = drawStackedLabel(label, ink: ink)
@@ -148,7 +165,8 @@ enum MenuBarGlyph {
         let prefixW = prefix.isEmpty ? 0 : ceil(p.size(withAttributes: pAttrs).width)
         let valueW = ceil(max((reserveValue as NSString).size(withAttributes: vAttrs).width,
                               v.size(withAttributes: vAttrs).width))
-        let gap: CGFloat = 3, innerGap: CGFloat = prefix.isEmpty ? 0 : 4, labelW: CGFloat = 7
+        let gap: CGFloat = 3, innerGap: CGFloat = prefix.isEmpty ? 0 : 4
+        let labelW = stackedLabelWidth(label)
         let width = ceil(labelW + gap + prefixW + innerGap + valueW) + 2
         let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             let w = drawStackedLabel(label, ink: ink)

@@ -90,6 +90,21 @@ public enum MetricKind: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Full name, for Settings and the add menu. `glyphLabel` is the 2–3 character form the menu
+    /// bar draws and is too terse to pick from a list.
+    public var settingsLabel: String {
+        switch self {
+        case .combined: return "Combined cockpit"
+        case .cpu:      return "CPU"
+        case .gpu:      return "GPU / Media / Neural"
+        case .memory:   return "Memory"
+        case .network:  return "Network"
+        case .disk:     return "Disk"
+        case .sensors:  return "Sensors"
+        case .battery:  return "Battery"
+        }
+    }
+
     /// What the item renders when the user first adds it — today's hardcoded behaviour, so that
     /// migrating an existing install changes nothing on screen.
     public var defaultMode: GlyphMode {
@@ -224,6 +239,32 @@ public enum DataChannel: String, Codable, CaseIterable, Sendable {
         case .sensorPrimaryTemp,
              .sensorSecondaryTemp:               return "99°"
         case .batteryPercent:                    return "100%"
+        }
+    }
+
+    /// Full name, for the Settings pickers. The `prefix` is a one-character glyph adornment and
+    /// says nothing on its own ("P" is both P-cores and pressure, in different metrics).
+    public var settingsLabel: String {
+        switch self {
+        case .socPower:            return "SoC power"
+        case .cpuEfficiency:       return "E-cores"
+        case .cpuPerformance:      return "P-cores"
+        case .gpuUtilisation:      return "GPU"
+        case .gpuMemory:           return "GPU memory"
+        case .mediaThroughput:     return "Media Engine"
+        case .anePower:            return "Neural Engine"
+        case .memoryUsed:          return "Used"
+        case .memoryFree:          return "Free"
+        case .memoryPressure:      return "Pressure"
+        case .networkDown:         return "Download"
+        case .networkUp:           return "Upload"
+        case .diskUsed:            return "Used"
+        case .diskFree:            return "Free"
+        case .diskRead:            return "Read"
+        case .diskWrite:           return "Write"
+        case .sensorPrimaryTemp:   return "CPU temperature"
+        case .sensorSecondaryTemp: return "GPU / battery temperature"
+        case .batteryPercent:      return "Charge"
         }
     }
 

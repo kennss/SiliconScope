@@ -32,11 +32,6 @@ struct SettingsView: View {
     @AppStorage("aiRuntimeOmlxApiKey") private var omlxApiKey = ""
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("showWarningBanner") private var showWarningBanner = true
-    // Menu-bar items. Backed by the same store the ⬚ pin on each dashboard card writes, so the
-    // two stay in sync (MetricBarController reconciles status items from it each tick). A toggle
-    // here is DERIVED state — "this metric has at least one item" — not a stored Bool, because a
-    // metric may appear more than once (#27, docs/design-system.md §4.4).
-    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
     @AppStorage("shareThisMac") private var shareThisMac = false
     @State private var autoUpdate = false
     @State private var launchAtLogin = LoginItem.isEnabled
@@ -82,21 +77,7 @@ struct SettingsView: View {
                 Text("Zoom scales text and layout together (also ⌘+ / ⌘− / ⌘0). Density adjusts spacing only, leaving text size alone. SiliconScope does not follow the system \"Larger Text\" setting — this dense layout needs a range the app can guarantee.")
             }
 
-            Section {
-                Toggle("Combined (SS)", isOn: menuBarItems.pin(.combined))
-                Divider()
-                Toggle("CPU", isOn: menuBarItems.pin(.cpu))
-                Toggle("GPU / Media / Neural", isOn: menuBarItems.pin(.gpu))
-                Toggle("Memory", isOn: menuBarItems.pin(.memory))
-                Toggle("Network", isOn: menuBarItems.pin(.network))
-                Toggle("Disk (SSD)", isOn: menuBarItems.pin(.disk))
-                Toggle("Sensors", isOn: menuBarItems.pin(.sensors))
-                Toggle("Battery", isOn: menuBarItems.pin(.battery))
-            } header: {
-                Text("Menu bar items")
-            } footer: {
-                Text("Show any metric as its own menu-bar item with a live glyph + dropdown (also toggleable with the ⬚ on each dashboard card). Turn off Combined (SS) to free a menu-bar slot on notch-limited Macs — Settings stays reachable from any item's dropdown.")
-            }
+            MenuBarItemsSettings()
 
             Section {
                 Toggle("Launch at login", isOn: $launchAtLogin)
