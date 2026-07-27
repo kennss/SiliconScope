@@ -3,6 +3,9 @@
 > Design for closing **#19 (app zoom / scale-aware pass)** and **#27 (menu-bar visualisation
 > consistency)** with one system rather than two patches.
 >
+> **Status (2026-07-27): phases 0–3 and 4a are shipped in the working tree.** Phase 4a's build
+> corrected §4.2 — see the correction there. Remaining: 4b (Settings UI for instances) and 5.
+>
 > **v2 (2026-07-26, decision D1 added 2026-07-27)** — v1 was audited against the source twice
 > (fact-check + adversarial design review) and failed on five blockers. This revision records
 > what was wrong, because the failures are the useful part: they are all cases where the obvious
@@ -338,6 +341,22 @@ diskRead/Write(B/s).
 A fill bar of "MB/s" stays impossible — there is no ceiling to fill against, so `bars` is never
 offered for rate metrics. The type system enforces the product's no-invented-numbers rule.
 
+#### ⚠️ Correction found in 4a — the rule applies to RENDERERS too, not only to series
+
+The table above checks each mode against the *data* that exists, and stops there. Building the
+renderer showed the second half of the same rule: `value` was offered by every metric, and no
+renderer for it existed. `MenuBarGlyph` had `bars`, `histogram`, `twoLine` and `battery` — four
+renderers for five promised modes. Every migrated item happened to land on one of the four, so the
+gap was invisible until a `GlyphMode` was rendered generically instead of per metric.
+
+Fixed by adding `MenuBarGlyph.oneLine` (the one-row form of `twoLine`, on its own `Glyph.singleValue`
+size token — a single row owns the full 18 pt height, so reusing the two-row size wastes half of it)
+rather than by retiring `value` from `supportedModes`: `value` is the narrowest way to show a metric,
+which is exactly what a full menu bar needs.
+
+**`supportedModes` must therefore be backed by BOTH a series and a renderer.** `histogram` for rate
+metrics is still deferred — that one is missing a normaliser, not a renderer.
+
 ### 4.3 Ordering — macOS owns it
 
 `order: Int` is **unenforceable**. Users ⌘-drag status items and macOS persists position per
@@ -448,7 +467,7 @@ Five items, corrected against the source. All are hierarchy problems; none needs
 | **1** | `Theme.Type` / `Space` / `Radius` / `Icon`; convert the 8 atom sites in `Theme.swift` | none | low |
 | **2** ✅ | Replace remaining literals: 154 SwiftUI fonts, 4 AppKit glyph fonts, 34 semantic fonts (D1 req. 3, D3), ~100 spacing/padding/radius, all fixed widths and heights. `Grid` conversion dropped — see §3.4 correction | **intentional normalisation — done** | medium |
 | **3** ✅ | Scale-aware tokens; View-menu ⌘+/⌘=/⌘−/⌘0 **and Settings controls** (D1 req. 1); scale folded into all 8 glyph signatures. Range measured → D4. `barRows` needs no change: the menu-bar height never scales, so a bar still spans 36 pixel rows — zoom changes glyph *width* | zoom works | medium |
-| **4a** | `MenuBarItemConfig` + migration, **in Core, unit-tested** — no UI change | none | medium |
+| **4a** ✅ | `MenuBarItemConfig` + `MenuBarItemStore` + migration, **in Core, unit-tested** (19 tests); the renderer became data-driven (`MenuBarItemRenderer`) and all 15 legacy **write** paths were removed. `GlyphMode.value` needed a renderer that did not exist — added as `MenuBarGlyph.oneLine`, see §4.2 correction | **none — verified A/B** | medium |
 | **4b** | Settings UI: add / duplicate / delete / configure instances | none by default | **high — the real work** |
 | **5** | Visual grammar §5 | **intended** | medium |
 

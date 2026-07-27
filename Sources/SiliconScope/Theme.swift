@@ -289,6 +289,9 @@ enum Glyph {
     static var comboLabel: CGFloat { g(7.5) }
     /// Two-line value rows (MEM / NET / SSD / SEN).
     static var value: CGFloat { g(8.5) }
+    /// A single value row (`GlyphMode.value`). Larger than `value` because one row owns the whole
+    /// 18 pt height — sizing a one-row glyph like a two-row one wastes half the menu bar.
+    static var singleValue: CGFloat { g(11) }
     /// Battery percentage beside the battery body.
     static var batteryValue: CGFloat { g(9) }
 

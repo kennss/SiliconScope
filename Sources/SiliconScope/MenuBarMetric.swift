@@ -1,16 +1,17 @@
 //
 //  File:      MenuBarMetric.swift
 //  Created:   2026-06-19
-//  Updated:   2026-07-22
+//  Updated:   2026-07-27
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  iStat-style per-metric menu-bar items. Each dashboard card can be toggled
-//             into its own menu-bar item (a stacked label + a mini histogram or two-line
-//             value readout), with its own dropdown. Glyphs are drawn to NSImage (the only
-//             reliable way to render a live MenuBarExtra label) and adapt to the menu-bar
-//             appearance; value bars keep their metric color.
-//  Notes:     Per-metric on/off persists in UserDefaults ("menubar.cpu" etc.); the App
-//             conditionally inserts a MenuBarExtra per enabled metric. The combined SS
-//             glyph (MenuBarIcon) stays on by default.
+//  Overview:  iStat-style menu-bar glyph renderers and the per-metric dropdown panels. Glyphs are
+//             drawn to NSImage (the only reliable way to render a live status-item label) and adapt
+//             to the menu-bar appearance; value bars keep their metric color.
+//  Notes:     These renderers are the primitives, not the policy: WHICH items exist and which mode
+//             each one draws in is data (`MenuBarItemConfig`), resolved by `MenuBarItemRenderer` and
+//             reconciled by `MetricBarController`. Adding a renderer here makes a new `GlyphMode`
+//             possible; it does not by itself put anything in the menu bar.
+//             ⚠️ Every renderer must reserve its value column from a worst-case template — a glyph
+//             that re-measures as its number grows shoves every item to its left, once a second.
 //
 import SwiftUI
 import AppKit
@@ -125,6 +126,37 @@ enum MenuBarGlyph {
             p2.draw(at: NSPoint(x: originX, y: yBot), withAttributes: pAttrs)
             v1.draw(at: NSPoint(x: valueRight - v1.size(withAttributes: vAttrs).width, y: yTop), withAttributes: vAttrs)  // value right
             v2.draw(at: NSPoint(x: valueRight - v2.size(withAttributes: vAttrs).width, y: yBot), withAttributes: vAttrs)
+            return true
+        }
+        img.isTemplate = false
+        return img
+    }
+
+    /// Stacked label + ONE "prefix … value" row, vertically centred — the one-row form of
+    /// `twoLine`, and the renderer behind `GlyphMode.value`. It is the narrowest way to show a
+    /// metric, for a menu bar that is already full.
+    ///
+    /// `reserveValue` pins the value column exactly as it does for two rows: without it the glyph
+    /// re-measures every tick and shoves every item to its left as the number grows.
+    static func oneLine(label: String, prefix: String, value: String,
+                        dark: Bool, reserveValue: String) -> NSImage {
+        let ink = dark ? NSColor.white : NSColor.black
+        let font = NSFont.systemFont(ofSize: Glyph.singleValue, weight: .medium)
+        let pAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.72)]
+        let vAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(0.95)]
+        let p = prefix as NSString, v = value as NSString
+        let prefixW = prefix.isEmpty ? 0 : ceil(p.size(withAttributes: pAttrs).width)
+        let valueW = ceil(max((reserveValue as NSString).size(withAttributes: vAttrs).width,
+                              v.size(withAttributes: vAttrs).width))
+        let gap: CGFloat = 3, innerGap: CGFloat = prefix.isEmpty ? 0 : 4, labelW: CGFloat = 7
+        let width = ceil(labelW + gap + prefixW + innerGap + valueW) + 2
+        let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+            let w = drawStackedLabel(label, ink: ink)
+            let originX = w + gap
+            let valueRight = originX + prefixW + innerGap + valueW
+            let y = (height - v.size(withAttributes: vAttrs).height) / 2
+            if !prefix.isEmpty { p.draw(at: NSPoint(x: originX, y: y), withAttributes: pAttrs) }
+            v.draw(at: NSPoint(x: valueRight - v.size(withAttributes: vAttrs).width, y: y), withAttributes: vAttrs)
             return true
         }
         img.isTemplate = false

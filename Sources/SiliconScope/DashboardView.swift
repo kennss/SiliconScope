@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-16
+//  Updated:   2026-07-27
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -329,7 +329,8 @@ private struct HeaderView: View {
     let topology: CPUTopology?
     let power: PowerSample
     let battery: BatteryInfo
-    @AppStorage("menubar.battery") private var batteryMB = false
+    // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
+    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.card) {
@@ -350,7 +351,7 @@ private struct HeaderView: View {
                     Text("\(Int(battery.percent.rounded()))%")
                         .font(Theme.font(.emphasis))
                         .foregroundStyle(battery.percent < 20 ? Theme.heat(1) : Theme.text)
-                    MenuBarPin(isOn: $batteryMB)
+                    MenuBarPin(isOn: menuBarItems.pin(.battery))
                 }
             }
         }
@@ -797,7 +798,8 @@ private struct CPUCard: View {
     let pHistory: [Double]
     let throttling: Bool             // cpuThrottling: P-cluster held below its DVFS ceiling under thermal pressure
     let clockDrop: Double            // cpuClockDropFraction: how far the P-clock sits below the chip's top step
-    @AppStorage("menubar.cpu") private var cpuMB = false
+    // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
+    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
 
     private let eColor = Color(nsColor: MetricPalette.eCPU)   // amber
     private let pColor = Color(nsColor: MetricPalette.pCPU)   // blue
@@ -809,7 +811,7 @@ private struct CPUCard: View {
         // When the P-cluster is thermally throttled: a red card border (consistent with the GPU card's
         // throttle treatment) flags it, and a dim "P ceiling" line states the fact — clock vs the chip's
         // DVFS ceiling. Border = salience, line = the instrument reading.
-        Card(title: "CPU", menuBarPin: $cpuMB, alert: throttling ? alertColor : nil) {
+        Card(title: "CPU", menuBarPin: menuBarItems.pin(.cpu), alert: throttling ? alertColor : nil) {
             Bar(label: "E-cores", value: cpu.eUsage,
                 detail: String(format: "%.0f%%  %.0f MHz", cpu.eUsagePercent, cpu.eFreqMHz), color: eColor)
             Bar(label: "P-cores", value: cpu.pUsage,
@@ -841,7 +843,8 @@ private struct AcceleratorCard: View {
     let mediaHistory: [Double]
     let aneHistory: [Double]
     let throttling: Bool                            // #18: red card border while the GPU is thermally throttled
-    @AppStorage("menubar.gpu") private var gpuMB = false
+    // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
+    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
 
     private let gpuColor = MetricPalette.gpuC       // green
     private let memColor = MetricPalette.gpuMemC    // sky cyan — GPU memory
@@ -849,7 +852,7 @@ private struct AcceleratorCard: View {
     private let aneColor = MetricPalette.aneC       // purple
 
     var body: some View {
-        Card(title: "GPU / Media / Neural Engine", menuBarPin: $gpuMB,
+        Card(title: "GPU / Media / Neural Engine", menuBarPin: menuBarItems.pin(.gpu),
              alert: throttling ? Color(red: 0.88, green: 0.37, blue: 0.37) : nil) {
             Bar(label: "GPU", value: gpu.usage,
                 detail: String(format: "%.0f%%  %.1f W  %.0f MHz", gpu.usagePercent, power.gpuWatts, gpu.freqMHz),
@@ -881,7 +884,8 @@ private struct MemoryBandwidthCard: View {
     let bandwidthPeak: Double
     let memHistory: [Double]
     let bwHistory: [Double]
-    @AppStorage("menubar.mem") private var memMB = false
+    // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
+    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
 
     private let wiredColor = Color(red: 0.36, green: 0.62, blue: 0.98)
     private let activeColor = Color(red: 0.34, green: 0.74, blue: 0.62)
@@ -919,7 +923,7 @@ private struct MemoryBandwidthCard: View {
 
     private var memorySection: some View {
         VStack(alignment: .leading, spacing: Space.hair) {
-            SubLabel("Memory", menuBarPin: $memMB)
+            SubLabel("Memory", menuBarPin: menuBarItems.pin(.memory))
             HStack {
                 Text(String(format: "%.1f / %.0f GB", memory.usedGB, memory.totalGB))
                     .font(Theme.font(.emphasis))
@@ -1013,8 +1017,8 @@ private struct NetworkDiskCard: View {
     let readHistory: [Double]
     let writeHistory: [Double]
 
-    @AppStorage("menubar.net") private var netMB = false
-    @AppStorage("menubar.ssd") private var ssdMB = false
+    // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
+    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
     private let downColor = Color(red: 0.34, green: 0.74, blue: 0.62)
     private let upColor = Color(red: 0.95, green: 0.62, blue: 0.30)
 
@@ -1030,7 +1034,7 @@ private struct NetworkDiskCard: View {
 
     private var networkSection: some View {
         VStack(alignment: .leading, spacing: Space.hair) {
-            SubLabel("Network", menuBarPin: $netMB)
+            SubLabel("Network", menuBarPin: menuBarItems.pin(.network))
             KV(key: "↓ Download", value: formatRate(network.downloadBytesPerSec), valueColor: downColor)
             KV(key: "↑ Upload", value: formatRate(network.uploadBytesPerSec), valueColor: upColor)
             Spacer(minLength: 4)
@@ -1041,7 +1045,7 @@ private struct NetworkDiskCard: View {
 
     private var diskSection: some View {
         VStack(alignment: .leading, spacing: Space.hair) {
-            SubLabel("Disk", menuBarPin: $ssdMB)
+            SubLabel("Disk", menuBarPin: menuBarItems.pin(.disk))
             KV(key: "Read", value: formatRate(disk.readBytesPerSec), valueColor: downColor)
             KV(key: "Write", value: formatRate(disk.writeBytesPerSec), valueColor: upColor)
             Bar(label: "Used", value: disk.usedFraction,
@@ -1074,7 +1078,8 @@ private struct SensorsCard: View {
     let temperature: TemperatureSample
     let thermal: ThermalSample
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
-    @AppStorage("menubar.sensors") private var sensorsMB = false
+    // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
+    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
 
     private var pressureColor: Color {
         switch thermal.pressure {
@@ -1086,7 +1091,7 @@ private struct SensorsCard: View {
     }
 
     var body: some View {
-        Card(title: "Sensors", menuBarPin: $sensorsMB) {
+        Card(title: "Sensors", menuBarPin: menuBarItems.pin(.sensors)) {
             VStack(alignment: .leading, spacing: Space.tight) {
                 HStack(spacing: Space.page) {
                     HStack(spacing: Space.row) {

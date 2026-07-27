@@ -1,7 +1,7 @@
 //
 //  File:      SettingsView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-02
+//  Updated:   2026-07-27
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Preferences window (Cmd+,). Refresh cadence, temperature unit, menu-bar
 //             compact GPU mode, launch-at-login, threshold alerts, and the AI runtime API
@@ -32,16 +32,11 @@ struct SettingsView: View {
     @AppStorage("aiRuntimeOmlxApiKey") private var omlxApiKey = ""
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("showWarningBanner") private var showWarningBanner = true
-    // Per-metric menu-bar items — same keys the ⬚ pin on each dashboard card writes, so the
-    // two stay in sync (MetricBarController reconciles status items from these each tick).
-    @AppStorage("menubar.combined") private var mbCombined = true
-    @AppStorage("menubar.cpu") private var mbCPU = false
-    @AppStorage("menubar.gpu") private var mbGPU = false
-    @AppStorage("menubar.mem") private var mbMEM = false
-    @AppStorage("menubar.net") private var mbNET = false
-    @AppStorage("menubar.ssd") private var mbSSD = false
-    @AppStorage("menubar.sensors") private var mbSEN = false
-    @AppStorage("menubar.battery") private var mbBAT = false
+    // Menu-bar items. Backed by the same store the ⬚ pin on each dashboard card writes, so the
+    // two stay in sync (MetricBarController reconciles status items from it each tick). A toggle
+    // here is DERIVED state — "this metric has at least one item" — not a stored Bool, because a
+    // metric may appear more than once (#27, docs/design-system.md §4.4).
+    @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
     @AppStorage("shareThisMac") private var shareThisMac = false
     @State private var autoUpdate = false
     @State private var launchAtLogin = LoginItem.isEnabled
@@ -88,15 +83,15 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Combined (SS)", isOn: $mbCombined)
+                Toggle("Combined (SS)", isOn: menuBarItems.pin(.combined))
                 Divider()
-                Toggle("CPU", isOn: $mbCPU)
-                Toggle("GPU / Media / Neural", isOn: $mbGPU)
-                Toggle("Memory", isOn: $mbMEM)
-                Toggle("Network", isOn: $mbNET)
-                Toggle("Disk (SSD)", isOn: $mbSSD)
-                Toggle("Sensors", isOn: $mbSEN)
-                Toggle("Battery", isOn: $mbBAT)
+                Toggle("CPU", isOn: menuBarItems.pin(.cpu))
+                Toggle("GPU / Media / Neural", isOn: menuBarItems.pin(.gpu))
+                Toggle("Memory", isOn: menuBarItems.pin(.memory))
+                Toggle("Network", isOn: menuBarItems.pin(.network))
+                Toggle("Disk (SSD)", isOn: menuBarItems.pin(.disk))
+                Toggle("Sensors", isOn: menuBarItems.pin(.sensors))
+                Toggle("Battery", isOn: menuBarItems.pin(.battery))
             } header: {
                 Text("Menu bar items")
             } footer: {
