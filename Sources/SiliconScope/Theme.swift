@@ -868,6 +868,10 @@ struct Bar: View {
                     .font(Theme.font(.body))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
+                    // Shrink, don't truncate: the Disk column's "2.39 / 4.00 TB" lost its total to
+                    // an ellipsis at the narrower window widths. A number that has been cut short
+                    // is worse than a slightly smaller one — it reads as a different number.
+                    .minimumScaleFactor(0.8)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -911,9 +915,15 @@ struct LegendRow: View {
     var body: some View {
         HStack(spacing: Space.row) {
             RoundedRectangle(cornerRadius: Radius.swatch).fill(color).frame(width: Layout.Dot.swatch, height: Layout.Dot.swatch)
+            // "Compressed" wrapped onto a second line in the Memory column, making that one legend
+            // row taller than its siblings and breaking the list's rhythm. Row text shrinks; it
+            // never wraps and never truncates.
             Text(key).font(Theme.font(.body)).foregroundStyle(Theme.dim)
-            Spacer()
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: Space.tight)
             Text(value).font(Theme.font(.body)).foregroundStyle(Theme.text)
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .layoutPriority(1)   // the reading keeps its size; the label gives way first
         }
     }
 }
@@ -926,8 +936,11 @@ struct KV: View {
     var body: some View {
         HStack {
             Text(key).font(Theme.font(.body)).foregroundStyle(Theme.dim)
-            Spacer()
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: Space.tight)
             Text(value).font(Theme.font(.body)).foregroundStyle(valueColor)
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .layoutPriority(1)
         }
     }
 }

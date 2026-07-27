@@ -1,5 +1,77 @@
 # Changelog
 
+## v4.1.0 — 2026-07-27
+
+**Everything you can read is now something you can arrange.** 4.0 grew SiliconScope past one Mac;
+4.1 turns the parts you look at every day — the menu bar and the dashboard — from fixed output into
+a panel you configure, and rebuilds the visual language underneath so density stops competing with
+legibility. ([#19](https://github.com/kennss/SiliconScope/issues/19),
+[#27](https://github.com/kennss/SiliconScope/issues/27))
+
+**🔧 Menu-bar items are configurable — and a metric can appear more than once.** Settings → **Menu
+bar items** is now a list you add to, duplicate and remove from. Each item chooses its **style**
+(bars · history graph · two lines · single value · icon) and **which readings** it draws, so CPU can
+sit in the bar twice: once as bars, once as a graph. Add offers only metrics you don't have yet;
+a second copy comes from **Duplicate**, which starts from that item's configuration. Reorder by
+⌘-dragging in the menu bar, the way macOS already does it.
+
+**📈 Menu-bar graphs, and they compose.** The history graph draws as a **line + area** — the same
+chart form the dashboard uses — and takes several readings at once, so **↓ and ↑ share one item**
+instead of needing two. Rate metrics (network, disk) and temperature can be graphed at all now: a
+series with no ceiling is scaled against the window's own maximum, the same way the dashboard
+scales it.
+
+**🔍 App zoom and layout density.** ⌘+ / ⌘− / ⌘0, or **Settings → Display**, scale text and layout
+together across every surface — dashboard, dropdowns, Settings. **Density** adjusts spacing only,
+for when you want tighter rows at the same text size. SiliconScope deliberately does not follow
+macOS "Larger Text": this layout needs a range the app can guarantee.
+
+**🎨 A dashboard you can read at a glance.** Card titles no longer share a grey with their own
+footnotes; a row's *reading* now leads and its label recedes; each card with a single primary
+number promotes it. Colour became a system: **one hue per subsystem** (CPU blue, GPU green, ANE
+violet, Media orange, memory mauve), **compositions drawn as one hue in steps** rather than four
+unrelated colours, and — the change you feel most — **"everything is fine" is neutral instead of
+green.** A monitor is mostly fine, so painting that green filled the screen with colour that said
+nothing; amber and red are now the only colours that ask for attention.
+
+**🌡 The Sensors card graphs every group.** One line per sensor group (CPU / GPU / Memory / …), each
+with a matching swatch on its row, sharing one axis — so "the GPU runs hotter than the CPU" is
+visible as the gap between lines. It fills space the card used to leave empty.
+
+**🧠 Spectalo and SpectaLing are recognised as AI runtimes.** On-device apps that run Core ML on the
+Neural Engine are exactly the workload SiliconScope was built to watch, so they now appear in the
+**AI Runtime** card with the ANE's own colour.
+
+### Fixed
+
+- **Menu-bar glyphs were clipped above 100 % zoom.** Every glyph reserved a hardcoded width for its
+  stacked label while drawing it at the real one — and that label scales. "MEM" measures 7.0 pt at
+  100 % (exactly the reserve), 8 pt at 125 % and 10 pt at 150 %, so the value column was cut off at
+  every zoom step above 100 %. Widths are now measured.
+- **The AI Workload card said "Idle" while the CPU worked.** It needed over 50 % on the performance
+  cores to say otherwise, so E-cores at 64 % — with the top process burning 199 % printed on the
+  same row — still read as idle.
+- **The GPU row flipped between active and idle every second.** A single threshold on a live sample
+  oscillates whenever the value sits near it. Engine states now need a sustained change to flip, and
+  a wider gap to fall back than to trigger.
+- **Every engine row shows its reading, idle included.** "GPU idle" beside a GPU card reading 12 %
+  looked like a contradiction; with `12 % · 0.1 W` on the row it is obviously a GPU on its minimum
+  clock. A state is never asserted without the measurement behind it.
+- **Temperatures turned amber at 55 °C** — a completely normal figure for an Apple-Silicon die,
+  which idles in the 40s and works into the 70s. The colour now changes at 80 °C and 95 °C.
+- **The memory bar disagreed with itself.** The same composition was blue/teal/violet on the
+  dashboard and blue/**red**/violet in the menu-bar dropdown, where red means "critical" everywhere
+  else in the app. Both now draw the same ramp.
+- **Long labels wrapped or truncated in narrow columns** — "Compressed" onto a second line, the
+  disk total to an ellipsis. Row text now shrinks slightly instead, and the number keeps its size.
+
+### Agents
+
+- Mac and Linux agents are now **1.0.1**. Removing one is supported and documented:
+  `install-agent.sh --uninstall` (or `install-agent-mac.sh --uninstall`) stops the service and
+  removes its binary, token, certificate and keychain.
+  ([#34](https://github.com/kennss/SiliconScope/issues/34))
+
 ## v4.0.4 — 2026-07-24
 
 - **The Mac agent no longer prompts for a keychain password.** The agent imports its TLS certificate
