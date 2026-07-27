@@ -28,11 +28,11 @@ bei. Ferne Macs bekommen die volle Behandlung — **Neural Engine inklusive**.
 
 ![SiliconScope-Dashboard unter Last eines lokalen LLM](docs/img/dashboard.png)
 
-*Die ganze Maschine auf einen Blick — ein Engpass-Klassifikator für AI-Workloads, überlagerte E-/P-Kern-Trends, GPU / GPU-Speicher / ANE / Media, der Speicher gemessen an der 400-GB/s-Grenze des M1 Max, Temperaturen pro Kern, Leistung und laufende Prozesse. Die Leiste am unteren Rand ist **Replay** (neu in 3.0): jede Metrik wird aufgezeichnet, sodass du wie bei einem DVR durch eine Sitzung zurückspulen kannst.*
+*Ein M1 Max unter echter Last — LM Studio generiert mit `gemma-4-12b`. Der Workload-Klassifikator meldet **ANE (CoreML)**, die GPU liegt bei 97 % und 39 W, die Speicherbandbreite bei 223 GB/s gegen die 400 GB/s des Chips — und die CPU-Karte ist rot umrandet, weil der P-Cluster **thermisch gedrosselt** wird: 2272 von 3228 MHz, als Tatsache formuliert, nicht als Alarm. Farbe wird nur dort ausgegeben, wo etwas Aufmerksamkeit braucht: Bernstein bei Speicherdruck, Rot bei der Drosselung, sonst neutral. Die Leiste unten ist **Replay** (neu in 3.0): jede Metrik wird aufgezeichnet, du kannst eine Sitzung wie mit einem DVR zurückspulen.**Replay** (neu in 3.0): jede Metrik wird aufgezeichnet, sodass du wie bei einem DVR durch eine Sitzung zurückspulen kannst.*
 
 ### Menüleiste — jede Metrik, im iStat-Stil
 
-Pinne jede Karte als eigenständiges Menüleisten-Element an — **CPU · GPU · Speicher · Netzwerk · SSD · Sensoren · Akku** — jeweils mit Live-Glyphe und ausführlichem Dropdown. Alles ohne sudo.
+Pinne jede Karte als eigenständiges Menüleisten-Element an — **CPU · GPU · Speicher · Netzwerk · SSD · Sensoren · Akku** — jeweils mit Live-Glyphe und ausführlichem Dropdown. Jedes Element wählt seine eigene **Darstellung** (Balken · Verlaufsgraph · zwei Zeilen · Einzelwert · Symbol) und welche Messwerte es zeichnet — eine Metrik kann also zweimal erscheinen: CPU als Balken *und* als Graph. Alles ohne sudo.
 
 ![Die Menüleisten-Suite pro Metrik](docs/img/menubar.png)
 

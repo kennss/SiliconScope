@@ -25,11 +25,11 @@ encrypted, paired connection. Remote Macs keep the full treatment, **Neural Engi
 
 ![SiliconScope dashboard with the Replay scrubber](docs/img/dashboard.png)
 
-*The whole machine at a glance — an AI-workload bottleneck classifier, E/P-core overlaid trends, GPU / GPU-memory / ANE / Media, memory measured against the M1 Max's 400 GB/s ceiling, per-core temperatures, power, and live processes. The bar along the bottom is **Replay** (new in 3.0): every metric is recorded, so you can scrub back through a session like a DVR.*
+*One M1 Max under a real load — LM Studio generating on `gemma-4-12b`. The workload classifier reads **ANE (CoreML)**, the GPU is at 97 % and 39 W, memory bandwidth is 223 GB/s against the chip's 400 GB/s ceiling, and the CPU card is outlined red because the P-cluster is **thermally throttled** — 2272 of 3228 MHz, stated as a fact rather than an alarm. Colour is spent only where something needs attention: amber on memory pressure, red on the throttle, neutral everywhere else. The bar along the bottom is **Replay** (new in 3.0): every metric is recorded, so you can scrub back through a session like a DVR.*
 
 ### Menu bar — every metric, iStat-style
 
-Pin any card to its own menu-bar item — **CPU · GPU · Memory · Network · SSD · Sensors · Battery** — each with a live glyph and a rich dropdown. All sudoless.
+Pin any card to its own menu-bar item — **CPU · GPU · Memory · Network · SSD · Sensors · Battery** — each with a live glyph and a rich dropdown. Every item chooses its own **style** (bars · history graph · two lines · single value · icon) and which readings it draws, so a metric can even appear twice: CPU as bars *and* as a graph. All sudoless.
 
 ![The per-metric menu-bar suite](docs/img/menubar.png)
 
