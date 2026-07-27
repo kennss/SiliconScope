@@ -1141,10 +1141,13 @@ private struct SensorsCard: View {
                     }
                     HStack(spacing: Space.row) {
                         Text("Fans").font(Theme.font(.body)).foregroundStyle(Theme.dim)
+                        // Two fan speeds plus a unit is the longest string in this header, and it
+                        // wrapped at 130 % zoom. Row text shrinks; it never wraps.
                         Text(thermal.hasFans
                             ? thermal.fanRPMs.map { String(format: "%.0f", $0) }.joined(separator: " / ") + " rpm"
                             : "fanless")
                             .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
+                            .lineLimit(1).minimumScaleFactor(0.75)
                     }
                     Spacer()
                 }
