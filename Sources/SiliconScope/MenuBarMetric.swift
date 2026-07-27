@@ -214,7 +214,7 @@ enum MenuBarGlyph {
         let textW = ceil(label.size(withAttributes: attrs).width)
 
         // State badge (drawn to the left of the body).
-        let charge = NSColor(srgbRed: 0.36, green: 0.82, blue: 0.45, alpha: 1)
+        let charge = Palette.State.good.ns
         let badge: NSImage? = charging ? tintedSymbol("bolt.fill", color: charge, pointSize: 9)
             : (plugged ? tintedSymbol("powerplug.fill", color: ink.withAlphaComponent(0.8), pointSize: 8) : nil)
         let badgeW: CGFloat = badge.map { ceil($0.size.width) + 3 } ?? 0
@@ -240,7 +240,7 @@ enum MenuBarGlyph {
             let inner = body.insetBy(dx: 1.8, dy: 1.8)
             let low = !plugged && pct <= 20
             let fillColor: NSColor = charging ? charge
-                : (low ? NSColor(srgbRed: 0.92, green: 0.36, blue: 0.34, alpha: 1) : ink.withAlphaComponent(0.85))
+                : (low ? Palette.State.critical.ns : ink.withAlphaComponent(0.85))
             fillColor.setFill()
             NSBezierPath(roundedRect: NSRect(x: inner.minX, y: inner.minY,
                                              width: inner.width, height: max(1, inner.height * CGFloat(pct / 100))),
@@ -271,14 +271,16 @@ enum MenuBarGlyph {
 // MARK: - Shared palette + helpers
 
 enum MetricPalette {
-    static let eCPU  = NSColor(srgbRed: 0.95, green: 0.70, blue: 0.30, alpha: 1)  // E-cores amber
-    static let pCPU  = NSColor(srgbRed: 0.36, green: 0.62, blue: 0.98, alpha: 1)  // P-cores blue
-    static let gpu   = NSColor(srgbRed: 0.40, green: 0.82, blue: 0.55, alpha: 1)  // green
-    static let gpuMem = NSColor(srgbRed: 0.28, green: 0.74, blue: 0.95, alpha: 1) // GPU memory — sky cyan
-    static let media = NSColor(srgbRed: 0.98, green: 0.62, blue: 0.30, alpha: 1)  // orange
-    static let ane   = NSColor(srgbRed: 0.74, green: 0.53, blue: 0.99, alpha: 1)  // purple
-    static let down  = NSColor(srgbRed: 0.34, green: 0.74, blue: 0.62, alpha: 1)  // teal
-    static let up    = NSColor(srgbRed: 0.98, green: 0.62, blue: 0.30, alpha: 1)  // orange
+    // AppKit face of `Palette` — the glyphs are NSImage, the cards are SwiftUI, and both must be
+    // the same colour. Declaring them twice is how the memory bar ended up teal here and red there.
+    static let eCPU   = Palette.eCPU.ns
+    static let pCPU   = Palette.pCPU.ns
+    static let gpu    = Palette.gpu.ns
+    static let gpuMem = Palette.vram.ns
+    static let media  = Palette.flowOut.ns
+    static let ane    = Palette.ane.ns
+    static let down   = Palette.flowIn.ns
+    static let up     = Palette.flowOut.ns
     // SwiftUI mirrors for dropdown views.
     static var gpuC: Color { Color(nsColor: gpu) }
     static var gpuMemC: Color { Color(nsColor: gpuMem) }
@@ -605,17 +607,20 @@ struct MEMMenuDropdown: View {
     @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
     @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
-    private let wired = Color(red: 0.36, green: 0.62, blue: 0.98)       // blue
-    private let active = Color(red: 0.92, green: 0.38, blue: 0.34)      // red (iStat-style)
-    private let compressed = Color(red: 0.62, green: 0.55, blue: 0.95)  // purple
+    // The same ramp the dashboard's memory bar uses. These were blue / red / violet here and
+    // blue / teal / violet there — the same quantity, two different pictures, and the red one
+    // collided with the colour that means "critical" everywhere else.
+    private let wired = Palette.Memory.wired.color
+    private let active = Palette.Memory.active.color
+    private let compressed = Palette.Memory.compressed.color
     private let freeC = Color.white.opacity(0.12)
 
     var body: some View {
         let m = monitor.snapshot.memory
         let pressureColor: Color = switch m.pressure {
-            case .normal:   Color(red: 0.34, green: 0.74, blue: 0.49)   // green
-            case .warning:  Color(red: 0.87, green: 0.66, blue: 0.28)   // amber
-            case .critical: Color(red: 0.88, green: 0.37, blue: 0.37)   // red
+            case .normal:   Palette.State.calm.color
+            case .warning:  Palette.State.warn.color
+            case .critical: Palette.State.critical.color
         }
         VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("Memory")
@@ -686,7 +691,7 @@ struct NETMenuDropdown: View {
     @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
     @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
-    private let green = Color(red: 0.40, green: 0.82, blue: 0.55)
+    private let green = Palette.gpu.color
     var body: some View {
         let n = monitor.snapshot.network
         let ifaces = InterfaceSampler.sample()
@@ -749,7 +754,7 @@ struct SSDMenuDropdown: View {
     @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
     @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     let monitor: SiliconScopeMonitor
-    private let cyan = Color(red: 0.32, green: 0.82, blue: 0.86)
+    private let cyan = Palette.bandwidth.color
     var body: some View {
         let d = monitor.snapshot.disk
         let vols = VolumeSampler.sample()
@@ -872,17 +877,19 @@ struct SensorsMenuDropdown: View {
 struct SensorTempRow: View {
     let name: String, celsius: Double, fahrenheit: Bool
     var body: some View {
-        let heat = min(1, celsius / Theme.hotCelsius)
+        // Colour from the temperature BANDS; bar length from the 0…110 °C scale. Two different
+        // questions — "is this worth looking at" and "how far along the range is it".
+        let tint = Theme.heat(celsius: celsius)
         HStack(spacing: Space.card) {
             Text(name).font(Theme.font(.detail))
                 .foregroundStyle(Theme.dim).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 4)
             Text(formatTemperature(celsius, fahrenheit: fahrenheit))
                 .font(Theme.font(.detail, .strong))
-                .foregroundStyle(Theme.heat(heat)).frame(width: Layout.Column.sensorValue, alignment: .trailing)
+                .foregroundStyle(tint).frame(width: Layout.Column.sensorValue, alignment: .trailing)
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.06))
-                Capsule().fill(Theme.heat(heat)).frame(width: max(2, 60 * min(1, celsius / 110)))
+                Capsule().fill(tint).frame(width: max(2, 60 * min(1, celsius / 110)))
             }.frame(width: Layout.Column.sensorBar, height: Layout.Meter.bar)
         }
     }

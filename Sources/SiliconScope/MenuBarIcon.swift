@@ -42,12 +42,13 @@ struct MenuBarIcon: View {
     /// Per-metric bar colors (CPU / GPU / ANE / Media / MEM usage / Mem BW) — a fixed
     /// legend the dropdown mirrors, so the glyph is self-documenting.
     static let barColors: [NSColor] = [
-        NSColor(srgbRed: 0.36, green: 0.62, blue: 0.98, alpha: 1),  // CPU    blue
-        NSColor(srgbRed: 0.40, green: 0.82, blue: 0.55, alpha: 1),  // GPU    green
-        NSColor(srgbRed: 0.74, green: 0.53, blue: 0.99, alpha: 1),  // ANE    purple
-        NSColor(srgbRed: 0.98, green: 0.62, blue: 0.30, alpha: 1),  // Media  orange
-        NSColor(srgbRed: 0.93, green: 0.46, blue: 0.66, alpha: 1),  // MEM    pink
-        NSColor(srgbRed: 0.32, green: 0.82, blue: 0.86, alpha: 1),  // Mem BW cyan
+        // The six that must stay apart at 18 pt — this glyph is what sets the palette's size.
+        Palette.pCPU.ns,       // CPU
+        Palette.gpu.ns,        // GPU
+        Palette.ane.ns,        // ANE
+        Palette.flowOut.ns,    // Media
+        Palette.memory.ns,     // MEM
+        Palette.bandwidth.ns,  // Mem BW
     ]
 
     /// The 6 bar fractions + alert/blink state that determine the glyph's pixels — shared by

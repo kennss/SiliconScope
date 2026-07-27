@@ -31,9 +31,9 @@ enum Theme {
     /// temperature colour and the Sensors trend axis agree instead of each carrying a literal.
     static let hotCelsius: Double = 100
 
-    /// Load → green/amber/red. SiliconScope carries colour in exactly THREE channels, and this
-    /// ramp is legitimate in each — but only when chosen, never as a fallback for an omitted
-    /// argument (docs/design-system.md §5.4):
+    /// Load → the state ramp. SiliconScope carries colour in exactly THREE channels, and this ramp
+    /// is legitimate in each — but only when chosen, never as a fallback for an omitted argument
+    /// (docs/design-system.md §5.4):
     ///
     /// - **fill** — a meter's filled length (`Bar(encoding: .state)`, the memory-pressure strip).
     ///   Only where the metric has no identity colour, or where the state *is* the identity.
@@ -42,12 +42,119 @@ enum Theme {
     /// - **text** — a value's foreground (process CPU %, sensor temperature, low battery). Often
     ///   the only channel available: a 5 pt capsule cannot carry a legible border, and the 18 pt
     ///   menu-bar glyph's badge slot is already spent on charge state.
+    ///
+    /// ⚠️ The low band is **neutral, not green** — see `Palette.State.calm`.
+    ///
+    /// ⚠️ Do NOT feed a temperature through this by dividing by `hotCelsius`: see `heat(celsius:)`.
     static func heat(_ fraction: Double) -> Color {
         switch fraction {
-        case ..<0.55: return Color(red: 0.34, green: 0.74, blue: 0.49)
-        case ..<0.82: return Color(red: 0.87, green: 0.66, blue: 0.28)
-        default:      return Color(red: 0.88, green: 0.37, blue: 0.37)
+        case ..<0.55: return Palette.State.calm.color
+        case ..<0.82: return Palette.State.warn.color
+        default:      return Palette.State.critical.color
         }
+    }
+}
+
+extension Theme {
+    /// Temperature → the state ramp, on the silicon's own scale.
+    ///
+    /// ⚠️ Routing °C through `heat(_:)` as `celsius / hotCelsius` put the amber band at **55 °C**.
+    /// An Apple-Silicon die idles in the 40s and works comfortably into the 70s, so a perfectly
+    /// healthy Mac showed every sensor in warning colour — which was invisible while "calm" was
+    /// also a colour, and obvious the moment it became neutral. These are the temperatures at
+    /// which a reading is worth a second look, not a linear share of a reference.
+    ///
+    /// `hotCelsius` stays what it is: the axis a temperature TREND is drawn against (headroom),
+    /// which is a different question from when to raise the colour.
+    static func heat(celsius: Double) -> Color {
+        switch celsius {
+        case ..<80:  return Palette.State.calm.color
+        case ..<95:  return Palette.State.warn.color
+        default:     return Palette.State.critical.color
+        }
+    }
+}
+
+// MARK: - Palette
+
+/// One colour, defined once, usable from both toolkits.
+///
+/// The menu-bar glyphs are AppKit (`NSImage`/`NSColor`) and everything else is SwiftUI, so every
+/// colour used to exist twice — as a `Color` literal in a view and an `NSColor` literal in a glyph.
+/// They drifted: the memory composition bar was blue/**teal**/violet on the dashboard and
+/// blue/**red**/violet in the dropdown, and red means "critical" everywhere else in the app.
+struct Ink {
+    let r, g, b: Double
+    init(_ r: Double, _ g: Double, _ b: Double) { (self.r, self.g, self.b) = (r, g, b) }
+    var color: Color { Color(red: r, green: g, blue: b) }
+    var ns: NSColor { NSColor(srgbRed: r, green: g, blue: b, alpha: 1) }
+}
+
+/// The app's colours, by MEANING. Nothing outside this enum may declare one.
+///
+/// The census that prompted it found **26 distinct literals**, of which 5 pairs differed by 2–8 %
+/// while meaning different things (three greens: GPU, "temperature fine", "charging"; two oranges
+/// 3 % apart both meaning upload) and one hue carried four unrelated meanings. That is not "too
+/// colourful" — it is the absence of a palette, which is the one token group the design-system
+/// pass never defined (§3 did type, §3.2 space, §3.4 layout, §5.4 encoding — never the hues).
+///
+/// **Rules**
+/// 1. One hue per subsystem. The most constrained surface sets the size of the set: the combined
+///    "SS" glyph shows six series side by side, so six must be distinguishable at 18 pt.
+/// 2. A composition is ONE hue in steps, never a rainbow — the parts belong to one quantity.
+/// 3. State colours are reserved. No identity colour may sit in the state family, because a green
+///    that also means "GPU" cannot mean "fine".
+enum Palette {
+
+    // MARK: Identity — what a series IS
+
+    /// Efficiency cores. Yellower than `media` so the two ambers separate at glyph size.
+    static let eCPU      = Ink(0.95, 0.74, 0.34)
+    /// Performance cores, and the CPU subsystem generally.
+    static let pCPU      = Ink(0.36, 0.62, 0.98)
+    static let gpu       = Ink(0.40, 0.82, 0.55)
+    /// GPU-resident memory. Sky, between the GPU's green and the CPU's blue.
+    static let vram      = Ink(0.28, 0.74, 0.95)
+    static let ane       = Ink(0.74, 0.53, 0.99)
+    /// Main memory as a subsystem — its trend, its sensor group, its composition ramp.
+    static let memory    = Ink(0.93, 0.46, 0.66)
+    /// Memory bandwidth: a rate THROUGH memory, so it is its own colour rather than a step of
+    /// `memory` — the combined glyph shows both at once.
+    static let bandwidth = Ink(0.32, 0.82, 0.86)
+
+    /// Inbound flow: download, disk read.
+    static let flowIn    = Ink(0.34, 0.74, 0.62)
+    /// Outbound flow and throughput: upload, disk write — and the Media Engine, which is
+    /// throughput too. One orange, one meaning, instead of two that differed by 3 %.
+    static let flowOut   = Ink(0.97, 0.60, 0.28)
+
+    // MARK: Composition — one quantity, subdivided
+
+    /// Memory composition, darkest (least reclaimable) to lightest. Rule 2: three steps of
+    /// `memory`, not three unrelated identities, so the bar reads as 64 GB divided rather than as
+    /// four things that happen to be adjacent.
+    enum Memory {
+        static let wired      = Ink(0.72, 0.28, 0.48)
+        static let active     = Ink(0.93, 0.46, 0.66)
+        static let compressed = Ink(0.97, 0.72, 0.83)
+        /// Free space is an absence — neutral, never a hue.
+        static var free: Color { Color.white.opacity(0.10) }
+    }
+
+    // MARK: State — how something IS DOING
+
+    /// Reserved family. Rule 3: nothing above may land here.
+    enum State {
+        /// **Not green.** "Everything is fine" is the default condition of a monitor, so painting
+        /// it green fills the screen with colour that carries no information — and it made green
+        /// mean GPU, memory-active, charging and "fine" at once. Neutral here means amber and red
+        /// are the only colours that ever ask for attention.
+        static let calm     = Ink(0.52, 0.55, 0.60)
+        static let warn     = Ink(0.87, 0.66, 0.28)
+        static let critical = Ink(0.88, 0.37, 0.37)
+        /// The one place "good" is worth saying out loud: charging. Muted, and kept away from
+        /// `gpu` green.
+        static let good     = Ink(0.36, 0.72, 0.48)
     }
 }
 
@@ -502,10 +609,10 @@ extension AIRuntimeKind {
 extension SensorCategory {
     var color: Color {
         switch self {
-        case .cpu:     return Color(red: 0.36, green: 0.62, blue: 0.98)   // blue, as in the CPU card
-        case .gpu:     return Color(red: 0.40, green: 0.82, blue: 0.55)   // green, as in the GPU card
-        case .memory:  return Color(red: 0.66, green: 0.60, blue: 0.96)   // violet, as in the memory trend
-        case .battery: return Color(red: 0.95, green: 0.70, blue: 0.30)   // amber
+        case .cpu:     return Palette.pCPU.color
+        case .gpu:     return Palette.gpu.color
+        case .memory:  return Palette.memory.color
+        case .battery: return Palette.eCPU.color
         case .other:   return Theme.dim
         }
     }
@@ -593,15 +700,17 @@ struct Card<Content: View, Graph: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.hair) {
             HStack(spacing: Space.row) {
-                // Accent, held back. Every card title was `Theme.faint` — the same grey as a
-                // footnote — so nothing separated a card's name from its smallest print (§5.1).
-                // The dropdowns already resolve this with `MenuSectionHeader`'s full accent; a
-                // dashboard shows eight titles at once, so it takes the same hue at lower
-                // intensity rather than eight saturated headers.
+                // Neutral, one step brighter than a footnote — NOT the accent.
+                //
+                // §5.1's fix was "accent at reduced opacity", and it worked in isolation: it
+                // separated a card's name from its smallest print. But once the palette gave blue
+                // a meaning (the CPU subsystem), eight blue headers competed with the data for the
+                // one hue that says "CPU". Colour belongs to the readings; a title earns its rank
+                // from weight, tracking and brightness, which is what `dim` over `faint` gives it.
                 Text(title.uppercased())
                     .font(Theme.font(.sectionMajor))
                     .tracking(Theme.tracking(.sectionMajor))
-                    .foregroundStyle(Theme.accent.opacity(0.70))
+                    .foregroundStyle(Theme.dim)
                 Spacer(minLength: 0)
                 if let pin = menuBarPin { MenuBarPin(isOn: pin) }
             }

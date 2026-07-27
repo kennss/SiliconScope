@@ -119,7 +119,7 @@ struct InspectorView: View {
                    valueColor: Theme.accent)
                 KV(key: "Instructions/s", value: si(d.instructionsPerSec))
                 KV(key: "Cycles/s", value: si(d.cyclesPerSec))
-                Sparkline(h.ipc, color: Color(red: 0.74, green: 0.53, blue: 0.99), role: .inline(height: Layout.Meter.sparkline))
+                Sparkline(h.ipc, color: Palette.ane.color, role: .inline(height: Layout.Meter.sparkline))
             }
         }
         Card(title: "Energy") {
@@ -127,14 +127,14 @@ struct InspectorView: View {
                 KV(key: "Power", value: d.powerWatts.map { String(format: "%.2f W", $0) } ?? "—",
                    valueColor: Theme.accent)
                 KV(key: "Wakeups/s", value: d.wakeupsPerSec.map { String(format: "%.0f", $0) } ?? "—")
-                Sparkline(h.power, color: Color(red: 0.98, green: 0.62, blue: 0.30), role: .inline(height: Layout.Meter.sparkline))
+                Sparkline(h.power, color: Palette.flowOut.color, role: .inline(height: Layout.Meter.sparkline))
             }
         }
         Card(title: "Memory") {
             VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "Footprint", value: bytes(d.memoryBytes))
                 KV(key: "Resident", value: bytes(d.residentBytes))
-                Sparkline(h.memory, color: Color(red: 0.93, green: 0.46, blue: 0.66), role: .inline(height: Layout.Meter.sparkline))
+                Sparkline(h.memory, color: Palette.memory.color, role: .inline(height: Layout.Meter.sparkline))
             }
         }
         Card(title: "Neural Engine (ANE)") {

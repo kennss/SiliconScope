@@ -383,7 +383,7 @@ private struct WarningBanner: View {
                         .help("Dismiss until it clears")
                     }
                 }
-                .foregroundStyle(critical ? Color(red: 1, green: 0.7, blue: 0.7) : Color(red: 1, green: 0.85, blue: 0.6))
+                .foregroundStyle(critical ? Palette.State.critical.color : Palette.State.warn.color)
                 .padding(.horizontal, Space.section).padding(.vertical, Space.row)
                 .background {
                     // Opaque base so the floating banner cleanly covers the header behind it
@@ -419,9 +419,13 @@ private struct AIWorkloadCard: View {
     @State private var pendingKill: ProcessRow?
     @State private var pendingForce = false
 
-    private let alertColor  = Color(red: 0.88, green: 0.37, blue: 0.37)   // red — throttle / swapping
-    private let amberColor  = Color(red: 0.87, green: 0.66, blue: 0.28)   // amber — pressure
-    private var activeColor: Color { MetricPalette.gpuC }    // green — busy/normal-active
+    private let alertColor  = Palette.State.critical.color   // throttle / swapping
+    private let amberColor  = Palette.State.warn.color       // pressure
+    // Rule 1: an engine that is working lights up in ITS OWN colour. Using GPU green for "CPU
+    // Active" made green mean both "the GPU" and "busy", which is the collision the palette exists
+    // to prevent — and per-subsystem colour says more, not less.
+    private var cpuActiveColor: Color { Palette.pCPU.color }
+    private var gpuActiveColor: Color { Palette.gpu.color }
     private var aneColor: Color    { MetricPalette.aneC }    // purple — ANE
     private var mediaColor: Color  { MetricPalette.mediaC }  // orange — media engine
 
@@ -433,9 +437,9 @@ private struct AIWorkloadCard: View {
     // below (light desktop GPU at ~idle watts must read Idle here, exactly as it does there).
     private var aiVerdict: (Color, String) {
         if snapshot.power.aneWatts > 1.5 { return (aneColor, "ANE (CoreML)") }
-        if snapshot.aiModelActive        { return (activeColor, "LLM (GPU/Metal)") }
+        if snapshot.aiModelActive        { return (gpuActiveColor, "LLM (GPU/Metal)") }
         if snapshot.gpuComputeBusy {
-            return (activeColor, snapshot.bandwidth.mediaGBs > 0.5 ? "GPU active — incl. video" : "GPU active")
+            return (gpuActiveColor, snapshot.bandwidth.mediaGBs > 0.5 ? "GPU active — incl. video" : "GPU active")
         }
         return (Theme.dim, "Idle")
     }
@@ -444,7 +448,7 @@ private struct AIWorkloadCard: View {
     // element — describe the driver, and let the user act on it if they choose (never judge/suggest).
     private var cpuState: (Color, String) {
         if cpuThrottling { return (alertColor, "Throttled") }
-        if snapshot.cpu.pUsage > 0.5 || snapshot.cpu.eUsage > 0.7 { return (activeColor, "Active") }
+        if snapshot.cpu.pUsage > 0.5 || snapshot.cpu.eUsage > 0.7 { return (cpuActiveColor, "Active") }
         return (Theme.dim, "Idle")
     }
 
@@ -458,7 +462,7 @@ private struct AIWorkloadCard: View {
                     String(format: "%.0f MHz · −%.0f%%", snapshot.gpu.freqMHz, gpuClockDrop * 100))
         }
         if snapshot.gpuComputeBusy {
-            return (activeColor, "active",
+            return (gpuActiveColor, "active",
                     String(format: "%.0f%% · %.1f W", snapshot.gpu.usagePercent, snapshot.power.gpuWatts))
         }
         return (Theme.dim, "idle", "")
@@ -494,7 +498,10 @@ private struct AIWorkloadCard: View {
                 // ceiling without genuinely reflecting it — label it as an estimate rather than
                 // assert precision the reading doesn't have.
                 let label = snapshot.bandwidth.isEstimated ? "Bandwidth-bound (est.)" : "Bandwidth-bound"
-                return (activeColor, label, "near memory-BW ceiling")
+                // Names the resource that is the limit, so it takes the bandwidth subsystem's
+                // colour — not a warning colour. Being bandwidth-bound is a fact about the
+                // workload, not a fault to flag.
+                return (Palette.bandwidth.color, label, "near memory-BW ceiling")
             }
             let swapGB = Double(snapshot.memory.swapUsedBytes) / 1_073_741_824
             return (Theme.dim, "Normal", swapGB >= 0.5 ? String(format: "swap %.1f GB", swapGB) : "")
@@ -805,7 +812,7 @@ private struct CPUCard: View {
 
     private let eColor = Color(nsColor: MetricPalette.eCPU)   // amber
     private let pColor = Color(nsColor: MetricPalette.pCPU)   // blue
-    private let alertColor = Color(red: 0.88, green: 0.37, blue: 0.37)
+    private let alertColor = Palette.State.critical.color
 
     private var pMaxMHz: Double { topology?.pFreqsMHz.max() ?? 0 }
 
@@ -852,7 +859,7 @@ private struct AcceleratorCard: View {
 
     var body: some View {
         Card(title: "GPU / Media / Neural Engine", menuBarPin: menuBarItems.pin(.gpu),
-             alert: throttling ? Color(red: 0.88, green: 0.37, blue: 0.37) : nil) {
+             alert: throttling ? Palette.State.critical.color : nil) {
             Bar(label: "GPU", value: gpu.usage,
                 detail: String(format: "%.0f%%  %.1f W  %.0f MHz", gpu.usagePercent, power.gpuWatts, gpu.freqMHz),
                 encoding: .identity(gpuColor))
@@ -885,20 +892,22 @@ private struct MemoryBandwidthCard: View {
 
     /// Identity colour of the bandwidth series — shared by the "Total" bar and the "BW" trace so
     /// the two readings of the same metric are recognisably one thing.
-    static let bandwidthColor = Color(red: 0.42, green: 0.66, blue: 0.95)
+    static let bandwidthColor = Palette.bandwidth.color
     /// Identity colour of the memory-used series, shared the same way with the "Mem" trace.
-    static let memoryTrendColor = Color(red: 0.66, green: 0.60, blue: 0.96)
+    static let memoryTrendColor = Palette.memory.color
 
-    private let wiredColor = Color(red: 0.36, green: 0.62, blue: 0.98)
-    private let activeColor = Color(red: 0.34, green: 0.74, blue: 0.62)
-    private let compressedColor = Color(red: 0.62, green: 0.55, blue: 0.95)
-    private let freeColor = Color.white.opacity(0.10)
+    // Rule 2: one hue in steps. Four unrelated identities for four parts of ONE 64 GB quantity is
+    // why this legend was the hardest thing on the dashboard to read.
+    private let wiredColor = Palette.Memory.wired.color
+    private let activeColor = Palette.Memory.active.color
+    private let compressedColor = Palette.Memory.compressed.color
+    private let freeColor = Palette.Memory.free
 
     private var pressureColor: Color {
         switch memory.pressure {
-        case .normal:   return Color(red: 0.34, green: 0.74, blue: 0.49)
-        case .warning:  return Color(red: 0.87, green: 0.66, blue: 0.28)
-        case .critical: return Color(red: 0.88, green: 0.37, blue: 0.37)
+        case .normal:   return Palette.State.calm.color
+        case .warning:  return Palette.State.warn.color
+        case .critical: return Palette.State.critical.color
         }
     }
 
@@ -907,8 +916,8 @@ private struct MemoryBandwidthCard: View {
     private var alertColor: Color? {
         switch memory.pressure {
         case .normal:   return nil
-        case .warning:  return Color(red: 0.87, green: 0.66, blue: 0.28)
-        case .critical: return Color(red: 0.88, green: 0.37, blue: 0.37)
+        case .warning:  return Palette.State.warn.color
+        case .critical: return Palette.State.critical.color
         }
     }
 
@@ -1027,8 +1036,8 @@ private struct NetworkDiskCard: View {
 
     // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
     @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
-    private let downColor = Color(red: 0.34, green: 0.74, blue: 0.62)
-    private let upColor = Color(red: 0.95, green: 0.62, blue: 0.30)
+    private let downColor = Palette.flowIn.color
+    private let upColor = Palette.flowOut.color
 
     var body: some View {
         Card(title: "Network & Disk") {
@@ -1175,7 +1184,7 @@ private struct SensorGroupRow: View {
                         Spacer(minLength: 4)
                         Text(formatTemperature(sensor.celsius, fahrenheit: fahrenheit))
                             .font(Theme.font(.detail, .strong))
-                            .foregroundStyle(Theme.heat(min(1, sensor.celsius / Theme.hotCelsius)))
+                            .foregroundStyle(Theme.heat(celsius: sensor.celsius))
                     }
                 }
             }
@@ -1192,7 +1201,7 @@ private struct SensorGroupRow: View {
                 Spacer()
                 Text("avg \(formatTemperature(group.average, fahrenheit: fahrenheit)) · max \(formatTemperature(group.maximum, fahrenheit: fahrenheit))")
                     .font(Theme.font(.detail))
-                    .foregroundStyle(Theme.heat(min(1, group.maximum / Theme.hotCelsius)))
+                    .foregroundStyle(Theme.heat(celsius: group.maximum))
             }
         }
         .tint(Theme.dim)
@@ -1273,7 +1282,7 @@ private struct ProcessCard: View {
                                     if allowKill && hoveredPID == process.pid {
                                         Button { pendingKill = process; pendingForce = false } label: {
                                             Image(systemName: "xmark.circle.fill").font(.system(size: Icon.large))
-                                                .foregroundStyle(Color(red: 0.88, green: 0.37, blue: 0.37))
+                                                .foregroundStyle(Palette.State.critical.color)
                                         }
                                         .buttonStyle(.plain)
                                         .help("Kill \(process.name)")

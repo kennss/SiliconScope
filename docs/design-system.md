@@ -4,7 +4,7 @@
 > consistency)** with one system rather than two patches.
 >
 > **Status (2026-07-27): the pass is complete — phases 0 through 5 are shipped in the working
-> tree, closing #19, #27 and the "make it read like an instrument" requests.** Each build
+> tree, plus the palette (§6), closing #19, #27 and the "make it read like an instrument" requests.** Each build
 > corrected its own section: 4a corrected §4.2 (a mode needs a renderer, not only a series), 4b
 > corrected §4.6 (a hardcoded label width was clipping shipped glyphs at every zoom step above
 > 100 %), and 5 corrected §5.2 (see the correction there).
@@ -13,7 +13,7 @@
 > (fact-check + adversarial design review) and failed on five blockers. This revision records
 > what was wrong, because the failures are the useful part: they are all cases where the obvious
 > design contradicts code that already exists for a documented reason. Settled decisions are
-> collected in §7. In-app text stays English.
+> collected in §8. In-app text stays English.
 >
 > iStat Menus 7 was studied for **structure**, deliberately not for **look** — see §2.
 
@@ -451,6 +451,12 @@ Five items, corrected against the source. All are hierarchy problems; none needs
    ⚠️ **Dropdowns already do this**: `MenuSectionHeader` is already `Theme.accent`
    (`MenuBarMetric.swift:369`). This fix applies to the dashboard only.
 
+   #### ⚠️ Reversed in §6 — titles are neutral, one step brighter
+   Accent titles were right in isolation and wrong once the palette gave blue a MEANING. Eight
+   accent-blue headers competed with the data for the one hue that says "CPU subsystem". Colour
+   belongs to the readings; a title takes its rank from weight, tracking and `dim`-over-`faint`
+   brightness, which solves the original "all one grey" complaint without spending a hue.
+
 2. **Values are typeset *below* their labels.** v1 said "same size"; in fact `Bar` draws label 11
    / detail **10.5** (`Theme.swift:181,185`), so `961 MHz` and `2.7 W` are a step *smaller* than
    their labels — the problem is worse than stated. Only a few values are promoted to 12 medium
@@ -508,7 +514,56 @@ Five items, corrected against the source. All are hierarchy problems; none needs
 
 ---
 
-## 6. Migration order
+## 6. Part D — Palette (added 2026-07-27)
+
+The pass systematised type (§3.1), space (§3.2), layout (§3.4) and colour **encoding** (§5.4 —
+whether a colour means identity or state). It never defined **which colours exist**. A census found
+the cost:
+
+| | Finding |
+|---|---|
+| Distinct colour literals | **26** across 5 files (6 of them structural: bg/panel/text/dim/faint/accent) |
+| Near-duplicates | 3 greens (GPU · "temperature fine" · charging), 5 ambers, 3 violets, 3 reds, 2 blues — several **2–8 % apart while meaning different things** |
+| Worst pair | `media` `(0.98,0.62,0.30)` vs `upColor` `(0.95,0.62,0.30)` — 3 % apart, same meaning, different files |
+| Cross-surface drift | The memory composition bar was blue/**teal**/violet on the dashboard and blue/**red**/violet in the dropdown. Red means *critical* everywhere else |
+| Overloaded hue | Green meant GPU, memory-Active, charging and "fine" — so green meant nothing |
+
+**It was never "too colourful". There was no palette** — every colour was chosen at a call site,
+and SwiftUI views and AppKit glyphs each declared their own copy, which is how the same bar ended
+up two different pictures.
+
+### 6.1 Rules
+
+1. **One hue per subsystem.** The most constrained surface sets the size of the set: the combined
+   "SS" glyph shows six series side by side, so six must separate at 18 pt. That fixes the palette
+   at CPU-blue, GPU-green, ANE-violet, Media-orange, memory-pink, bandwidth-cyan, plus E-core
+   amber, VRAM sky and the flow pair.
+2. **A composition is one hue in steps, never a rainbow.** Wired/Active/Compressed are three parts
+   of ONE 64 GB quantity; as three unrelated identities the legend was the hardest thing on the
+   dashboard to read. Free is neutral — an absence is not a hue.
+3. **State colours are reserved.** No identity colour may land in the state family, and
+   **"fine" is neutral, not green**. A monitor is mostly fine, so painting that green fills the
+   screen with colour carrying no information; neutral makes amber and red the only colours that
+   ever ask for attention. `Palette.State.good` survives for the one place "good" is worth saying
+   out loud — charging.
+
+`Ink` holds each colour once and exposes both `Color` and `NSColor`, so a glyph and a card cannot
+disagree again. After the pass, **6 colour literals remain in the app** — the structural ones.
+
+### 6.2 Two defects the palette exposed
+
+- **55 °C read as a warning.** Temperature went through `heat(_:)` as `celsius / hotCelsius`, so
+  the amber band began at 55 °C — and an Apple-Silicon die idles in the 40s and works into the 70s.
+  Invisible while "calm" was itself a colour; obvious the moment it went neutral. `heat(celsius:)`
+  now bands at 80 / 95 °C. `hotCelsius` keeps its job: the axis a temperature TREND is drawn
+  against, which is headroom, not alarm.
+- **Rule 3 was being broken in the other direction.** `activeColor` used GPU green as a generic
+  "busy" state, so *"CPU Active"* was green. Each engine now lights up in its own colour — more
+  information, not less.
+
+---
+
+## 7. Migration order
 
 | Phase | Work | Visual change | Risk |
 |---|---|---|---|
@@ -529,12 +584,12 @@ but **not all**, and there is **no UI test target** with which to prove a no-op 
 with a screenshot re-baseline**, not a silent refactor. That is also why 4a puts the migration
 logic in Core: it is the only part of Part B that *can* be tested.
 
-`#19` closes at phase 3, `#27` at phase 4b, and phase 5 is what the "make it pretty like iStat
-Menus" requests were actually asking for.
+`#19` closes at phase 3, `#27` at phase 4b, phase 5 is what the "make it pretty like iStat
+Menus" requests were actually asking for — and §6 is what "the colours are too motley" was.
 
 ---
 
-## 7. Decisions and open questions
+## 8. Decisions and open questions
 
 ### Decided
 - **D1 · Dynamic Type (§3.5, 2026-07-27)** — not tracked. `ui.zoom` is the only scale axis,
