@@ -381,8 +381,13 @@ two people measured their own hardware carefully enough that nothing had to be g
 
 And parts of the app are other people's work outright:
 
-- **[@durul](https://github.com/durul)** — the AI-workload bottleneck classifier, the GPU throttle
-  detector and compact GPU menu-bar mode; also the local app-bundle build script.
+- **[@durul](https://github.com/durul)** — **named this project.** It shipped as "WhisPlayInfo",
+  a companion utility's name for something that had already outgrown it; he proposed
+  **SiliconScope** in [#4](https://github.com/kennss/SiliconScope/issues/4), argued it from what the
+  app actually is, and it has been the name ever since. He also wrote the AI-workload bottleneck
+  classifier, the GPU throttle detector and compact GPU menu-bar mode
+  ([#2](https://github.com/kennss/SiliconScope/pull/2)) — the bottleneck verdict on the dashboard is
+  his — plus the local app-bundle build script ([#3](https://github.com/kennss/SiliconScope/pull/3)).
 - **[@davidarny](https://github.com/davidarny)** — unified the popover action buttons into one
   style, made Settings focus when opened from a popover, inset the app icon to Apple's grid, and
   fixed Sparkle embedding in the dev build ([#7](https://github.com/kennss/SiliconScope/pull/7),
