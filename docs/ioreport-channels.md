@@ -138,6 +138,64 @@ machine uses the classic `AMC Stats` path or this `PMP`/`DCS BW` fallback — it
 actually subscribable), plus `sysctl hw.model machdep.cpu.brand_string` and the macOS build
 (`sw_vers`).
 
+### M5 Max / macOS 26.5.2 — a chip with **no Efficiency cores**, and rails renamed to match
+
+Measured on real hardware by [@ben0112](https://github.com/ben0112) ([#30](https://github.com/kennss/SiliconScope/issues/30)),
+each experiment repeated three times. This project owns no M5; everything below is his.
+
+**Perf levels.** `hw.perflevel0.name` = **`Super`** (6 logical), `hw.perflevel1.name` =
+**`Performance`** (12). There is no Efficiency level at all, so any rule that infers "the other one
+is E" produces a wrong label — and any rule that infers the *order* from the tier produces a wrong
+usage split.
+
+**Device tree** (`IODeviceTree` `cpuN` nodes) — three 6-core clusters, and the **top tier is last**:
+
+| CPUs | cluster | `cluster-type` | perf level |
+|---|---|---|---|
+| cpu0–5 | 0 | `M` | 1 — Performance (`MCPU0`) |
+| cpu6–11 | 1 | `M` | 1 — Performance (`MCPU1`) |
+| cpu12–17 | 2 | `P` | 0 — **Super** (`PCPU`) |
+
+Two consequences worth keeping: cluster **sizes alone cannot identify a level** here (6+6+6 has
+several groupings summing to 12), so `cluster-type` is what disambiguates; and the type letters
+line up exactly with the Energy Model rail prefixes (`M` ↔ `MCPU*`, `P` ↔ `PCPU`/`PACC_*`), an
+independent cross-check of the rail mapping below.
+
+**Energy Model rails carry no `_CPU` suffix**, unlike M1–M4 (`EACC_CPU` / `PACC0_CPU`):
+
+| Rail | Meaning |
+|---|---|
+| `PCPU` | perflevel 0 (Super) cluster total |
+| `PACC_0…5` | its six per-core rails |
+| `MCPU0`, `MCPU1` | perflevel 1 (Performance) cluster totals |
+| `PCPM`, `MCPM0/1` | fabric — **not** clusters |
+
+Only the cluster totals are summed; adding the per-core family double-counts (on M1 Max,
+`PACC0_CPU` reads 5.9 W beside four cores at 1.0–1.5 W each). Verified against direct rail
+readings: Super under a 6-thread default-QoS load = 14.5–14.8 W in-app vs 13.8–14.3 W measured on
+`PCPU` alone, with SoC totals consistent.
+
+**`CPU Stats` residency channels** are `PCPU` (level 0) and `MCPU0`/`MCPU1` (level 1) — not `ECPU`.
+
+**DVFS tables** under `AppleARMIODevice`, in **KHz** as on M4:
+
+| Key | Steps | Range | Cluster |
+|---|---|---|---|
+| `voltage-states5-sram` | 20 | 1308–4608 MHz | Super (level 0) |
+| `voltage-states22-sram` | 15 | 1344–4380 MHz | Performance `MCPU0` |
+| `voltage-states23-sram` | 15 | 1344–4380 MHz | Performance `MCPU1` (identical twin) |
+| `voltage-states9(-sram)` | 14 | 338–1620 MHz | GPU |
+| `voltage-states1*` | — | — | **absent** — the source of "E-cores @ 0 MHz" |
+
+Level 0 is `5-sram` on every chip measured so far (M1 and M5 alike), but level 1 has no stable
+key — `1-sram` on M1, `22/23-sram` here — so the reader tries candidates and takes the first
+non-empty one. `sscope-cli --cpu-debug` prints every table present for exactly this reason.
+
+**Bandwidth / Media** follow the M4 Max fallback above with the group renamed `PMP` → `PMP0`
+(resolved across `PMP`/`PMP0`/`PMP1`), plus `MACC*` → CPU and `AVD`/`AVE` → media classification.
+**ANE** subscribes normally: looped Vision OCR held `Energy Model | ANE` at 0.44–0.54 W and
+dropped below 0.03 W immediately after.
+
 ## Non-IOReport sources
 
 - **Topology:** sysctl `hw.perflevel0` (= Performance / P), `hw.perflevel1` (= Efficiency / E).
