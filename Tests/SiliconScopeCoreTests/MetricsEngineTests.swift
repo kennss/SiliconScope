@@ -87,10 +87,26 @@ final class MetricsEngineTests: XCTestCase {
         let e = MetricsEngine(topology: nil)
         e.ingest(snap(gpuFreq: 1000, gpuUsage: 0.5), dt: 1)   // sets peak 1000, not throttling
         XCTAssertFalse(e.gpuThrottling)
+
+        // ⚠️ A clock below the peak under thermal pressure is NOT enough on its own — this fixture
+        // used to assert that it was. Throttling is demand without response, so the snapshot has to
+        // carry the demand too: a hot die and a GPU actually drawing power. Without them this is
+        // indistinguishable from a machine cooling down, which is the false positive that put a red
+        // border on both cards of an idle Mac.
         var hot = snap(gpuFreq: 500, gpuUsage: 0.5)           // 500 < 0.85*~999
         hot.thermal.pressure = .critical
+        hot.temperature.gpuCelsius = 98
+        hot.power.gpuWatts = 30
         e.ingest(hot, dt: 1)
         XCTAssertTrue(e.gpuThrottling)
+
+        // The same clock and pressure on a cool, idle GPU: not throttling.
+        var cool = snap(gpuFreq: 500, gpuUsage: 0.5)
+        cool.thermal.pressure = .critical
+        cool.temperature.gpuCelsius = 55
+        cool.power.gpuWatts = 0.4
+        e.ingest(cool, dt: 1)
+        XCTAssertFalse(e.gpuThrottling)
     }
 
     // Active swap-out → memory risk escalates to .swapping.

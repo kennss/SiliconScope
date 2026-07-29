@@ -137,9 +137,48 @@ public final class MetricsEngine {
 
     /// True when the GPU clock is held well below its rolling peak while the GPU is active and
     /// thermal pressure has risen above nominal — i.e. thermal throttling.
+    /// Temperatures at which an Apple-Silicon die is worth a second look. One definition, used by
+    /// the throttle detectors here and by the UI's temperature colours — two copies of a number
+    /// like this drift, and then the app disagrees with itself about what "hot" means.
+    ///
+    /// These are not a linear share of anything: the die idles in the 40s and works comfortably
+    /// into the 70s, so 80 °C is where a reading starts to mean something and 95 °C is where it is
+    /// the story.
+    public enum Thermal {
+        public static let warnCelsius: Double = 80
+        public static let criticalCelsius: Double = 95
+    }
+
+    /// The hottest CPU-side reading available. `cpuMaxCelsius` is the per-core maximum where the
+    /// machine reports one; `cpuCelsius` is the average fallback.
+    static func dieCelsius(_ s: SystemSnapshot) -> Double {
+        max(s.temperature.cpuMaxCelsius, s.temperature.cpuCelsius)
+    }
+
+    /// True when the GPU's clock is held below its rolling peak **while the GPU is actually hot and
+    /// doing work** — i.e. thermal throttling.
+    ///
+    /// ⚠️ The heat condition is the DIE TEMPERATURE, not `thermal.pressure` alone. Pressure is
+    /// macOS's lagging aggregate: it stays `fair` for a while after a heavy run ends, with the fans
+    /// still at 3400 rpm — and in that window the GPU has already dropped to its minimum clock
+    /// because nothing is asking for performance. All three of the old conditions were then true
+    /// and both cards outlined red on an idle machine.
+    ///
+    /// Measured, the two cases separate cleanly on temperature and not on utilisation: cooling-down
+    /// read 63 % at 0.4 W and 57 °C, a genuine throttle read 97 % at 39 W and 100 °C. **Utilisation
+    /// is not demand** — 0.4 W is not a GPU being held back — which is why the GPU's own reading is
+    /// checked against power as well.
+    ///
+    /// Throttling is demand without response. The clock test is the missing response; heat and
+    /// power are the demand.
     public static func gpuThrottling(latest: SystemSnapshot, gpuClockPeakMHz: Double) -> Bool {
         guard gpuClockPeakMHz > 0 else { return false }
-        return latest.gpu.usage > 0.3
+        // The GPU sensor is absent on some machines — fall back to the die, which is still evidence
+        // of heat, rather than silently never reporting a throttle there.
+        let celsius = max(latest.temperature.gpuCelsius, dieCelsius(latest))
+        return celsius >= Thermal.warnCelsius
+            && latest.gpu.usage > 0.3
+            && latest.power.gpuWatts > 1.0
             && latest.thermal.pressure != .nominal
             && latest.gpu.freqMHz < 0.85 * gpuClockPeakMHz
     }
@@ -156,7 +195,12 @@ public final class MetricsEngine {
     /// observed peak, so the verdict is identical on live and replay (topology travels in the recording).
     public static func cpuThrottling(latest: SystemSnapshot, topology: CPUTopology?) -> Bool {
         guard let pMax = topology?.pFreqsMHz.max(), pMax > 0 else { return false }
-        return latest.cpu.pUsage > 0.3
+        // Same correction as `gpuThrottling`: the die has to be hot, not merely to have been hot.
+        // Cooling down after a run read 37 % busy at 60 °C; a genuine throttle read 41 % at 93 °C —
+        // so utilisation cannot separate them and temperature can. Power is not used here: the
+        // P-cluster rail spikes on short bursts and reads high on an otherwise idle machine.
+        return dieCelsius(latest) >= Thermal.warnCelsius
+            && latest.cpu.pUsage > 0.3
             && latest.thermal.pressure != .nominal
             && latest.cpu.pFreqMHz < 0.85 * pMax
     }

@@ -67,10 +67,13 @@ extension Theme {
     /// `hotCelsius` stays what it is: the axis a temperature TREND is drawn against (headroom),
     /// which is a different question from when to raise the colour.
     static func heat(celsius: Double) -> Color {
+        // The thresholds live in Core (`MetricsEngine.Thermal`) because the throttle detectors use
+        // the same definition of "hot". Two copies of this number drift, and then the app disagrees
+        // with itself about whether a reading is worth colour.
         switch celsius {
-        case ..<80:  return Palette.State.calm.color
-        case ..<95:  return Palette.State.warn.color
-        default:     return Palette.State.critical.color
+        case ..<MetricsEngine.Thermal.warnCelsius:     return Palette.State.calm.color
+        case ..<MetricsEngine.Thermal.criticalCelsius: return Palette.State.warn.color
+        default:                                       return Palette.State.critical.color
         }
     }
 }
