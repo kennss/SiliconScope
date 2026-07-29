@@ -364,6 +364,40 @@ Privacy-first, on-device software — mostly for Apple Silicon:
 
 ## Acknowledgements
 
+### Contributors
+
+**Two of the chips SiliconScope reads correctly are chips it has never run on.** That is not a
+figure of speech: this project owns an M1 Max, and M4 Max and M5 Max support exists only because
+two people measured their own hardware carefully enough that nothing had to be guessed.
+
+- **[@fparrav](https://github.com/fparrav)** — M4 Max. Found that `AMC Stats` enumerates but will
+  not subscribe, and built the PMP histogram fallback that restores memory bandwidth and the Media
+  Engine ([#29](https://github.com/kennss/SiliconScope/pull/29)).
+- **[@ben0112](https://github.com/ben0112)** — M5 Max. The same for that generation, and then the
+  whole perf-level story: a chip with **no Efficiency cores**, the device-tree cluster map that
+  now decides how *every* Mac splits its cores, and the rail→cluster mapping — each experiment run
+  three times ([#30](https://github.com/kennss/SiliconScope/issues/30)). His measurements are
+  written up in [`docs/ioreport-channels.md`](docs/ioreport-channels.md).
+
+And parts of the app are other people's work outright:
+
+- **[@durul](https://github.com/durul)** — the AI-workload bottleneck classifier, the GPU throttle
+  detector and compact GPU menu-bar mode; also the local app-bundle build script.
+- **[@davidarny](https://github.com/davidarny)** — unified the popover action buttons into one
+  style, made Settings focus when opened from a popover, inset the app icon to Apple's grid, and
+  fixed Sparkle embedding in the dev build ([#7](https://github.com/kennss/SiliconScope/pull/7),
+  [#8](https://github.com/kennss/SiliconScope/pull/8),
+  [#9](https://github.com/kennss/SiliconScope/pull/9)).
+- **[@Collinw24](https://github.com/Collinw24)** — oMLX inference-server support, and a
+  `ProcessSampler` truncation fix found along the way
+  ([#26](https://github.com/kennss/SiliconScope/pull/26)).
+- **[@zhangchen456](https://github.com/zhangchen456)** — the "Show Dock icon" setting, which is what
+  lets SiliconScope run as a pure menu-bar utility.
+
+Bug reports that come with a measurement are worth more than most patches, and several of the
+entries above started as exactly that.
+
+
 - IOReport / SMC / HID sensor knowledge referenced from **NeoAsitop** (MIT) and
   **SocPowerBuddy**; the per-generation SMC temperature key→name tables are adapted from
   **[Stats](https://github.com/exelban/stats)** (MIT). The data layer is written from
