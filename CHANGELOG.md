@@ -1,5 +1,37 @@
 # Changelog
 
+## v4.1.1 — 2026-07-29
+
+**Two verdicts the app was stating without the evidence behind them.** Both fixes come from the
+same correction: a monitor may not assert a state it cannot show you the measurement for.
+
+**🖥 Apple M5 Max is described correctly.** That chip has **no Efficiency cores** — its perf levels
+are **Super** (6) and **Performance** (12) — and SiliconScope got it wrong four ways at once: a
+"6E+12P" header, "E-cores @ 0 MHz", a usage split taken from the wrong cores, and no CPU power at
+all. The topology no longer guesses which level is which from its *name*; the header now reads
+**"6 Super + 12 Performance"**, both clusters report their real DVFS ceilings (4608 / 4380 MHz),
+and the watts land on the right rows. Every other Mac is unchanged.
+
+The usage split in particular is now **read rather than assumed**: macOS publishes core counts per
+perf level but no ordering, so which CPU belongs to which cluster comes from the device tree. On
+M5 Max the top tier turns out to be the *last* six cores — the old "first N are the small ones"
+assumption was wrong in direction, not merely in label.
+([#30](https://github.com/kennss/SiliconScope/issues/30) — measured on real hardware by @ben0112,
+each experiment run three times)
+
+**🌡 A machine cooling down is no longer reported as throttled.** After a heavy run ended, both the
+CPU and GPU cards outlined red while nothing was running: macOS still reported thermal pressure
+because the fans were still spinning, and every clock had dropped — for the opposite reason, that
+nothing was asking for performance. Throttling now requires the die to be **hot right now**, and
+the GPU to be drawing power: 0.4 W on the minimum clock is an idle GPU, not a held-back one.
+
+### Also
+
+- `sscope-cli --cpu-debug` dumps the perf levels, the device-tree cluster map and every DVFS table
+  present — one command to diagnose a chip nobody here owns, instead of a round trip.
+- The 80 °C / 95 °C thresholds now live in one place, shared by the throttle detector and the
+  temperature colours, so the app cannot disagree with itself about what "hot" means.
+
 ## v4.1.0 — 2026-07-27
 
 **Everything you can read is now something you can arrange.** 4.0 grew SiliconScope past one Mac;
