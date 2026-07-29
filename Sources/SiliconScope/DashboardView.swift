@@ -341,7 +341,7 @@ private struct HeaderView: View {
             Text("SiliconScope").font(Theme.font(.headline, .strong))
             if let t = topology {
                 Text(t.chipName).font(Theme.font(.body)).foregroundStyle(Theme.dim)
-                Text("\(t.eCoreCount + t.pCoreCount) cores · \(t.eCoreCount)E+\(t.pCoreCount)P")
+                Text("\(t.eCoreCount + t.pCoreCount) cores · \(t.coreSummary)")
                     .font(Theme.font(.body)).foregroundStyle(Theme.faint)
             }
             Spacer()
@@ -832,9 +832,9 @@ private struct CPUCard: View {
         // throttle treatment) flags it, and a dim "P ceiling" line states the fact — clock vs the chip's
         // DVFS ceiling. Border = salience, line = the instrument reading.
         Card(title: "CPU", menuBarPin: menuBarItems.pin(.cpu), alert: throttling ? alertColor : nil) {
-            Bar(label: "E-cores", value: cpu.eUsage,
+            Bar(label: topology?.eLabel ?? "E-cores", value: cpu.eUsage,
                 detail: String(format: "%.0f%%  %.0f MHz", cpu.eUsagePercent, cpu.eFreqMHz), encoding: .identity(eColor))
-            Bar(label: "P-cores", value: cpu.pUsage,
+            Bar(label: topology?.pLabel ?? "P-cores", value: cpu.pUsage,
                 detail: String(format: "%.0f%%  %.0f MHz", cpu.pUsagePercent, cpu.pFreqMHz), encoding: .identity(pColor))
 
             if throttling {

@@ -95,9 +95,14 @@ public final class CPUSampler {
             perCore[i] = deltaTotal > 0 ? deltaBusy / deltaTotal : 0
         }
 
-        let eCount = min(max(topology.eCoreCount, 0), count)
-        let eCores = perCore[0..<eCount]
-        let pCores = perCore[eCount..<count]
+        // ⚠️ Which indices belong to which perf level is READ, not assumed — the retired code took
+        // the first `eCoreCount` cores, which is only right when the lower tier is enumerated first.
+        // That held on M1–M4; on a chip whose levels are "Super" + "Performance" it mapped the
+        // wrong cores (#30). `secondLevelIndices` prefers the device tree's cluster types.
+        let range = CPUTopology.secondLevelIndices(coreCount: count,
+                                                   level1Count: min(max(topology.eCoreCount, 0), count))
+        let eCores = perCore[range.clamped(to: 0..<count)]
+        let pCores = (0..<count).filter { !range.contains($0) }.map { perCore[$0] }
         let e = eCores.isEmpty ? 0 : eCores.reduce(0, +) / Double(eCores.count)
         let p = pCores.isEmpty ? 0 : pCores.reduce(0, +) / Double(pCores.count)
         return (e, p)

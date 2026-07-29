@@ -19,7 +19,7 @@ let cpu = CPUSampler()
 let gpu: GPUSampler? = cpu.flatMap { GPUSampler(topology: $0.topology) }
 
 if let topo = cpu?.topology {
-    print("topology: \(topo.eCoreCount)E + \(topo.pCoreCount)P")
+    print("topology: \(topo.coreSummary)")
     print("E DVFS (MHz): \(topo.eFreqsMHz.map { Int($0) })")
     print("P DVFS (MHz): \(topo.pFreqsMHz.map { Int($0) })")
 }
@@ -168,6 +168,53 @@ if CommandLine.arguments.contains("--power-debug") {
     print("explains a 0 reading. Tip: run a webcam app (Photo Booth) to actually exercise the ANE.")
     for l in lines { print("  \(l)") }
     print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")
+}
+
+// CPU topology dump for chips whose perf levels are not "Performance" + "Efficiency" (#30: Apple
+// M5's **Super** cluster). One command answers everything the topology pass needs: the perf-level
+// names and counts, which CPU INDEX sits in which physical cluster (macOS has no sysctl for the
+// order — only the device tree knows), and every DVFS table present.
+// Run: sscope-cli --cpu-debug   (paste the output into a topology issue).
+if CommandLine.arguments.contains("--cpu-debug") {
+    let topo = CPUTopology.detect()
+    print("\n=== CPU topology ===")
+    print("  chip: \(topo.chipName)")
+    print("  hw.nperflevels: \(CPUTopology.perfLevelCount())")
+    for level in CPUTopology.perfLevels() {
+        print("  perflevel\(level.index): \(level.name)  logical \(level.logicalCPUs)  physical \(level.physicalCPUs)")
+    }
+
+    print("\n=== Device-tree cluster map (IODeviceTree cpuN nodes) ===")
+    let map = CPUClusterMap.read()
+    if map.isEmpty {
+        print("  (none — this chip does not expose logical-cluster-id/cluster-type;")
+        print("   the usage split then falls back to \"lower perf tier is enumerated first\")")
+    } else {
+        print("  \("cpu".padding(toLength: 6, withPad: " ", startingAt: 0))cluster  type  core-in-cluster")
+        for e in map {
+            let cpu = "cpu\(e.cpuIndex)".padding(toLength: 6, withPad: " ", startingAt: 0)
+            let type = e.clusterType.isEmpty ? "-" : e.clusterType
+            print("  \(cpu)\(e.clusterID)        \(type)     \(e.coreInCluster)")
+        }
+        let sizes = Dictionary(grouping: map, by: \.clusterID).mapValues(\.count).sorted { $0.key < $1.key }
+        print("  cluster sizes: " + sizes.map { "\($0.key)=\($0.value)" }.joined(separator: " "))
+    }
+
+    print("\n=== voltage-states* tables under AppleARMIODevice ===")
+    let tables = CPUClusterMap.voltageStateTables()
+    if tables.isEmpty { print("  (none readable)") }
+    for key in tables.keys.sorted() {
+        let f = tables[key] ?? []
+        let range = f.isEmpty ? "-" : String(format: "%.0f–%.0f MHz", f.min() ?? 0, f.max() ?? 0)
+        print("  \(key.padding(toLength: 26, withPad: " ", startingAt: 0)) \(f.count) steps  \(range)")
+    }
+
+    print("\n=== What SiliconScope currently concludes ===")
+    print("  P slot: \(topo.pCoreCount) cores, DVFS \(topo.pFreqsMHz.count) steps"
+          + (topo.pFreqsMHz.isEmpty ? "  ⚠️ EMPTY" : String(format: "  max %.0f MHz", topo.pFreqsMHz.max() ?? 0)))
+    print("  E slot: \(topo.eCoreCount) cores, DVFS \(topo.eFreqsMHz.count) steps"
+          + (topo.eFreqsMHz.isEmpty ? "  ⚠️ EMPTY" : String(format: "  max %.0f MHz", topo.eFreqsMHz.max() ?? 0)))
+    print("\nAlso useful: `sysctl hw.model machdep.cpu.brand_string` and `sscope-cli --power-debug`.")
 }
 
 // Full SMC temperature-key dump for mapping sensors on chips not in the curated table.

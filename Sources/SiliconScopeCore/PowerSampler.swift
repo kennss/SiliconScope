@@ -86,10 +86,16 @@ public final class PowerSampler {
                 if name == "CPU Energy" {
                     result.cpuWatts += watts
                 } else if name.hasSuffix("_CPU") {
-                    if name.hasPrefix("EACC") {
-                        result.eCPUWatts += watts        // efficiency clusters
+                    // Rails map to PERF LEVELS, not to the words "efficiency" and "performance".
+                    // `PACC*` is perflevel0 on every chip measured — the Performance cluster on
+                    // M1–M4 and the **Super** cluster on M5 Max. `MACC*`/`MCPU*` is M5's perflevel1
+                    // (its "Performance" clusters), which take the background-QoS role there because
+                    // the chip has no Efficiency level at all (#30, confirmed three ways on M5 Max:
+                    // count-exact QoS loads, per-core rail counts 6 vs 12, and the DVFS ceiling).
+                    if name.hasPrefix("EACC") || name.hasPrefix("MACC") || name.hasPrefix("MCPU") {
+                        result.eCPUWatts += watts        // perflevel 1
                     } else if name.hasPrefix("PACC") {
-                        result.pCPUWatts += watts        // performance clusters
+                        result.pCPUWatts += watts        // perflevel 0
                     }
                 } else if name.hasPrefix("GPU") && name != "GPU Energy" {
                     result.gpuWatts += watts             // GPU0 + GPU SRAM0
@@ -108,8 +114,9 @@ public final class PowerSampler {
                 case "ANE":             pmpAne  += watts
                 case "GPU", "GPU SRAM": pmpGpu  += watts
                 case "DRAM":            pmpDram += watts
-                case "ECPU":            pmpECpu += watts
-                case "PCPU":            pmpPCpu += watts
+                case "ECPU":            pmpECpu += watts   // perflevel 1
+                case "MCPU", "MCPU0", "MCPU1": pmpECpu += watts   // M5's perflevel 1
+                case "PCPU":            pmpPCpu += watts   // perflevel 0 (Performance, or Super)
                 default:                break
                 }
             }
