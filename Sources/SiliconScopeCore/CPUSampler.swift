@@ -137,8 +137,21 @@ public final class CPUSampler {
             }
 
             let name = nameRef as String
-            let isEfficiency = (name == "ECPU")
-            let isPerformance = (name == "PCPU" || name == "PCPU1")
+            // Residency channels are named per CLUSTER, and the names differ by generation:
+            // `ECPU` / `PCPU` / `PCPU1` on M1–M4, and on M5 Max `PCPU` (perflevel 0, "Super") with
+            // `MCPU0` / `MCPU1` (perflevel 1, "Performance"). Matching only `ECPU` left the M5
+            // Performance row reading **0 MHz** even at 50 % busy with its DVFS table detected (#30).
+            //
+            // ⚠️ Cluster names only: an exact prefix plus an optional number. `MCPM0`/`MCPM1` are
+            // the fabric rails and must not be mistaken for clusters, which a `hasPrefix("MC")`
+            // test would do.
+            func isCluster(_ prefix: String) -> Bool {
+                guard name.hasPrefix(prefix) else { return false }
+                let rest = name.dropFirst(prefix.count)
+                return rest.isEmpty || rest.allSatisfy(\.isNumber)
+            }
+            let isEfficiency = isCluster("ECPU") || isCluster("MCPU")   // perflevel 1
+            let isPerformance = isCluster("PCPU")                       // perflevel 0
             guard isEfficiency || isPerformance else { return Int32(kKtopIOReportIterOk) }
 
             let freqs = isEfficiency ? eFreqs : pFreqs

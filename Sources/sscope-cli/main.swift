@@ -209,11 +209,14 @@ if CommandLine.arguments.contains("--cpu-debug") {
         print("  \(key.padding(toLength: 26, withPad: " ", startingAt: 0)) \(f.count) steps  \(range)")
     }
 
-    print("\n=== What SiliconScope currently concludes ===")
-    print("  P slot: \(topo.pCoreCount) cores, DVFS \(topo.pFreqsMHz.count) steps"
+    print("\n=== What SiliconScope concludes ===")
+    // Named, not "P slot"/"E slot" — on a chip whose levels are Super + Performance those letters
+    // are the very thing this dump exists to check.
+    print("  \(topo.pLabel): \(topo.pCoreCount) cores, DVFS \(topo.pFreqsMHz.count) steps"
           + (topo.pFreqsMHz.isEmpty ? "  ⚠️ EMPTY" : String(format: "  max %.0f MHz", topo.pFreqsMHz.max() ?? 0)))
-    print("  E slot: \(topo.eCoreCount) cores, DVFS \(topo.eFreqsMHz.count) steps"
+    print("  \(topo.eLabel): \(topo.eCoreCount) cores, DVFS \(topo.eFreqsMHz.count) steps"
           + (topo.eFreqsMHz.isEmpty ? "  ⚠️ EMPTY" : String(format: "  max %.0f MHz", topo.eFreqsMHz.max() ?? 0)))
+    print("  header: \(topo.coreSummary)")
     print("\nAlso useful: `sysctl hw.model machdep.cpu.brand_string` and `sscope-cli --power-debug`.")
 }
 

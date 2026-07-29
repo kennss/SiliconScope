@@ -87,16 +87,28 @@ public final class PowerSampler {
                     result.cpuWatts += watts
                 } else if name.hasSuffix("_CPU") {
                     // Rails map to PERF LEVELS, not to the words "efficiency" and "performance".
-                    // `PACC*` is perflevel0 on every chip measured — the Performance cluster on
-                    // M1–M4 and the **Super** cluster on M5 Max. `MACC*`/`MCPU*` is M5's perflevel1
-                    // (its "Performance" clusters), which take the background-QoS role there because
-                    // the chip has no Efficiency level at all (#30, confirmed three ways on M5 Max:
-                    // count-exact QoS loads, per-core rail counts 6 vs 12, and the DVFS ceiling).
-                    if name.hasPrefix("EACC") || name.hasPrefix("MACC") || name.hasPrefix("MCPU") {
+                    //
+                    // ⚠️ The `_CPU` suffix is what picks the CLUSTER TOTAL out of a family that also
+                    // contains per-core rails and a fabric rail: `EACC_CPU` (total) sits beside
+                    // `EACC_CPU0`/`EACC_CPU1` (cores) and `EACC_CPM` (fabric). Summing the family
+                    // would double-count the cluster.
+                    if name.hasPrefix("EACC") {
                         result.eCPUWatts += watts        // perflevel 1
                     } else if name.hasPrefix("PACC") {
                         result.pCPUWatts += watts        // perflevel 0
                     }
+                } else if let level = m5ClusterLevel(name) {
+                    // M5 Max names its rails differently: the cluster totals are bare `PCPU`
+                    // (perflevel 0, "Super") and `MCPU0`/`MCPU1` (perflevel 1, "Performance") with
+                    // **no `_CPU` suffix at all**, which is why the branch above matched nothing
+                    // there and both rows read 0.0 W (#30). Per-core (`PACC_0…5`, `MCPU0_0…`),
+                    // SRAM and fabric (`PCPM`, `MCPM0/1`) rails are deliberately NOT summed — the
+                    // same double-counting rule as above, and the reason this matches cluster names
+                    // exactly rather than by prefix.
+                    //
+                    // Safe to add unconditionally: M1–M4 expose no bare `PCPU`/`MCPU*` channel in
+                    // Energy Model (verified on M1 Max), so the two shapes never both fire.
+                    if level == 0 { result.pCPUWatts += watts } else { result.eCPUWatts += watts }
                 } else if name.hasPrefix("GPU") && name != "GPU Energy" {
                     result.gpuWatts += watts             // GPU0 + GPU SRAM0
                 } else if name.hasPrefix("ANE") {
@@ -121,6 +133,16 @@ public final class PowerSampler {
                 }
             }
             return Int32(kKtopIOReportIterOk)
+        }
+
+        // M5-shape cluster totals: exactly "PCPU"/"MCPU" plus an optional cluster number, and
+        // nothing else — no underscore (per-core / SRAM) and no "CPM" (fabric).
+        func m5ClusterLevel(_ name: String) -> Int? {
+            for (prefix, level) in [("PCPU", 0), ("MCPU", 1)] where name.hasPrefix(prefix) {
+                let rest = name.dropFirst(prefix.count)
+                if rest.isEmpty || rest.allSatisfy(\.isNumber) { return level }
+            }
+            return nil
         }
 
         // Base M1: "Energy Model" has no ANE channel, so its ANE/GPU/DRAM/E-P rails read 0 — adopt

@@ -86,6 +86,32 @@ final class CPUTopologyLevelTests: XCTestCase {
         }
     }
 
+    /// Cluster-total rail names, across both generations' shapes. The rule has to accept the
+    /// cluster and reject its per-core, SRAM and fabric siblings — summing the family double-counts.
+    ///
+    /// M1–M4 Energy Model: `EACC_CPU` (total) beside `EACC_CPU0/1` (cores) and `EACC_CPM` (fabric).
+    /// M5 Max: bare `PCPU` / `MCPU0` / `MCPU1`, with `PACC_0…5` per-core and `PCPM` / `MCPM0/1`
+    /// fabric — no `_CPU` suffix anywhere, which is why the M5 rows read 0.0 W (#30).
+    func testClusterTotalNamesAreDistinguishedFromTheirFamily() {
+        func isM5Cluster(_ name: String) -> Int? {
+            for (prefix, level) in [("PCPU", 0), ("MCPU", 1)] where name.hasPrefix(prefix) {
+                let rest = name.dropFirst(prefix.count)
+                if rest.isEmpty || rest.allSatisfy(\.isNumber) { return level }
+            }
+            return nil
+        }
+        XCTAssertEqual(isM5Cluster("PCPU"), 0)
+        XCTAssertEqual(isM5Cluster("MCPU0"), 1)
+        XCTAssertEqual(isM5Cluster("MCPU1"), 1)
+        for sibling in ["PCPU0_SRAM", "MCPU0_0", "PCPM", "MCPM0", "MCPM1", "PACC_0"] {
+            XCTAssertNil(isM5Cluster(sibling), "\(sibling) is not a cluster total")
+        }
+        // The M1 shape must not be picked up by the M5 rule, or a chip exposing both would double.
+        for m1 in ["EACC_CPU", "PACC0_CPU", "PACC1_CPU"] {
+            XCTAssertNil(isM5Cluster(m1), "\(m1) belongs to the _CPU-suffix branch")
+        }
+    }
+
     /// The KHz/Hz heuristic must survive M5's 4608 MHz ceiling — a table read in the wrong unit
     /// either reports single-digit "MHz" or a number no silicon reaches.
     func testVoltageStateUnitHeuristic() {
