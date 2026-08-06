@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-07-02
+//  Updated:   2026-08-07
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
 //             MLX, Rapid-MLX, Jan, GPT4All, vLLM, exo). Pure logic — no syscalls; consumes
@@ -75,8 +75,8 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         // Stage 1 — bundle / well-known-dir identity (authoritative).
         if p.contains("/Ollama.app/") || p.contains("/.ollama/") || a.contains("/.ollama/") { return .ollama }
         if p.contains("/LM Studio.app/") { return .lmStudio }
-        if p.contains("/Jan.app/") || p.contains("/jan/") { return .jan }
-        if p.contains("/GPT4All.app/") || p.contains("/gpt4all/") { return .gpt4all }
+        if p.contains("/Jan.app/") { return .jan }
+        if p.contains("/GPT4All.app/") { return .gpt4all }
         if p.contains("/oMLX.app/") || p.contains("/omlx.app/") { return .omlx }
         // Calida Lab's own on-device AI apps. Bundle identity only — their executables are plain
         // names ("Spectalo", "SpectaLing") that a basename rule could collide with, and both ship
