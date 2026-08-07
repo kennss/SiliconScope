@@ -1,7 +1,7 @@
 //
 //  File:      VolumeSampler.swift
 //  Created:   2026-06-19
-//  Updated:   2026-06-19
+//  Updated:   2026-08-07
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Enumerates mounted volumes (local + network) with capacity/free, sudolessly
 //             via FileManager resource values. Powers the SSD/Disk menu-bar dropdown's
@@ -19,7 +19,7 @@ public struct VolumeInfo: Sendable, Identifiable, Equatable {
     public let isLocal: Bool
     public var id: String { name }
     public var usedFraction: Double {
-        totalBytes > 0 ? Double(totalBytes - freeBytes) / Double(totalBytes) : 0
+        totalBytes > 0 ? Double(totalBytes - min(max(freeBytes, 0), totalBytes)) / Double(totalBytes) : 0
     }
 }
 
