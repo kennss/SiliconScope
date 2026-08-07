@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeMatchTests.swift
 //  Created:   2026-06-14
-//  Updated:   2026-07-02
+//  Updated:   2026-08-07
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Adversarial tests for AIRuntimeKind.match — the bundle-first, two-stage
 //             classifier. Locks in the cases that must NOT regress (Ollama runner is not
@@ -114,6 +114,23 @@ final class AIRuntimeMatchTests: XCTestCase {
                                          name: "hexo", args: "node /opt/homebrew/bin/hexo generate"))
         XCTAssertNil(AIRuntimeKind.match(path: "/Users/x/Plexos/bin/plexos", name: "plexos", args: nil))
         XCTAssertNil(AIRuntimeKind.match(path: "/usr/local/bin/nexo", name: "nexo", args: "nexo serve"))
+    }
+
+    // A `jan`/`gpt4all` SEGMENT in the path (a username like /Users/jan, or a same-named folder)
+    // must NOT be treated as the Jan/GPT4All runtime — only bundle identity (/Jan.app/, /GPT4All.app/)
+    // is authoritative. The bare-substring halves of these rules matched usernames and folders; this
+    // locks that false positive out. Mirrors testExoDoesNotFalsePositive.
+    func testJanGpt4allDoNotFalsePositive() {
+        // A `jan` username is not the Jan app.
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/jan/projects/foo", name: "foo", args: nil))
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/jan/.cache/pip/bin/pip", name: "pip", args: nil))
+        // A `gpt4all` folder is not the GPT4All app.
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/someone/gpt4all/notes", name: "vim", args: nil))
+        // Bundle identity still resolves positively.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Applications/Jan.app/Contents/MacOS/Jan",
+                                           name: "Jan", args: nil), .jan)
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Applications/GPT4All.app/Contents/MacOS/gpt4all",
+                                           name: "gpt4all", args: nil), .gpt4all)
     }
 
     // primaryKind ranks by grouped RSS; the Ollama group (parent+runner) outweighs a small llama.cpp.
