@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-07-02
+//  Updated:   2026-08-08
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
 //             MLX, Rapid-MLX, Jan, GPT4All, vLLM, exo). Pure logic — no syscalls; consumes
@@ -93,7 +93,15 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if ["llama-server", "llama-cli", "llama-bench"].contains(base) { return .llamaCpp }
         if a.contains("mlx_lm.server") || a.contains("mlx_lm.generate") || a.contains("mlx_lm") { return .mlx }
         if base == "lms" || p.contains("LM Studio") || a.contains("LM Studio") { return .lmStudio }
-        if a.contains("vllm") || p.contains("vllm") { return .vllm }
+        // vLLM — OpenAI-compatible server launched via the `vllm` console entry point
+        // (/.../bin/vllm serve) or a Python module invocation (python -m vllm[.entrypoints]). The
+        // `vllm` console script is a shebang Python file, so on macOS proc_pidpath reports the
+        // interpreter (base "python*") and the script path lives in argv — `/bin/vllm` is the real
+        // signal there, mirroring exo's `/bin/exo`. `base == "vllm"` is a defensive fallback (a
+        // native build, or a proc table that reports the script). Every signal is bounded so a `vllm`
+        // username or a same-named source folder can't false-positive on the bare substring (mirrors
+        // the #38 jan/gpt4all bound and the exo arm's bounded-argv style).
+        if base == "vllm" || a.contains("/bin/vllm") || a.contains("-m vllm") || a.contains("vllm.entrypoints") { return .vllm }
         // exo (exo-explore/exo) — OpenAI-compatible cluster inference server on :52415. Match the
         // installed console entry point (basename `exo`), the source module file, or a `-m exo.main`
         // invocation. Every signal is bounded by a path separator or a leading space so unrelated
