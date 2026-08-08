@@ -1,13 +1,16 @@
 //
 //  File:      SMCReader.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-24
+//  Updated:   2026-08-08
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Minimal read-only Apple SMC client (sudoless) for fan speed and other
 //             scalar keys. Opens the AppleSMC IOService and reads keys via the fixed
 //             kernel ABI: readKeyInfo (cmd 9) then readBytes (cmd 5).
 //  Notes:     SMCKeyData layout MUST match the kernel struct exactly (do not reorder).
 //             Decodes flt/ui8/ui16/ui32/fpe2. Read-only — never writes SMC keys.
+//             fpe2 is a 16-bit big-endian fixed-point with 2 fractional bits (true value =
+//             raw uint16 / 4); the scalar decode lives in the pure `decode(type:bytes:)` so
+//             it can be unit-tested without hardware (Apple SMC fixed-point convention).
 //
 import Foundation
 import IOKit
@@ -61,12 +64,25 @@ final class SMCReader {
     /// Reads a scalar SMC key as Double, or nil if missing/unsupported type.
     func readDouble(_ key: String) -> Double? {
         guard let (type, bytes) = readKey(key) else { return nil }
+        return Self.decode(type: type, bytes: bytes)
+    }
+
+    /// Pure scalar decode for an SMC value: maps a FourCC type + its raw bytes to a Double.
+    /// Extracted from the hardware-coupled reader so it is unit-testable in isolation — this is
+    /// the gateway for every SMC scalar (curated temps, fan RPM, FNum, and the power/current/
+    /// voltage rails surfaced by `allKeys`/`allTemperatureKeys`), so a wrong case here warps them all.
+    static func decode(type: String, bytes: [UInt8]) -> Double? {
         switch type {
         case "ui8 ": return Double(bytes[0])
         case "ui16": return Double(UInt16(bytes[0]) << 8 | UInt16(bytes[1]))
         case "ui32": return Double((UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) | (UInt32(bytes[2]) << 8) | UInt32(bytes[3]))
         case "flt ": return Double(bytes.withUnsafeBytes { $0.loadUnaligned(as: Float.self) })
-        case "fpe2": return Double((Int(bytes[0]) << 6) + (Int(bytes[1]) >> 2))
+        case "fpe2":
+            // 16-bit big-endian fixed-point, 2 fractional bits: true value = raw uint16 / 4.
+            // The old `(b0 << 6) + (b1 >> 2)` shifted the low 2 bits away, flooring every fpe2 key.
+            guard bytes.count >= 2 else { return nil }
+            let raw = (UInt16(bytes[0]) << 8) | UInt16(bytes[1])
+            return Double(raw) / 4.0
         default: return nil
         }
     }
