@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeMatchTests.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-07
+//  Updated:   2026-08-08
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Adversarial tests for AIRuntimeKind.match — the bundle-first, two-stage
 //             classifier. Locks in the cases that must NOT regress (Ollama runner is not
@@ -131,6 +131,54 @@ final class AIRuntimeMatchTests: XCTestCase {
                                            name: "Jan", args: nil), .jan)
         XCTAssertEqual(AIRuntimeKind.match(path: "/Applications/GPT4All.app/Contents/MacOS/gpt4all",
                                            name: "gpt4all", args: nil), .gpt4all)
+    }
+
+    // vLLM — `/.../bin/vllm serve` or `python -m vllm[.entrypoints]`. The console script is a
+    // shebang Python file, so macOS reports the interpreter and argv carries `/bin/vllm` (mirrors
+    // exo's `/bin/exo`) — which is why the positives below pass `path:` = the python binary.
+    func testVllmMatch() {
+        // Canonical launch via the console entry point. macOS exec's the shebang interpreter, so
+        // PATH is the python binary and the `vllm` script lives in argv as `/bin/vllm`.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Users/x/.venv/bin/python3.12", name: "python3.12",
+                                           args: "/Users/x/.venv/bin/python3.12 /Users/x/.venv/bin/vllm serve meta-llama/Llama-3-8B-Instruct"), .vllm)
+        // Module invocation via python — argv carries `-m vllm.entrypoints`.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                           args: "python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-3-8B-Instruct"), .vllm)
+        // Bare `-m vllm` also resolves.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                           args: "python -m vllm --model x"), .vllm)
+        // Glued `-mvllm.entrypoints` (no space) — isolates the `vllm.entrypoints` argv token, which
+        // the spaced `-m vllm` rule does not match.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                           args: "python -mvllm.entrypoints.openai.api_server --model x"), .vllm)
+        // Defensive: an executable whose basename is literally `vllm` (a native build, or a proc
+        // table that reports the script) still resolves with no argv.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Users/x/.venv/bin/vllm", name: "vllm", args: nil), .vllm)
+    }
+
+    // A `vllm` SEGMENT in the path or argv (a username like /Users/vllm, a same-named checkout
+    // folder, or `pip install vllm`) must NOT be treated as the vLLM runtime — only the `vllm`
+    // entry-point path in argv, its basename, or a vLLM-module invocation is authoritative. The
+    // bare-substring rule matched all of these; this locks the false positive out on both the PATH
+    // and argv sides. Mirrors testExoDoesNotFalsePositive / #38.
+    func testVllmDoesNotFalsePositive() {
+        // PATH side — a `vllm` username is not the runtime (the motivating case).
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/vllm/codes", name: "vllm", args: nil))
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/vllm/.cache/pip/bin/pip", name: "pip", args: nil))
+        // PATH side — a `vllm` source-checkout folder running tests is not the runtime.
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/me/src/vllm/.venv/bin/pytest", name: "pytest", args: nil))
+        // argv side — `pip install vllm` installs the package, it does not serve a model. (Locks the
+        // argv bound: the PATH-side negatives above all have nil argv, so without this a bare
+        // `a.contains("vllm")` could return and no test would notice.)
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python -m pip install vllm"))
+        // argv side — a `vllm` username appearing in an argv script path is not the runtime.
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python /Users/vllm/train.py --port 8000"))
+        // Running the api_server module FILE directly (python …/vllm/entrypoints/openai/api_server.py)
+        // is an undocumented launch; the supported form is `vllm serve` / `python -m vllm.entrypoints…`.
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python /Users/me/src/vllm/vllm/entrypoints/openai/api_server.py"))
     }
 
     // primaryKind ranks by grouped RSS; the Ollama group (parent+runner) outweighs a small llama.cpp.
