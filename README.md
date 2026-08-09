@@ -178,6 +178,12 @@ Signed with a Developer ID and **notarized by Apple** — it opens with no Gatek
 prompt. Requires **macOS 14+ on Apple Silicon**. It **updates itself** from here on
 (Sparkle) — this is the last DMG you download by hand.
 
+> **Pre-release macOS is not supported.** This project has one Mac and it runs the release
+> version, so a developer beta cannot be reproduced or verified here. Reports from one are
+> still welcome and have already been useful — SiliconScope reads private IOReport interfaces
+> that Apple renames between builds, and a rename found early is a rename fixed before it
+> reaches everyone — but fixes land when the OS ships, not against a beta seed.
+
 Prefer to build it yourself? See [Build & run](#build--run).
 
 ## Highlights
@@ -406,6 +412,19 @@ And parts of the app are other people's work outright:
   ([#26](https://github.com/kennss/SiliconScope/pull/26)).
 - **[@zhangchen456](https://github.com/zhangchen456)** — the "Show Dock icon" setting, which is what
   lets SiliconScope run as a pure menu-bar utility.
+
+And some of it is finding numbers that were wrong without looking wrong:
+
+- **[@YuriNachos](https://github.com/YuriNachos)** — five merged fixes in four days, every one of
+  them in a value the dashboard was already displaying without complaint: `fpe2` SMC keys floored to
+  whole units, IOReport's `INT64_MIN` "unpopulated" sentinel summed as if it were a real byte count,
+  a used fraction that went negative on network volumes, and two path rules that read a *username*
+  as an AI runtime ([#38](https://github.com/kennss/SiliconScope/pull/38),
+  [#39](https://github.com/kennss/SiliconScope/pull/39),
+  [#40](https://github.com/kennss/SiliconScope/pull/40),
+  [#41](https://github.com/kennss/SiliconScope/pull/41),
+  [#42](https://github.com/kennss/SiliconScope/pull/42)). Every one arrived with tests larger than
+  the fix. These are the hardest bugs to notice from the inside — nothing looks broken.
 
 Bug reports that come with a measurement are worth more than most patches, and several of the
 entries above started as exactly that.

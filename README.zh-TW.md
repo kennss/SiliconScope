@@ -163,6 +163,11 @@ brew install --cask siliconscope
 已以 Developer ID 簽署並經 **Apple 公證**，開啟時不會出現 Gatekeeper 警告。需要 **macOS 14+ ·
 Apple Silicon**。之後它會**自動更新**（Sparkle）—— 這是你最後一次手動下載 DMG。
 
+> **不支援預先發布版 macOS（Beta）。** 本專案只有一台 Mac，且執行正式版，因此無法在此重現或驗證
+> 開發者 Beta 上的問題。仍然歡迎回報，而且確實有用 —— SiliconScope 讀取 Apple 在各版本間會改名的
+> 私有 IOReport 介面，早一步發現改名就能在影響所有人之前修好。只是修正會隨正式版發布，而不是
+> 針對某個 Beta 種子版本。
+
 想自行建置？請參閱英文 README 的 [Build & run](README.md#build--run)。
 
 ## 功能亮點

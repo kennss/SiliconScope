@@ -187,6 +187,13 @@ Mit Developer ID signiert + **von Apple notarisiert**, also ohne Gatekeeper-Warn
 Benötigt **macOS 14+ · Apple Silicon**. Danach **aktualisiert es sich automatisch** (Sparkle) —
 das ist das letzte Mal, dass du manuell ein DMG laden musst.
 
+> **Vorabversionen von macOS (Beta) werden nicht unterstützt.** Dieses Projekt besitzt genau
+> einen Mac, und der läuft auf der Release-Version — was in einer Developer-Beta passiert, lässt
+> sich hier weder reproduzieren noch verifizieren. Meldungen sind trotzdem willkommen und waren
+> bereits nützlich: SiliconScope liest private IOReport-Schnittstellen, die Apple zwischen Builds
+> umbenennt, und eine früh entdeckte Umbenennung ist eine, die behoben ist, bevor sie alle
+> erreicht. Die Fixes erscheinen aber mit dem finalen Release, nicht gegen einen Beta-Seed.
+
 Wenn du selbst bauen willst, siehe [Build & run](README.md#build--run) im englischen README.
 
 ## Hauptfunktionen
