@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-09
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly. Three read strategies,
 //             tried in order at init and locked in for the sampler's lifetime:
@@ -479,8 +479,10 @@ public final class BandwidthSampler {
     /// containment of the prefix, not an exact token match — so new core counts on future chips
     /// need no code change, matching this project's "variants need no special-casing" pattern
     /// for SMC sensor keys.
+    /// Delegates to the shared rule so the power path and this one cannot drift — `PowerSampler`
+    /// needed the same tolerance for #35, and two copies of a name-matching rule is how the
+    /// samplers end up disagreeing about what a channel is called.
     private static func contains(_ requestor: String, unitPrefix: String) -> Bool {
-        if requestor.hasPrefix(unitPrefix) { return true }
-        return requestor.range(of: " " + unitPrefix) != nil
+        IOReportNaming.hasUnitPrefix(requestor, unitPrefix)
     }
 }

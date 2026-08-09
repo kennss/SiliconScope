@@ -2,14 +2,17 @@
 #
 #  File:      package.sh
 #  Created:   2026-06-09
-#  Updated:   2026-06-14
+#  Updated:   2026-08-10
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  Builds release SiliconScope.app, Developer ID–signs it (hardened runtime),
 #             notarizes + staples it, then ships a notarized DMG with an /Applications
 #             drop link.
 #  Notes:     SPM emits no .app, so Contents/{MacOS,Resources} + Info.plist are assembled
 #             by hand; the SPM resource bundle is copied alongside a top-level
-#             AppIcon.icns. Requires a stored notarytool keychain profile. The profile
+#             AppIcon.icns. Contents/MacOS also carries the sscope-cli diagnostic binary,
+#             signed separately before the app seals the bundle, so users can run
+#             `/Applications/SiliconScope.app/Contents/MacOS/sscope-cli --power-debug`
+#             without a source checkout. Requires a stored notarytool keychain profile. The profile
 #             name (NOTARY_PROFILE) is a pre-existing local keychain credential kept
 #             as "WhisPlayInfo-notary" so notarization works without re-auth.
 #             Usage: scripts/package.sh [version] [--critical] [--notes FILE]
@@ -38,6 +41,7 @@ while [ $# -gt 0 ]; do
 done
 VERSION="${VERSION:-1.0.0}"
 APP="SiliconScope"
+CLI="sscope-cli"                       # diagnostic CLI shipped inside Contents/MacOS (see below)
 BUNDLE_ID="ai.calidalab.SiliconScope"
 IDENTITY="Developer ID Application: YONG SOO KIM (8677QL77VJ)"
 NOTARY_PROFILE="WhisPlayInfo-notary"   # pre-existing local keychain profile (kept to avoid re-auth)
@@ -55,13 +59,20 @@ GENERATE_APPCAST=".build/artifacts/sparkle/Sparkle/bin/generate_appcast"
 
 echo "▸ Building release binary…"
 xcrun swift build -c release --product "$APP"
+# The diagnostic CLI ships INSIDE the bundle. Without it, --power-debug / --cpu-debug /
+# --bandwidth are reachable only to people who can check out the repo and run Xcode, so every
+# report from a machine we do not own stalls on "please build from source" (#35: a reporter was
+# asked to run --power-debug and had nothing to run it with). One extra product, ~1 MB.
+xcrun swift build -c release --product "$CLI"
 BIN=".build/release/$APP"
+CLI_BIN=".build/release/$CLI"
 RES_BUNDLE=".build/release/SiliconScope_${APP}.bundle"
 ICON="Sources/$APP/Resources/AppIcon.icns"
 
 echo "▸ Assembling $APP.app…"
 rm -rf "$DIST"; mkdir -p "$APPDIR/Contents/MacOS" "$APPDIR/Contents/Resources"
 cp "$BIN" "$APPDIR/Contents/MacOS/$APP"
+cp "$CLI_BIN" "$APPDIR/Contents/MacOS/$CLI"
 cp "$ICON" "$APPDIR/Contents/Resources/AppIcon.icns"
 [ -d "$RES_BUNDLE" ] && cp -R "$RES_BUNDLE" "$APPDIR/Contents/Resources/"
 
@@ -109,6 +120,9 @@ for nested in \
   [ -e "$nested" ] && codesign --force --options runtime --timestamp --sign "$IDENTITY" "$nested"
 done
 codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SPARKLE_FW"
+# The nested CLI is a Mach-O of its own, so it needs its own hardened-runtime signature BEFORE
+# the app seals the bundle — notarization rejects an unsigned executable inside Contents/MacOS.
+codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APPDIR/Contents/MacOS/$CLI"
 # The SPM resource bundle is a flat resource folder (no Info.plist / no code), so it is
 # sealed by the app signature — do NOT sign it separately. Sign the app last to seal all.
 codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APPDIR"

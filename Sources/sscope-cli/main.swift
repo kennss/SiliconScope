@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-15
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -160,14 +160,25 @@ if CommandLine.arguments.contains("--sensors") {
 
 // Power-channel dump for verifying / contributing per-chip power rails (e.g. where ANE power
 // is exposed on M2). Run: sscope-cli --power-debug   (paste the output into a power issue).
+//
+// Two sections on purpose. The SUMMARY is what a reporter pastes — it answers "does a power group
+// exist and under what name" in a dozen lines. The full dump is ~9,000 rows on an M1 Max (mostly
+// interrupt and network statistics), which is why asking for it alone stalled #35: nobody can put
+// that in an issue. `--power-debug --full` opts into the long half.
 if CommandLine.arguments.contains("--power-debug") {
-    let lines = PowerSampler.channelDump()
-    print("\n=== IOReport power channels (all groups, energy/Simple format) — \(lines.count) ===")
-    print("Grep for ANE/Neural here. SiliconScope's aneWatts currently reads only the")
-    print("\"Energy Model\" group; if ANE power shows up under another group (e.g. PMP), that")
-    print("explains a 0 reading. Tip: run a webcam app (Photo Booth) to actually exercise the ANE.")
-    for l in lines { print("  \(l)") }
-    print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")
+    let rows = PowerSampler.channelRows()
+    print("\n=== power diagnosis summary — PASTE THIS ===")
+    for l in PowerSampler.channelSummary(rows) { print(l) }
+    print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string kern.osversion` and include it.")
+    print("Tip: run a webcam app (Photo Booth) first to actually exercise the ANE.")
+
+    if CommandLine.arguments.contains("--full") {
+        let lines = rows.map(\.line).sorted()
+        print("\n=== every IOReport Simple channel, all groups — \(lines.count) ===")
+        for l in lines { print("  \(l)") }
+    } else {
+        print("\n(\(rows.count) Simple channels total — add --full to dump them all.)")
+    }
 }
 
 // CPU topology dump for chips whose perf levels are not "Performance" + "Efficiency" (#30: Apple
