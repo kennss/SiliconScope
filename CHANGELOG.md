@@ -1,5 +1,46 @@
 # Changelog
 
+## v4.1.2 — 2026-08-10
+
+**Readings that were quietly wrong, and a diagnostic nobody could actually run.** Four of the five
+fixes here came from outside — @YuriNachos read the samplers and found values that were off without
+ever looking obviously broken.
+
+**⚡ Power no longer goes to 0.0 W because one channel group moved.** A macOS 27 beta reported every
+wattage as exactly 0.0 while temperature, bandwidth and GPU usage kept working. The cause was
+structural rather than beta-specific: the power sampler opened with a hard requirement on IOReport's
+`Energy Model` group, so if that group was absent or renamed, the sampler failed to construct and
+there was nothing to read. The base-M1 fallback that exists for precisely this case sat *after* that
+check, and was therefore unreachable. Each source is now consulted independently, and group and
+channel names tolerate the die/chip-id prefix Apple has already used elsewhere (`DIE0 GPU0`).
+([#35](https://github.com/kennss/SiliconScope/issues/35))
+
+**🧰 `sscope-cli` now ships inside the app bundle.** The diagnostics — `--power-debug`,
+`--cpu-debug`, `--bandwidth` — previously required checking out the repo and building it, so anyone
+reporting a problem from a machine we do not own was asked for output they had no way to produce.
+It is now at `/Applications/SiliconScope.app/Contents/MacOS/sscope-cli`, signed and notarized with
+the app. `--power-debug` also leads with a short summary naming which power groups exist and under
+what spelling — 51 lines instead of nine thousand, because a dump nobody can paste into an issue is
+a diagnostic that does not exist.
+
+**📊 Memory bandwidth no longer swings hugely negative on an idle lane.** IOReport fills a channel
+it has no reading for with `INT64_MIN`; summed as a real value, one dead lane took the whole bus
+total to roughly -9.2×10¹⁸ bytes.
+([#42](https://github.com/kennss/SiliconScope/pull/42) by @YuriNachos)
+
+### Also
+
+- **Fan speeds and SMC power rails keep their fractional part.** The `fpe2` decoder shifted the low
+  two bits away, flooring every value it read — invisible on a 3400 rpm fan, material on a rail
+  reading single-digit watts. ([#41](https://github.com/kennss/SiliconScope/pull/41) by @YuriNachos)
+- **A user named `jan`, or a folder named `vllm`, is no longer an AI runtime.** Path matching used
+  bare substrings, so `/Users/jan/...` classified every process under that home directory as the Jan
+  runtime. ([#38](https://github.com/kennss/SiliconScope/pull/38) by @YuriNachos)
+- **Sparse and network volumes no longer show a negative used fraction** when they report more free
+  space than total. ([#39](https://github.com/kennss/SiliconScope/pull/39) by @YuriNachos)
+- The channel-name rule that both the power and bandwidth samplers need now lives in one place, so
+  the two cannot disagree about what a channel is called.
+
 ## v4.1.1 — 2026-07-29
 
 **Two verdicts the app was stating without the evidence behind them.** Both fixes come from the
