@@ -1,7 +1,7 @@
 //
 //  File:      Battery.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-15
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Battery charge/charging state (IOPowerSources) plus health/cycles/condition
 //             read sudolessly from the AppleSmartBattery IORegistry entry. Stateless.
@@ -114,9 +114,17 @@ public final class BatterySampler {
     }
 
     /// Condition string from health + permanent-failure flag (matches macOS wording).
+    ///
+    /// `healthPercent == 0` is the "capacities unreadable" sentinel of `healthPercent` (a guard
+    /// failure), NOT a measurement of a healthy battery, so it must not be asserted "Normal" — a
+    /// positive claim the data does not support. It must also match the empty condition `sample()`
+    /// emits when the AppleSmartBattery read fails outright: the two "health unknown" paths agreeing
+    /// is what keeps a partially-read battery (non-nil props missing DesignCapacity) from showing a
+    /// contradictory "0 % — Normal". A permanent failure still wins regardless of the health number.
     static func condition(healthPercent: Double, permanentFailure: Bool) -> String {
-        (permanentFailure || (healthPercent > 0 && healthPercent < 80))
-            ? "Service Recommended" : "Normal"
+        if permanentFailure { return "Service Recommended" }
+        if healthPercent <= 0 { return "" }   // unknown — capacities not read; don't claim a condition
+        return healthPercent < 80 ? "Service Recommended" : "Normal"
     }
 
     /// Copies the AppleSmartBattery IORegistry properties, or nil on desktops / failure.
