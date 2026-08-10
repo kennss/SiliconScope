@@ -56,10 +56,10 @@
 
 ![Fleet 總覽 —— 所有機器在一個畫面裡](docs/img/fleet-overview.png)
 
-*三台機器一目了然。每張圖磚把 **GPU + VRAM** 與 **CPU + RAM** 疊在同一個座標軸上，Apple Silicon 還會
-再加上 **ANE + 記憶體頻寬**；指標名稱依線條顏色上色，所以不需要圖例。圖中 MacBook Pro 位於
-**GPU 64% / 10 GB/s**，Air 閒置，Ubuntu 主機佔著 **18.7 GB 顯示記憶體**，並常駐兩個 Ollama 模型。
-This Mac 永遠是第一張圖磚。*
+*三台機器一目了然。每塊圖磚把 **GPU + VRAM** 與 **CPU + RAM** 疊在同一座標軸上，Apple Silicon
+還加上 **ANE + 記憶體頻寬** —— 指標名以自己曲線的顏色著色，因此不需要圖例。
+圖磚最下面一行是**執行環境實測的生成速度**以及它是多久之前的值：Ubuntu 機器 **262 tok/s**，
+兩台 Mac 皆為 **28 tok/s**。當數值不再描述當下時會變暗。This Mac 永遠是第一塊圖磚。*
 
 - **遠端 Mac 會用與本機完全相同的儀表板繪製** —— E/P 核心、GPU、**ANE**、Media、記憶體頻寬、功耗、
   風扇。就我所知，沒有其他工具能顯示**遠端 Mac 的 Neural Engine**。

@@ -56,10 +56,11 @@ Machines on your LAN are discovered automatically (mDNS) — no IP configuration
 
 ![The Fleet overview — every machine on one screen](docs/img/fleet-overview.png)
 
-*Three machines at a glance. Each tile pairs **GPU + VRAM** and **CPU + RAM** on one axis, plus
-**ANE + memory bandwidth** on Apple Silicon — the tinted metric word matches its line, so no legend
-is needed. Here the MacBook Pro is at **64% GPU / 10 GB/s**, the Air is idle, and the Ubuntu box is
-holding **18.7 GB of VRAM** with 2 Ollama models resident. This Mac is always the first tile.*
+*Three machines at a glance. Each tile pairs **GPU + VRAM** and **CPU + RAM** on one axis,
+plus **ANE + memory bandwidth** on Apple Silicon — the tinted metric word matches its line, so
+no legend is needed. The bottom line of a tile is the **decode rate its runtime measured**,
+with how long ago: the Ubuntu box reached **262 tok/s**, both Macs **28 tok/s**. A rate dims
+once it stops describing the present. This Mac is always the first tile.*
 
 - **A remote Mac renders in the exact dashboard the local one uses** — E/P cores, GPU,
   **ANE**, Media, memory bandwidth, power, fans. As far as I know, no other tool shows a

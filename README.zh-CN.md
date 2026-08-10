@@ -56,10 +56,10 @@
 
 ![Fleet 总览 —— 所有机器在一屏之内](docs/img/fleet-overview.png)
 
-*三台机器一目了然。每块磁贴把 **GPU + VRAM** 与 **CPU + RAM** 叠在同一坐标轴上，Apple Silicon 还会
-多出 **ANE + 内存带宽**；指标名按线条颜色着色，因此不需要图例。图中 MacBook Pro 处于
-**GPU 64% / 10 GB/s**，Air 空闲，Ubuntu 主机占着 **18.7 GB 显存** 并常驻两个 Ollama 模型。
-This Mac 永远是第一块磁贴。*
+*三台机器一目了然。每块磁贴把 **GPU + VRAM** 与 **CPU + RAM** 叠在同一坐标轴上，Apple Silicon
+还加上 **ANE + 内存带宽** —— 指标名用自己曲线的颜色着色，因此不需要图例。
+磁贴最下面一行是**运行时实测的生成速度**以及它是多久之前的值：Ubuntu 机器 **262 tok/s**，
+两台 Mac 均为 **28 tok/s**。当数值不再描述当下时会变暗。This Mac 永远是第一块磁贴。*
 
 - **远程 Mac 使用与本机完全相同的仪表盘渲染** —— E/P 核、GPU、**ANE**、Media、内存带宽、功耗、
   风扇。据我所知，没有别的工具能显示**远程 Mac 的 Neural Engine**。

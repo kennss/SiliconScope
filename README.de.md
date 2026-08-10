@@ -60,11 +60,12 @@ IP-Konfiguration nötig.
 
 ![Die Fleet-Übersicht — alle Rechner auf einem Bildschirm](docs/img/fleet-overview.png)
 
-*Drei Rechner auf einen Blick. Jede Kachel legt **GPU + VRAM** und **CPU + RAM** auf dieselbe Achse,
-auf Apple Silicon kommen **ANE + Speicherbandbreite** dazu — das Metrik-Wort ist in der Farbe seiner
-Linie eingefärbt, eine Legende erübrigt sich. Hier liegt das MacBook Pro bei **64 % GPU / 10 GB/s**,
-das Air ist im Leerlauf, und die Ubuntu-Kiste hält **18,7 GB VRAM** mit zwei geladenen
-Ollama-Modellen. This Mac ist immer die erste Kachel.*
+*Drei Maschinen auf einen Blick. Jede Kachel legt **GPU + VRAM** und **CPU + RAM** auf eine
+gemeinsame Achse, auf Apple Silicon zusätzlich **ANE + Speicherbandbreite** — das eingefärbte
+Metrik-Wort entspricht seiner Linie, eine Legende erübrigt sich. Die unterste Zeile einer
+Kachel ist die **von der Runtime gemessene Generierungsrate** samt ihrem Alter: die
+Ubuntu-Maschine erreichte **262 tok/s**, beide Macs **28 tok/s**. Ein Wert wird blass, sobald
+er die Gegenwart nicht mehr beschreibt. This Mac ist immer die erste Kachel.*
 
 - **Ein ferner Mac wird in genau dem Dashboard gezeichnet, das auch lokal läuft** — E-/P-Kerne, GPU,
   **ANE**, Media, Speicherbandbreite, Leistung, Lüfter. Soweit ich weiß, zeigt kein anderes Werkzeug
