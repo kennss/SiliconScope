@@ -99,8 +99,7 @@ public final class PowerSampler {
 
             let group = groupRef as String
             let name = nameRef as String
-            let milliJoules = Double(IOReportSimpleGetIntegerValue(channel, 0))
-            let watts = (milliJoules / seconds) / 1000.0
+            let watts = Self.simpleWatts(raw: IOReportSimpleGetIntegerValue(channel, 0), seconds: seconds)
 
             // Group and channel names are matched through IOReportNaming so a die/chip-id token
             // ("DIE0 Energy Model", "DIE0 GPU0") still resolves — the shape that broke the
@@ -204,6 +203,17 @@ public final class PowerSampler {
         }
 
         return result
+    }
+
+    /// Watts from one IOReport "Simple" energy channel over `seconds`: strips the documented
+    /// `INT64_MIN` "unpopulated" sentinel (via the shared `IOReportNaming.sanitizeSimpleValue`)
+    /// before the mJ → W conversion. Energy Model channels are millijoules; the same sentinel that
+    /// corrupts a bandwidth bus corrupts a power rail — one unpopulated rail yielded
+    /// `Double(Int.min)` ≈ -9.2e18 mJ, a huge-negative wattage that dominated the per-domain sum.
+    /// Pure (Int + TimeInterval → Double) so the `Int.min` boundary is unit-testable without an
+    /// IOReport subscription.
+    static func simpleWatts(raw: Int, seconds: TimeInterval) -> Double {
+        Double(IOReportNaming.sanitizeSimpleValue(raw)) / seconds / 1000.0
     }
 
     /// One IOReport "Simple" (energy) channel, as read for a diagnostic dump.

@@ -139,20 +139,9 @@ public final class BandwidthSampler {
     }
 
     // MARK: - Simple-format channel value handling
-
-    /// Returns the byte delta for an IOReport "Simple" bandwidth channel, treating the documented
-    /// `INT64_MIN` "unpopulated" sentinel as 0. IOReport fills a Simple channel it has no reading
-    /// for this period with `INT64_MIN` (the same value `channelDump()` labels "not populated, raw
-    /// INT64_MIN"); summed as a real value it swamps/corrupts the per-bus total — one dead lane
-    /// yields `Double(Int.min)` ≈ -9.2e18 bytes, a huge-negative GB/s for the whole bus — so the
-    /// sentinel must be stripped before the value enters the delta or sum. This is an IOReport-wide
-    /// convention, not a bandwidth one: `PowerSampler.sample()` (`PowerSampler.swift:82`) reads the
-    /// same C API unguarded — its fix (a separate PR, per this fork's PR-split plan) should promote/
-    /// reuse this helper rather than re-deriving `raw == Int.min ? 0`. Pure (Int → Int) so the
-    /// `Int.min` boundary is unit-testable without IOReport hardware.
-    static func sanitizeSimpleValue(_ raw: Int) -> Int {
-        raw == Int.min ? 0 : raw
-    }
+    // The documented `INT64_MIN` "unpopulated" sentinel is stripped via the shared
+    // `IOReportNaming.sanitizeSimpleValue` — an IOReport-wide convention the power sampler shares,
+    // so the guard lives once rather than being re-derived per sampler.
 
     // MARK: - A18: PMP "DRAM BW" frequency-state lanes (Simple format, bytes)
 
@@ -169,7 +158,7 @@ public final class BandwidthSampler {
             else { return Int32(kKtopIOReportIterOk) }
             let name = (nameRef as String).uppercased()
             guard name.hasSuffix(" RD") || name.hasSuffix(" WR") else { return Int32(kKtopIOReportIterOk) }
-            totalBytes += Double(Self.sanitizeSimpleValue(IOReportSimpleGetIntegerValue(channel, 0)))
+            totalBytes += Double(IOReportNaming.sanitizeSimpleValue(IOReportSimpleGetIntegerValue(channel, 0)))
             return Int32(kKtopIOReportIterOk)
         }
         var result = BandwidthSample()
@@ -201,7 +190,7 @@ public final class BandwidthSampler {
                 return Int32(kKtopIOReportIterOk)
             }
             let requestor = Self.stripReadWriteSuffix(name)
-            let raw = Self.sanitizeSimpleValue(IOReportSimpleGetIntegerValue(channel, 0))
+            let raw = IOReportNaming.sanitizeSimpleValue(IOReportSimpleGetIntegerValue(channel, 0))
             let gbs = (Double(raw) / seconds) / 1_000_000_000.0
 
             switch Self.classify(requestor: requestor) {
