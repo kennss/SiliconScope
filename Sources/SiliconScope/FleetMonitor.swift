@@ -1,7 +1,7 @@
 //
 //  File:      FleetMonitor.swift
 //  Created:   2026-07-21
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Mac-side fleet aggregator: owns mDNS discovery (FleetDiscovery), holds the set of
 //             discovered machines, and polls each on an interval for the latest MachineMetrics (or
@@ -104,6 +104,14 @@ final class FleetMonitor {
     /// Forget a machine's pairing token (it reverts to "pairing required").
     func unpair(name: String) {
         FleetPairingStore.removeToken(for: name)
+        // Drop the last snapshot too. Without this the machine keeps displaying the readings it
+        // had a moment ago — numbers we are no longer entitled to fetch — until the next poll
+        // happens to fail. An instrument may not keep showing a value after losing the right to
+        // read it.
+        for i in entries.indices where entries[i].source.label == name {
+            entries[i].metrics = nil
+            entries[i].needsPairing = true
+        }
         discovery?.rebuild()
     }
 
@@ -125,6 +133,32 @@ final class FleetMonitor {
         if !alreadyDiscovered {
             FleetManualStore.add(ManualEndpoint(name: link.name, host: link.host, port: link.port))
         }
+        discovery?.rebuild()
+        Task { await pollAll() }
+    }
+
+    /// Remove a DISCOVERED machine from the list. The agent keeps advertising itself, so this
+    /// records the choice rather than deleting an address, and forgets the pairing so a later
+    /// restore starts clean. Reversible via `restoreHidden` — see FleetHiddenStore.
+    func removeDiscovered(name: String) {
+        FleetHiddenStore.hide(name)
+        FleetPairingStore.removeToken(for: name)
+        FleetPairingStore.removeFingerprint(for: name)
+        entries.removeAll { $0.source.label == name }
+        discovery?.rebuild()
+    }
+
+    /// Machines currently hidden from the list, so the UI can offer them back.
+    var hiddenMachines: [String] { FleetHiddenStore.all() }
+
+    func restoreHidden(_ name: String) {
+        FleetHiddenStore.unhide(name)
+        discovery?.rebuild()
+        Task { await pollAll() }
+    }
+
+    func restoreAllHidden() {
+        FleetHiddenStore.unhideAll()
         discovery?.rebuild()
         Task { await pollAll() }
     }

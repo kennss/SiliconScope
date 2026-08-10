@@ -1,7 +1,7 @@
 //
 //  File:      FleetMachineDetailView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail pane for one fleet machine. When metrics are in, it renders the SAME
 //             DashboardView the local "This Mac" uses — in remote mode, so a remote Mac looks
@@ -25,7 +25,14 @@ struct FleetMachineDetailView: View {
 
     var body: some View {
         Group {
-            if let m = entry?.metrics {
+            // Pairing is checked BEFORE the cached metrics on purpose. `metrics` holds the last
+            // successful poll, so an agent that has started answering 401 — its token rotated, or
+            // this Mac was unpaired — would otherwise keep rendering that stale snapshot as if it
+            // were current, AND hide the only button that can fix it. A machine we can no longer
+            // authenticate against has no readings, whatever is still in the cache.
+            if entry?.needsPairing == true {
+                pairingPrompt
+            } else if let m = entry?.metrics {
                 if m.kind == "mac" {
                     // Reuse the local Mac dashboard (E/P · ANE · Media · bandwidth · fans).
                     DashboardView(state: DashboardState(remote: m), mode: .remote)
@@ -33,8 +40,6 @@ struct FleetMachineDetailView: View {
                     // GPU-centric server view (NVIDIA util/VRAM/power/temp/processes) — no Apple cards.
                     LinuxServerView(fleet: fleet, machineID: machineID)
                 }
-            } else if entry?.needsPairing == true {
-                pairingPrompt
             } else if let e = entry?.error {
                 placeholder("exclamationmark.triangle", e, .red)
             } else {

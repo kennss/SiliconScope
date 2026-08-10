@@ -1,7 +1,7 @@
 //
 //  File:      FleetPairingStore.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-machine Fleet security state. The bearer token (secret) lives in the Keychain; the
 //             TOFU TLS cert fingerprint (public — just a hash) lives in UserDefaults. Both are keyed
@@ -35,7 +35,31 @@ enum FleetPairingStore {
 
     // MARK: - Bearer token (secret → Keychain)
 
+    /// Tokens already read this launch, so discovery does not re-enter the Keychain on every mDNS
+    /// event.
+    ///
+    /// ⚠️ This is a HANG fix, not an optimisation. `FleetDiscovery` is `@MainActor` and calls this
+    /// once per machine from `emit()`, which runs on every discovery change — so a synchronous
+    /// `SecItemCopyMatching` sits on the main thread N times per event. Whenever securityd is slow,
+    /// or shows an access prompt, the whole window freezes until it answers (observed twice, and
+    /// the reason the app appeared to lock up on launch and on opening Fleet).
+    ///
+    /// Correctness: the cache is authoritative because every write goes through `setToken` /
+    /// `removeToken` below, which update it. A token changed by another process would be missed —
+    /// nothing else writes these items.
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: String?] = [:]
+
     static func token(for name: String) -> String? {
+        cacheLock.lock()
+        if let hit = cache[name] { cacheLock.unlock(); return hit }
+        cacheLock.unlock()
+        let value = readTokenFromKeychain(name)
+        cacheLock.lock(); cache[name] = value; cacheLock.unlock()
+        return value
+    }
+
+    private static func readTokenFromKeychain(_ name: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -63,6 +87,7 @@ enum FleetPairingStore {
         add[kSecValueData as String] = Data(token.utf8)
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(add as CFDictionary, nil)
+        cacheLock.lock(); cache[name] = token; cacheLock.unlock()
     }
 
     static func removeToken(for name: String) {
@@ -72,5 +97,6 @@ enum FleetPairingStore {
             kSecAttrAccount as String: name,
         ]
         SecItemDelete(query as CFDictionary)
+        cacheLock.lock(); cache[name] = String?.none; cacheLock.unlock()
     }
 }

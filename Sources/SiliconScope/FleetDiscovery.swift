@@ -1,7 +1,7 @@
 //
 //  File:      FleetDiscovery.swift
 //  Created:   2026-07-21
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  mDNS/Bonjour auto-discovery of fleet agents on the LAN. Browses "_sscope-agent._tcp",
 //             resolves each service to host:port, and hands FleetMonitor an https HTTPFleetSource
@@ -88,9 +88,15 @@ final class FleetDiscovery {
     /// Build https FleetSources — mDNS-discovered agents PLUS manually-added off-LAN endpoints —
     /// injecting the stored token + TOFU pin each time and wiring the first-connect cert callback.
     private func emit() {
-        var sources: [any FleetSource] = cache.values.compactMap {
-            httpSource(id: "mdns:\($0.name)", label: $0.name, host: $0.host, port: $0.port, key: $0.name)
-        }
+        // A discovered machine the user removed stays removed. mDNS keeps offering it for as long
+        // as it is switched on, so "remove" for these can only mean "do not list this one" — see
+        // FleetHiddenStore. Manual endpoints are not filtered: deleting one deletes the address.
+        let hidden = Set(FleetHiddenStore.all())
+        var sources: [any FleetSource] = cache.values
+            .filter { !hidden.contains($0.name) }
+            .compactMap {
+                httpSource(id: "mdns:\($0.name)", label: $0.name, host: $0.host, port: $0.port, key: $0.name)
+            }
         // Manual off-LAN endpoints (Tailscale / VPN / cloud) — same transport + security, no discovery.
         for e in FleetManualStore.all() {
             if let s = httpSource(id: "manual:\(e.id)", label: e.name, host: e.host, port: e.port, key: e.name) {
