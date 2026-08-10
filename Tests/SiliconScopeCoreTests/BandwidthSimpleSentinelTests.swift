@@ -1,9 +1,9 @@
 //
 //  File:      BandwidthSimpleSentinelTests.swift
 //  Created:   2026-08-09
-//  Updated:   2026-08-09
+//  Updated:   2026-08-10
 //  Developer: Yurii Chukhlib
-//  Overview:  Unit tests for `BandwidthSampler.sanitizeSimpleValue` — the guard that stops an
+//  Overview:  Unit tests for `IOReportNaming.sanitizeSimpleValue` — the guard that stops an
 //             IOReport "Simple" bandwidth channel's documented `INT64_MIN` "unpopulated" sentinel
 //             from being summed/averaged as a real byte delta.
 //  Notes:     No hardware: these exercise a pure Int → Int helper, the boundary that's impossible
@@ -25,24 +25,24 @@ final class BandwidthSimpleSentinelTests: XCTestCase {
     /// existed it was summed straight into the per-bus total, producing a huge-negative GB/s.
     func testSentinelMapsToZero() {
         // `.min` resolves to `Int.min` (== Int64.min == INT64_MIN on the 64-bit target).
-        XCTAssertEqual(BandwidthSampler.sanitizeSimpleValue(.min), 0,
+        XCTAssertEqual(IOReportNaming.sanitizeSimpleValue(.min), 0,
                        "INT64_MIN / Int.min 'unpopulated' sentinel reads as 0, not a real byte delta")
     }
 
     // MARK: - Real readings pass through unchanged
 
     func testNormalReadingPassesThrough() {
-        XCTAssertEqual(BandwidthSampler.sanitizeSimpleValue(0), 0)
-        XCTAssertEqual(BandwidthSampler.sanitizeSimpleValue(1_500_000_000), 1_500_000_000)
-        XCTAssertEqual(BandwidthSampler.sanitizeSimpleValue(2_000_000_000_000), 2_000_000_000_000)
+        XCTAssertEqual(IOReportNaming.sanitizeSimpleValue(0), 0)
+        XCTAssertEqual(IOReportNaming.sanitizeSimpleValue(1_500_000_000), 1_500_000_000)
+        XCTAssertEqual(IOReportNaming.sanitizeSimpleValue(2_000_000_000_000), 2_000_000_000_000)
     }
 
     /// Only `Int.min` is the documented sentinel. A real, non-sentinel negative value is NOT a
     /// sentinel and must survive unchanged — the guard must not silently zero legitimate data.
     func testNonSentinelNegativePassesThrough() {
-        XCTAssertEqual(BandwidthSampler.sanitizeSimpleValue(-1), -1)
+        XCTAssertEqual(IOReportNaming.sanitizeSimpleValue(-1), -1)
         // Int.min + 1 is the largest-in-magnitude negative that is NOT the sentinel.
-        XCTAssertEqual(BandwidthSampler.sanitizeSimpleValue(Int.min + 1), Int.min + 1)
+        XCTAssertEqual(IOReportNaming.sanitizeSimpleValue(Int.min + 1), Int.min + 1)
     }
 
     // MARK: - The sentinel no longer corrupts a per-bus sum
@@ -53,7 +53,7 @@ final class BandwidthSimpleSentinelTests: XCTestCase {
     /// shape and the M-series `sampleAMCStatsSimple` per-requestor accumulation shape, in miniature.
     func testSentinelLaneDoesNotCorruptSum() {
         let lanes = [2_000_000_000, 3_000_000_000, Int.min]   // two live lanes + one unpopulated
-        let totalBytes = lanes.reduce(0.0) { $0 + Double(BandwidthSampler.sanitizeSimpleValue($1)) }
+        let totalBytes = lanes.reduce(0.0) { $0 + Double(IOReportNaming.sanitizeSimpleValue($1)) }
         XCTAssertEqual(totalBytes, 5_000_000_000, accuracy: 1e-6,
                        "the unpopulated lane must contribute 0, leaving only the two live lanes")
     }
