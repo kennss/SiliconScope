@@ -1,7 +1,7 @@
 //
 //  File:      DashboardState.swift
 //  Created:   2026-06-25
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The exact set of values DashboardView renders — built either from the live monitor
 //             or from a replayed recording frame. Making it one value struct (rather than a
@@ -91,7 +91,12 @@ struct DashboardState {
     /// Remote: reconstruct the dashboard from a remote Mac's wire metrics, run through the SAME
     /// verdict functions as replay. History is empty (no time series over the wire yet) → flat
     /// sparklines. Powers the remote-mode DashboardView so a remote Mac looks like This Mac.
+    /// A remote runtime's measured decode rate, when the agent reports one. Local mode has its own
+    /// live path (RuntimeAPISample / the benchmark button), so this is the remote-only carrier.
+    private(set) var remoteTokenRate: FleetTokenRate?
+
     init(remote m: MachineMetrics) {
+        remoteTokenRate = m.llm?.rate
         let (s, topo) = m.toDashboardSnapshot()
         snapshot = s
         topology = topo

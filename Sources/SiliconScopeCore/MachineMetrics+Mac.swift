@@ -26,7 +26,8 @@ public extension MachineMetrics {
                     loadAvg1: Double,
                     anePeakWatts: Double,
                     mediaPeakGBs: Double,
-                    bandwidthPeakGBs: Double) -> MachineMetrics {
+                    bandwidthPeakGBs: Double,
+                    tokenRate: FleetTokenRate? = nil) -> MachineMetrics {
         let eCores = topology?.eCoreCount ?? 0
         let pCores = topology?.pCoreCount ?? 0
         let coreDivisor = Double(max(eCores + pCores, 1))
@@ -105,7 +106,9 @@ public extension MachineMetrics {
         return MachineMetrics(
             machineId: machineId, hostname: hostname, os: osName, kind: "mac",
             agentVersion: agentVersion, ts: tsMillis, cpu: cpu, memory: memory,
-            gpus: [gpu], llm: nil, apple: apple
+            // A Mac serving models reports its decode rate the same way the Linux agent does, so
+            // the fleet describes both in one vocabulary. nil when no runtime publishes one.
+            gpus: [gpu], llm: tokenRate.map { FleetLLM(ollama: nil, rate: $0) }, apple: apple
         )
     }
 }

@@ -173,6 +173,12 @@ struct DashboardView: View {
                 if mode == .remote {
                     // Remote Mac: only the hardware cards a Mac agent sends. Same look as local, minus
                     // network/disk/process/AI-runtime (no data over the wire). Re-paired into 3 rows.
+                    //
+                    // The one runtime fact that DOES cross the wire is the decode rate, when a local
+                    // runtime there reports one. It gets its own strip rather than a card: this Mac's
+                    // AI Runtime card is a live poll of a runtime we can reach, and a remote agent's
+                    // last-finished-prediction is a different claim that must not borrow its frame.
+                    if let r = s.remoteTokenRate { RemoteGenerationStrip(rate: r) }
                     HStack(alignment: .top, spacing: Space.row) {
                         AIWorkloadCard(snapshot: snapshot, bottleneck: s.bottleneck, ceilingGBs: s.bandwidthCeilingGBs,
                                        cpuThrottling: s.cpuThrottling, cpuClockDrop: s.cpuClockDropFraction,
@@ -1097,7 +1103,7 @@ private struct SubLabel: View {
     var body: some View {
         HStack(spacing: Space.row) {
             Text(text.uppercased())
-                .font(Theme.font(.sectionMinor))
+                .font(Theme.labelFont(.sectionMinor))
                 .tracking(1.2).foregroundStyle(Theme.faint)
             if let pin = menuBarPin { MenuBarPin(isOn: pin) }
             Spacer(minLength: 0)
@@ -1354,4 +1360,49 @@ private struct ProcessCard: View {
         .buttonStyle(.plain)
         .foregroundStyle(sortKey == key ? Theme.accent : Theme.faint)
     }
+}
+
+/// A remote machine's measured decode rate, shown above its hardware cards.
+///
+/// Deliberately a thin strip, not a Card. A card here would sit beside the local AI Runtime card in
+/// the reader's memory and imply the same kind of fact — but that one is a live poll of a runtime
+/// this Mac can reach, while this is the last prediction some other machine happened to finish.
+/// The age carries that difference, so it is never omitted and it dims once the number stops
+/// describing the present.
+private struct RemoteGenerationStrip: View {
+    let rate: FleetTokenRate
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.row) {
+            Text("GENERATION")
+                .font(Theme.labelFont(.sectionMinor))
+                .tracking(Theme.tracking(.sectionMinor))
+                .foregroundStyle(Theme.faint)
+            Text(String(format: "%.1f", rate.tokensPerSec))
+                .font(Theme.font(.emphasis, .strong))
+                .foregroundStyle(fresh ? Theme.text : Theme.dim)
+            Text("tok/s").font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+            Text(rate.sourceLabel).font(Theme.font(.caption)).foregroundStyle(Theme.dim)
+            if let model = rate.model {
+                Text(model).font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+            if let ttft = rate.ttftSec, ttft > 0 {
+                Text(String(format: "first token %.2fs", ttft))
+                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+            }
+            Text(LinuxServerView.ageLabel(rate.age))
+                .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+        }
+        .padding(.horizontal, Space.card)
+        .padding(.vertical, Space.tight)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.panel, in: RoundedRectangle(cornerRadius: Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Theme.border, lineWidth: 1))
+    }
+
+    /// Two minutes: long enough that a pause between prompts does not blink the value out, short
+    /// enough that an idle machine stops looking like a busy one.
+    private var fresh: Bool { rate.age < 120 }
 }

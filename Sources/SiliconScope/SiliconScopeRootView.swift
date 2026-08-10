@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeRootView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-23
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The single-window shell: a NavigationSplitView with a "Devices" sidebar (This Mac +
 //             every discovered fleet agent) and a detail pane that shows the selected device's
@@ -49,8 +49,14 @@ struct SiliconScopeRootView: View {
                             entry: entry,
                             isManual: entry.id.hasPrefix("manual:"),
                             onUnpair: { fleet.unpair(name: $0) },
-                            onRemove: { fleet.removeManual(id: String(entry.id.dropFirst("manual:".count)),
-                                                           name: entry.source.label) }
+                            onRemove: {
+                                if entry.id.hasPrefix("manual:") {
+                                    fleet.removeManual(id: String(entry.id.dropFirst("manual:".count)),
+                                                       name: entry.source.label)
+                                } else {
+                                    fleet.removeDiscovered(name: entry.source.label)
+                                }
+                            }
                         )
                         .tag(DeviceSelection.remote(entry.id))
                     }
@@ -62,6 +68,24 @@ struct SiliconScopeRootView: View {
                     if fleet.entries.isEmpty {
                         Label("Searching for agents…", systemImage: "antenna.radiowaves.left.and.right")
                             .font(Theme.font(.caption)).foregroundStyle(.secondary)
+                    }
+                    // Removing a live machine only hides it, so the way back must be visible from
+                    // the same place. A row that can disappear with no affordance to restore it is
+                    // a trap; this appears only while something is actually hidden.
+                    if !fleet.hiddenMachines.isEmpty {
+                        Menu {
+                            ForEach(fleet.hiddenMachines, id: \.self) { name in
+                                Button(name) { fleet.restoreHidden(name) }
+                            }
+                            Divider()
+                            Button("Show all") { fleet.restoreAllHidden() }
+                        } label: {
+                            Label("\(fleet.hiddenMachines.count) removed", systemImage: "eye.slash")
+                                .font(Theme.font(.caption)).frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .menuStyle(.borderlessButton).foregroundStyle(.secondary)
+                        .help("Machines you removed from this list. They are still on the network — pick one to show it again.")
                     }
                     Button { showAddMachine = true } label: {
                         Label("Add machine…", systemImage: "plus")
@@ -125,17 +149,33 @@ private struct DeviceSidebarRow: View {
             if !entry.needsPairing {
                 Button("Forget pairing", role: .destructive) { onUnpair(entry.source.label) }
             }
-            if isManual {
-                Button("Remove machine", role: .destructive) { onRemove() }
-            }
+            // Both kinds can be removed, but they mean different things: deleting a manual entry
+            // deletes the address, while a discovered agent keeps advertising — so removing it
+            // records "don't list this one" and the sidebar offers it back (FleetHiddenStore).
+            Button("Remove machine", role: .destructive) { onRemove() }
         }
     }
 
+    /// One line per machine, so the sidebar answers "what is this box doing" without a click.
+    ///
+    /// The decode rate goes FIRST when it is fresh: on a box that serves models, "is it generating,
+    /// and how fast" is the question, and GPU% answers it poorly — a 0.6B model can hold 260 tok/s
+    /// while the GPU counter reads single digits. A stale rate is dropped rather than shown here;
+    /// this row has no space for the age that would keep it honest, and the detail view carries
+    /// both together.
     private var subtitle: String {
         if entry.needsPairing { return "pairing required" }
         guard let m = entry.metrics else { return "connecting…" }
-        if let g = m.gpus.first { return "GPU \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W" }
-        return "CPU \(Int(m.cpu.usagePercent))%"
+        var parts: [String] = []
+        if let r = m.llm?.rate, r.age < 120 {
+            parts.append(String(format: "%.0f tok/s", r.tokensPerSec))
+        }
+        if let g = m.gpus.first {
+            parts.append("GPU \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W")
+        } else {
+            parts.append("CPU \(Int(m.cpu.usagePercent))%")
+        }
+        return parts.joined(separator: "  ·  ")
     }
 
     private var statusColor: Color {

@@ -1,7 +1,7 @@
 //
 //  File:      MacAgent.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-24
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App-side "share this Mac to the Fleet" controller. Runs a FleetAgentServer (Core) that
 //             serves this Mac's MachineMetrics over TLS + mDNS, so another Mac's Fleet view discovers
@@ -110,6 +110,19 @@ final class MacAgentController {
 }
 
 extension SiliconScopeMonitor {
+    /// The same decode-rate collector the standalone agents use, so "This Mac" in the Fleet grid is
+    /// described by the identical rule as every other machine there. The local dashboard has its own
+    /// live path (RuntimeAPISample + the benchmark button); this exists so one screen does not apply
+    /// two definitions of the same number.
+    ///
+    /// Started on first use rather than at launch: it spawns `lms log stream` when LM Studio is
+    /// installed, and someone who never opens Fleet should not pay for a child process.
+    private static let fleetTokenRate: TokenRateWatcher = {
+        let w = TokenRateWatcher()
+        w.start()
+        return w
+    }()
+
     /// Map the current live snapshot into the fleet wire schema, injecting the values that live
     /// outside SystemSnapshot (engine peaks + 1-min load average).
     func machineMetricsMac(machineId: String, hostname: String, osName: String,
@@ -119,7 +132,8 @@ extension SiliconScopeMonitor {
             hostname: hostname, machineId: machineId, osName: osName,
             agentVersion: agentVersion, tsMillis: Int64(Date().timeIntervalSince1970 * 1000),
             loadAvg1: Self.loadAvg1(), anePeakWatts: anePeakWatts, mediaPeakGBs: mediaPeakGBs,
-            bandwidthPeakGBs: bandwidthPeakGBs
+            bandwidthPeakGBs: bandwidthPeakGBs,
+            tokenRate: Self.fleetTokenRate.latest()
         )
     }
 

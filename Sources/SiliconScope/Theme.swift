@@ -349,6 +349,16 @@ extension Theme {
         .system(size: size(role), weight: weight(role, emphasis), design: .monospaced)
     }
 
+    /// Same role, proportional face — for text that is a NAME rather than a reading.
+    ///
+    /// Monospace is here to hold columns still: a value that changes every tick must not shift the
+    /// glyphs beside it. A card title sits in no column, so its monospacing buys nothing and costs
+    /// letter shapes — SF Mono's `G` is a `C` plus a short bar, and at 9.5pt dim that was enough to
+    /// make the CPU and GPU cards hard to tell apart at a glance (#36).
+    static func labelFont(_ role: Role, _ emphasis: Emphasis = .plain) -> Font {
+        .system(size: size(role), weight: weight(role, emphasis))
+    }
+
     /// Letter spacing for a role, 0 where it has none. Applied at the call site with SwiftUI's
     /// primitive `.tracking()`, for the same reason `font(_:_:)` is not a ViewModifier.
     static func tracking(_ role: Role) -> CGFloat {
@@ -782,7 +792,7 @@ struct Card<Content: View, Graph: View>: View {
                 // one hue that says "CPU". Colour belongs to the readings; a title earns its rank
                 // from weight, tracking and brightness, which is what `dim` over `faint` gives it.
                 Text(title.uppercased())
-                    .font(Theme.font(.sectionMajor))
+                    .font(Theme.labelFont(.sectionMajor))
                     .tracking(Theme.tracking(.sectionMajor))
                     .foregroundStyle(Theme.dim)
                 Spacer(minLength: 0)

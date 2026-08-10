@@ -1,7 +1,7 @@
 //
 //  File:      LinuxServerView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail dashboard for a remote LINUX / NVIDIA server — GPU-centric, distinct from the
 //             Mac layout. An identity row (CPU cores / RAM / GPU name / VRAM), then two paired
@@ -44,6 +44,7 @@ struct LinuxServerView: View {
                               history.map { $0.memFrac }, MetricPalette.ramC)
 
                     if let g, !g.processes.isEmpty { computeProcesses(g) }
+                    if let rate = m.llm?.rate { tokenRateCard(rate) }
                     if let o = m.llm?.ollama, o.running { ollamaCard(o) }
                 }
             }
@@ -140,6 +141,46 @@ struct LinuxServerView: View {
                     Text(gb(p.vramBytes)).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    /// The runtime's own decode rate for work it has already done.
+    ///
+    /// The age is shown beside the number rather than under it, because the two are one fact: this
+    /// machine reached 28 tok/s — *when*. Without the age a rate from an hour ago reads as live,
+    /// which is the same mistake as asserting a state with no measurement behind it.
+    private func tokenRateCard(_ r: FleetTokenRate) -> some View {
+        card("GENERATION") {
+            HStack(alignment: .firstTextBaseline, spacing: Space.row) {
+                Text(String(format: "%.1f", r.tokensPerSec))
+                    .font(Theme.font(.emphasis, .strong))
+                Text("tok/s").font(Theme.font(.caption)).foregroundStyle(.secondary)
+                Spacer()
+                Text(Self.ageLabel(r.age)).font(Theme.font(.caption)).foregroundStyle(.secondary)
+            }
+            HStack(spacing: Space.row) {
+                Text(r.sourceLabel).font(Theme.font(.caption)).foregroundStyle(.secondary)
+                if let model = r.model {
+                    Text(model).font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer()
+                if let ttft = r.ttftSec, ttft > 0 {
+                    Text(String(format: "first token %.2fs", ttft))
+                        .font(Theme.font(.caption)).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// "just now" / "3 min ago" / "2 h ago" — coarse on purpose. The point is whether the number
+    /// still describes what the machine is doing, not the exact second it was taken.
+    static func ageLabel(_ age: TimeInterval) -> String {
+        switch age {
+        case ..<45:     return "just now"
+        case ..<3600:   return "\(Int(age / 60)) min ago"
+        case ..<86_400: return "\(Int(age / 3600)) h ago"
+        default:        return "\(Int(age / 86_400)) d ago"
         }
     }
 

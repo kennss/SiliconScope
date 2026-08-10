@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics.swift
 //  Created:   2026-07-21
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The source-agnostic fleet metric schema — the boundary the Mac aggregator consumes
 //             for every remote machine, regardless of how the data arrives. Mirrors the Go Linux
@@ -146,9 +146,52 @@ public struct FleetOllama: Codable, Sendable, Equatable {
     }
 }
 
+/// A runtime's own count of its own decode rate, as reported by the agent.
+///
+/// ⚠️ **Measured, and therefore stale.** Every source publishes a rate only for work that has
+/// already finished — llama.cpp's gauge covers its last predictions, LM Studio emits one event per
+/// completed prediction — so `measuredAt` is not decoration. A rate with no age reads as "right
+/// now", and a number from an hour ago presented that way is the same class of claim as a state
+/// asserted without its measurement.
+///
+/// Absent rather than zero when nothing reports one: Ollama exposes no server-side rate at all
+/// (its embedded llama-server ships without `--metrics`), and a missing measurement is a different
+/// fact from a measured 0 tok/s.
+public struct FleetTokenRate: Codable, Sendable, Equatable {
+    public let tokensPerSec: Double
+    public let source: String            // "llama.cpp" | "lmstudio"
+    public let model: String?
+    public let measuredAt: Int64         // unix ms
+    public let ttftSec: Double?          // time to first token, where the runtime reports it
+
+    public init(tokensPerSec: Double, source: String, model: String?,
+                measuredAt: Int64, ttftSec: Double?) {
+        self.tokensPerSec = tokensPerSec; self.source = source; self.model = model
+        self.measuredAt = measuredAt; self.ttftSec = ttftSec
+    }
+
+    public var measuredDate: Date { Date(timeIntervalSince1970: Double(measuredAt) / 1000) }
+
+    /// How long ago the rate was measured. The UI uses this to say "2 min ago" rather than
+    /// implying the number is live.
+    public var age: TimeInterval { max(0, Date().timeIntervalSince(measuredDate)) }
+
+    /// Runtime name as it should appear in the UI.
+    public var sourceLabel: String {
+        switch source {
+        case "lmstudio":  return "LM Studio"
+        case "llama.cpp": return "llama.cpp"
+        default:          return source
+        }
+    }
+}
+
 public struct FleetLLM: Codable, Sendable, Equatable {
     public let ollama: FleetOllama?
-    public init(ollama: FleetOllama?) { self.ollama = ollama }
+    public let rate: FleetTokenRate?
+    public init(ollama: FleetOllama?, rate: FleetTokenRate? = nil) {
+        self.ollama = ollama; self.rate = rate
+    }
 }
 
 // MARK: - Apple-Silicon extras (Mac agent)

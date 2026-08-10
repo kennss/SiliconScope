@@ -1,7 +1,7 @@
 //
 //  File:      FleetOverviewView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  At-a-glance view of every machine at once — an adaptive grid of compact tiles. THIS
 //             MAC is always the first tile (a laptop glyph, taps through to its full dashboard);
@@ -99,6 +99,16 @@ private struct FleetTile: View {
                     let loaded = o.loaded.first?.name
                     Text(loaded.map { "● \($0)" } ?? "\(o.models.count) model(s)")
                         .font(Theme.font(.caption)).foregroundStyle(loaded != nil ? .green : .secondary).lineLimit(1)
+                }
+                // The decode rate is what "how is this box performing" actually means for an LLM
+                // host, so it belongs on the tile rather than one level down. Dimmed once it stops
+                // describing the present — the number stays readable, its authority does not.
+                if let r = m.llm?.rate {
+                    Text(String(format: "%.0f tok/s · %@", r.tokensPerSec,
+                                LinuxServerView.ageLabel(r.age)))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(r.age < 120 ? Theme.text : Theme.faint)
+                        .lineLimit(1)
                 }
             } else if let e = error {
                 spacerText(e, .red)

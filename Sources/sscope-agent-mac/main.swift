@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Headless SiliconScope fleet agent for a Mac (launchd / CLI). Samples this Mac's live
 //             metrics via Core's SystemSampler once a second, maps them to MachineMetrics, and serves
@@ -18,7 +18,7 @@ import Foundation
 import IOKit
 import SiliconScopeCore
 
-private let agentVersion = "1.0.1"
+private let agentVersion = "1.1.0"
 private let defaultPort: UInt16 = 7799
 
 /// Thread-safe holder for the latest encoded MachineMetrics JSON (written by the sample loop, read
@@ -122,6 +122,10 @@ let hostname = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
 let osv = ProcessInfo.processInfo.operatingSystemVersion
 let osName = "macOS \(osv.majorVersion).\(osv.minorVersion).\(osv.patchVersion)"
 
+// Publishes tok/s when a local runtime reports one (LM Studio's stream / llama.cpp's /metrics).
+let tokenRate = TokenRateWatcher()
+tokenRate.start()
+
 let sampler = SystemSampler()
 let topology = sampler.topology
 let engine = MetricsEngine(topology: topology)
@@ -141,7 +145,8 @@ sampleQueue.async {
             osName: osName, agentVersion: agentVersion,
             tsMillis: Int64(now.timeIntervalSince1970 * 1000), loadAvg1: loadAvg1(),
             anePeakWatts: engine.anePeakWatts, mediaPeakGBs: engine.mediaPeakGBs,
-            bandwidthPeakGBs: engine.bandwidthPeakGBs
+            bandwidthPeakGBs: engine.bandwidthPeakGBs,
+            tokenRate: tokenRate.latest()
         )
         if let d = try? JSONEncoder().encode(metrics) { cache.set(d) }
         Thread.sleep(forTimeInterval: 0.8)   // total cadence ≈ 1 s

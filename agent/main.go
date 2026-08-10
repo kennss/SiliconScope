@@ -34,7 +34,7 @@ import (
 	"github.com/grandcat/zeroconf"
 )
 
-const agentVersion = "1.0.1"
+const agentVersion = "1.1.0"
 
 // MachineMetrics is the wire schema (source-agnostic): Linux-NVML and Mac-headless both fill it.
 type MachineMetrics struct {
@@ -94,6 +94,10 @@ type Ollama struct {
 
 type LLM struct {
 	Ollama *Ollama `json:"ollama,omitempty"`
+	// The runtime's own count of its own decode rate, when it publishes one. Absent rather than
+	// zero when no runtime exposes it — a missing measurement and a measured 0 tok/s are different
+	// facts, and Ollama genuinely exposes nothing server-side. See tokenrate.go.
+	Rate *TokenRate `json:"rate,omitempty"`
 }
 
 func main() {
@@ -146,6 +150,10 @@ func sample() MachineMetrics {
 // (open, for discovery/liveness) over TLS. The Mac aggregator connects here directly, TOFU-pinning
 // the self-signed cert (fingerprint advertised via mDNS) and sending the bearer token.
 func runServer(addr string) {
+	// Only in serve mode: LM Studio reports a rate when a prediction FINISHES, so a one-shot
+	// snapshot would exit long before anything could be observed.
+	watchLMStudio()
+
 	token, err := loadOrCreateToken()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "token init failed:", err)
@@ -361,15 +369,21 @@ func readGPUProcs() []GPUProc {
 // MARK: - LLM (Ollama)
 
 func readLLM() *LLM {
+	rate := readTokenRate()
 	models, ok := ollamaModels("/api/tags")
 	if !ok {
-		return nil // Ollama not reachable → omit
+		// No Ollama — but another runtime may still be reporting a rate (LM Studio, llama.cpp),
+		// and dropping the whole block here is what would hide it.
+		if rate == nil {
+			return nil
+		}
+		return &LLM{Rate: rate}
 	}
 	loaded, ok := ollamaModels("/api/ps")
 	if !ok || loaded == nil {
 		loaded = []LLMModel{} // never emit `null` — same nil-slice trap as gpus (#33)
 	}
-	return &LLM{Ollama: &Ollama{Running: true, Models: models, Loaded: loaded}}
+	return &LLM{Ollama: &Ollama{Running: true, Models: models, Loaded: loaded}, Rate: rate}
 }
 
 func ollamaModels(path string) ([]LLMModel, bool) {
