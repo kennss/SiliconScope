@@ -1,7 +1,7 @@
 //
 //  File:      BatteryHealthTests.swift
 //  Created:   2026-06-20
-//  Updated:   2026-06-20
+//  Updated:   2026-08-10
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pure tests for battery health % (full-charge / design capacity, clamped) and
 //             the derived condition string. Capacities come from AppleSmartBattery at
@@ -35,6 +35,18 @@ final class BatteryHealthTests: XCTestCase {
                        "Service Recommended")
         // A permanent failure flag forces Service Recommended even at high health.
         XCTAssertEqual(BatterySampler.condition(healthPercent: 95, permanentFailure: true),
+                       "Service Recommended")
+    }
+
+    /// health == 0 is the "capacities unreadable" sentinel of `healthPercent` (see
+    /// `testHealthZeroWhenCapacitiesUnknown`), not a measurement of a healthy battery. Asserting
+    /// "Normal" there would be a positive claim the data does not support, and would disagree with
+    /// the empty condition `sample()` emits when the AppleSmartBattery read fails outright (the two
+    /// "health unknown" paths must agree). Unknown health ⇒ no condition, matching that path.
+    func testUnknownHealthIsNotAssertedNormal() {
+        XCTAssertEqual(BatterySampler.condition(healthPercent: 0, permanentFailure: false), "")
+        // A permanent failure still wins even when the health number is unknown.
+        XCTAssertEqual(BatterySampler.condition(healthPercent: 0, permanentFailure: true),
                        "Service Recommended")
     }
 }
