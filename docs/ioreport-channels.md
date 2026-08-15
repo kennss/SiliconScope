@@ -54,22 +54,34 @@ chip/OS combination where this entire group fails to subscribe.
 
 `GB/s = (bytes / interval_s) / 1e9`
 
-### macOS 27 beta / M3 Max — channel names restructured (unverified fix, documented upstream)
+### macOS 27 / M3 Max — `AMC Stats` became unsubscribable; `PMP0` now exposes total only
 
-Not independently re-verified by this project — see
-[github.com/kennss/SiliconScope#14](https://github.com/kennss/SiliconScope/issues/14) (filed by
-the maintainer) for the full, hardware-verified writeup. Summary: on macOS 27.0.0 beta, an M3
-Max still exposes the `AMC Stats`/`Perf Counters` group and its channels subscribe fine, but
-Apple restructured the channel *names* three ways: a leading `DIE0` chip-id/per-core token
-(`ECPU DCS RD` → `DIE0 ECPU0 DCS RD`), the combined `RD/WR` suffix split into separate channels
-with several shapes (`RD/WR`, `RD/WR/RDWR`, `RD/WR + RD/WR`), and ~19 new unclassified requestor
-families (`AVE0/1`, `SCODEC`, `SEP`, `SIO`, `ATC0-3`, `MSR0/1`, `PCIEGE`, `GFXA/B/C`,
-`EXT_DISP0-3`). Separately, the surviving channels were observed reading the `INT64_MIN`
-sentinel instead of real bytes — an open question, not solved by this project. `classify()` in
-`BandwidthSampler.swift` now tolerates the `DIE0` prefix and the additional RD/WR suffix shapes
-(see its `contains(_:unitPrefix:)` and `hasReadWriteToken`/`stripReadWriteSuffix` helpers), which
-should address the naming/classification half of #14 — but this project has no macOS 27 hardware
-to confirm the `INT64_MIN` half against.
+Two macOS 27 layouts have been observed on the same M3 Max generation. The early beta captured in
+[issue #14](https://github.com/kennss/SiliconScope/issues/14) still allowed an `AMC Stats`
+subscription, but its renamed `DIE0`-prefixed Simple channels returned `INT64_MIN` rather than byte
+deltas. The requestor-name fixes remain useful for any build where those channels populate, but
+they could not solve the missing values.
+
+On macOS 27.0 build **26A5388g** (Apple M3 Max, Mac15,9;
+[issue #46](https://github.com/kennss/SiliconScope/issues/46), verified 2026-08-15), the layout
+changed again:
+
+- `IOReportCopyChannelsInGroup("AMC Stats", ...)` still finds the group, but
+  `IOReportCreateSubscription` now returns `nil`.
+- The subscribable fallback is `PMP0` / `DCS BW`, State format.
+- That subgroup exposes exactly one combined requestor: `AMCC RD+WR`. Under a sustained 96–98%
+  GPU workload, its residency-weighted value was **278.695 GB/s**, with non-zero buckets from
+  64 through 384 GB/s. At lower load, live samples moved to 32–43 GB/s and the raw histogram read
+  40.788 GB/s across 32–192 GB/s buckets. It tracks load, but its 32 GB/s lowest bucket makes the
+  result coarse and gives it a non-zero floor.
+
+This is not the M5 layout below. On M5, AMCC sits beside about twenty additive requestor histograms,
+so adding its aggregate would double-count traffic as well as importing that floor. On this
+M3/macOS 27 layout, AMCC is the entire available signal; excluding it leaves an empty sample and
+guarantees 0 GB/s. `BandwidthSampler` therefore uses AMCC as `measuredTotalGBs` only when it is the
+sole aggregate and no per-requestor channels exist. CPU/GPU/Media remain zero because this layout
+does not expose a defensible split, and `isEstimated` remains true because the source is a coarse
+residency histogram rather than byte deltas.
 
 ### M4 Max / macOS 26.5.2 — "AMC Stats" subscription fails outright; data relocated to `PMP`/"DCS BW"
 
@@ -97,16 +109,13 @@ not `ECPU`/`PCPU`), `AGX` (GPU, not `GFX`), `ISP0`/`JPEG0`/`PRORES1`/`SCODEC0`/`
 fails, and only reads the combined `<requestor> RD+WR` channel per requestor (the separate
 RD-only/WR-only breakdown channels are not also summed in, to avoid double-counting).
 
-**Known limitation, observed and not solved here:** the top bucket (`"32GB/s"`) is very likely a
-saturating/clamped bin rather than a literal ceiling — under a sustained heavy-GPU workload, the
-`AGX RD+WR` channel showed a real residency spike concentrated in that top bucket (tens of ticks
-out of a few hundred), and the always-on `AMCC` requestor (folded into `other`) was observed
-reading *100% of its residency* in the top bucket continuously, even near-idle — suggesting
-`AMCC`'s counter may not behave like the others. The weighted average is real, non-fabricated,
-and moves correctly with load, but can understate true peak bandwidth for requestors that
-saturate past 32 GB/s, and `other`/`total` may run persistently elevated because of `AMCC`. Not
-fixed in this change; flagged for whoever picks up more precise interpretation of this histogram
-next.
+**Known limitation:** each M4/M5 per-requestor histogram tops out at a labeled `"32GB/s"` bucket
+that behaves like a saturating bin. Under a sustained heavy-GPU workload, `AGX RD+WR` accumulated
+real residency in that top bucket, so the weighted value moves with load but can understate the
+true peak. `AMCC` is a separate, non-additive memory-controller aggregate. On M5 its buckets start
+at 32 GB/s and it remains elevated near idle, so `BandwidthSampler` excludes it whenever additive
+CPU/GPU/Media/other requestor channels are present. The aggregate-only M3/macOS 27 case above is
+the narrow exception.
 
 **Follow-up finding, confirming the above against this chip's real spec ceiling:** this M4 Max
 (40-core GPU) has a theoretical unified-memory-bandwidth ceiling of 546 GB/s

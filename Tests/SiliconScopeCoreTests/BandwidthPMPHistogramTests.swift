@@ -1,16 +1,14 @@
 //
 //  File:      BandwidthPMPHistogramTests.swift
 //  Created:   2026-07-15
-//  Updated:   2026-07-15
+//  Updated:   2026-08-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Unit tests for the PMP "DCS BW" histogram fallback path in BandwidthSampler —
-//             the residency-weighted-average math, the "NGB/s" state-name parser, and the
-//             PMP-specific requestor → bucket map (distinct spellings from the classic "AMC
-//             Stats" map: "EACC*"/"PACC*"/"AGX" rather than "ECPU"/"PCPU"/"GFX").
-//  Notes:     No hardware: these are pure functions over explicit (name, residency) inputs,
-//             fixtures taken from this project's own M4 Max / macOS 26.5.2 characterization
-//             (see docs/ioreport-channels.md) where the classic "AMC Stats" subscription fails
-//             outright and this histogram is the only source of real bandwidth data.
+//             the residency-weighted-average math, the "NGB/s" state-name parser, requestor
+//             classification, and aggregate-only AMCC fallback.
+//  Notes:     No hardware: these are pure functions over explicit inputs. Fixtures come from
+//             M4/M5 Max macOS 26.5.2 per-requestor histograms and the M3 Max macOS 27
+//             aggregate-only histogram documented in docs/ioreport-channels.md.
 //
 import XCTest
 @testable import SiliconScopeCore
@@ -92,7 +90,7 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         for other in ["ANE0", "ANS", "ATC0", "ATC3", "DISPEXT0", "DISPINT", "MSR0", "MSR1", "AMCC"] {
             XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(other), .other, other)
         }
-        // Never .total — this path has no chip-wide aggregate channel.
+        // The per-requestor classifier never returns .total; AMCC is handled separately.
         XCTAssertNotEqual(BandwidthSampler.classifyPMPHistogramRequestor("EACC0"), .total)
     }
 
@@ -114,16 +112,47 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         }
     }
 
-    // MARK: - AMCC exclusion from the PMP-histogram sum (github.com/kennss/SiliconScope#30)
+    // MARK: - AMCC aggregate handling (github.com/kennss/SiliconScope#30/#46)
 
-    func testPMPHistogramExcludesAMCCNotMACC() {
-        // AMCC = memory-controller aggregate (buckets start at 32GB/s) → excluded from the sum.
-        XCTAssertTrue(BandwidthSampler.isPMPHistogramExcluded("AMCC"))
-        XCTAssertTrue(BandwidthSampler.isPMPHistogramExcluded("AMCC0"))
-        // The M5 CPU cluster "MACC*" must NOT be caught by the AMCC exclusion (prefix distinct).
-        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("MACC0"))
-        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("MACC1"))
-        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("AGX"))
-        XCTAssertFalse(BandwidthSampler.isPMPHistogramExcluded("PACC"))
+    func testPMPHistogramRecognizesAMCCAggregateNotMACC() {
+        XCTAssertTrue(BandwidthSampler.isPMPHistogramAggregate("AMCC"))
+        XCTAssertTrue(BandwidthSampler.isPMPHistogramAggregate("AMCC0"))
+        // The M5 CPU cluster "MACC*" must not be mistaken for the AMCC aggregate.
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramAggregate("MACC0"))
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramAggregate("MACC1"))
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramAggregate("AGX"))
+        XCTAssertFalse(BandwidthSampler.isPMPHistogramAggregate("PACC"))
+    }
+
+    func testPMPHistogramUsesSoleAMCCAsMeasuredTotal() {
+        // Live M3 Max/macOS 27 fixture: PMP0/DCS BW exposes only AMCC while GPU is loaded.
+        let total = BandwidthSampler.pmpMeasuredTotalGBs(
+            aggregateGBs: 278.695,
+            aggregateChannelCount: 1,
+            perRequestorChannelCount: 0
+        )
+        XCTAssertEqual(total ?? -1, 278.695, accuracy: 0.001)
+    }
+
+    func testPMPHistogramIgnoresAMCCBesidePerRequestorChannels() {
+        // M5's AMCC has an idle floor and must not be added to its real requestor lanes.
+        XCTAssertNil(BandwidthSampler.pmpMeasuredTotalGBs(
+            aggregateGBs: 40.1,
+            aggregateChannelCount: 1,
+            perRequestorChannelCount: 20
+        ))
+    }
+
+    func testPMPHistogramRejectsMissingOrAmbiguousAggregate() {
+        XCTAssertNil(BandwidthSampler.pmpMeasuredTotalGBs(
+            aggregateGBs: nil,
+            aggregateChannelCount: 0,
+            perRequestorChannelCount: 0
+        ))
+        XCTAssertNil(BandwidthSampler.pmpMeasuredTotalGBs(
+            aggregateGBs: 200,
+            aggregateChannelCount: 2,
+            perRequestorChannelCount: 0
+        ))
     }
 }
