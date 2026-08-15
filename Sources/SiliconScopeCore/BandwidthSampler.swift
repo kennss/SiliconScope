@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-10
+//  Updated:   2026-08-15
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly. Three read strategies,
 //             tried in order at init and locked in for the sampler's lifetime:
@@ -9,16 +9,13 @@
 //                 by DVFS frequency state (no per-requestor split).
 //             (2) M-series, classic: IOReport "AMC Stats" group, "Perf Counters" subgroup,
 //                 Simple format "<unit> DCS RD/WR" byte-delta channels, per requestor.
-//             (3) M-series, PMP histogram fallback: on chip/OS combinations where the
-//                 "AMC Stats" subscription itself fails outright (confirmed on an Apple M4
-//                 Max, macOS 26.5.2 — IOReportCopyChannelsInGroup finds ~190 channels but
-//                 IOReportCreateSubscription returns nil for the group), the same
-//                 per-requestor byte counters live instead under IOReport "PMP" (renamed
-//                 "PMP0" on M5 Max/macOS 26.5.2, github.com/kennss/SiliconScope#30 — resolved
-//                 across the "PMP"/"PMP0"/"PMP1" family), subgroup "DCS BW", as State-format
-//                 residency histograms named "1GB/s".."32GB/s" per requestor (e.g. "EACC0
-//                 RD+WR" / "MACC0 RD+WR", "AGX RD+WR") — the same residency-weighting idiom
-//                 CPUSampler already uses for DVFS frequency, applied to bandwidth buckets.
+//             (3) M-series, PMP histogram fallback: when "AMC Stats" cannot be subscribed,
+//                 bandwidth moves to the "PMP"/"PMP0"/"PMP1" family, subgroup "DCS BW",
+//                 as State-format residency histograms. M4/M5 expose "1GB/s".."32GB/s"
+//                 histograms per requestor (e.g. "EACC0 RD+WR" / "MACC0 RD+WR", "AGX
+//                 RD+WR"). M3 Max on macOS 27 build 26A5388g exposes only one wider
+//                 chip-wide "AMCC RD+WR" histogram under PMP0 (#46); that aggregate supplies
+//                 measuredTotalGBs while the unavailable CPU/GPU/Media split stays zero.
 //  Notes:     Requestor map (classic path): ECPU/PCPU* -> CPU, GFX -> GPU,
 //             ISP/VENC/VDEC/PRORES/CODEC/JPEG -> Media, "DCS" is the chip-wide aggregate
 //             (= total); other = total - the above. MSR is intentionally NOT media (matches
@@ -27,13 +24,12 @@
 //             core-id token (e.g. "DIE0 ECPU0") on top of the bare unit name, per
 //             github.com/kennss/SiliconScope#14 (Apple restructured "AMC Stats" channel
 //             names on macOS 27 beta / M3 Max to add this prefix and split RD/WR channels).
-//             The PMP-histogram fallback path (3) has no authoritative chip-wide total
-//             channel, so `totalGBs` there is the sum of the classified buckets (see
-//             `BandwidthSample.totalGBs`); its top bucket ("32GB/s") is very likely a
-//             saturating/clamped bin, not a literal ceiling — observed residency spikes
-//             there under heavy GPU load — so the weighted average is a real, directionally
-//             correct GB/s figure but can understate true peak bandwidth. Honest limitation,
-//             not hidden: same "label the estimate" philosophy as the ANE usage number.
+//             The PMP-histogram fallback has two observed shapes. Per-requestor M4/M5
+//             channels have no trustworthy chip-wide total, so `totalGBs` sums their
+//             classified buckets; the labeled 32GB/s top bucket can clamp real traffic.
+//             M3 Max/macOS 27 instead exposes only AMCC, a wider chip-wide aggregate, so
+//             that value is used only when no additive requestor channels exist. Every
+//             histogram reading remains an estimate, surfaced via `isEstimated`.
 //             `channelDump()` (raw inventory dump, both paths) exists to diagnose chip/OS
 //             combinations neither path handles yet.
 //
@@ -279,17 +275,31 @@ public final class BandwidthSampler {
         return .other   // ANE(L0/L1), ANS, ATC0-3, DISPEXT0-3, DISPINT, MSR0/1, …
     }
 
-    /// Requestors excluded from the PMP-histogram per-requestor sum. `AMCC` is the
-    /// memory-controller aggregate whose histogram buckets start at "32GB/s" (32..224), so its
-    /// residency-weighted average never reads below ~32 GB/s — it inflates other/total even at
-    /// idle and is not an additive per-requestor lane (measured on M5 Max, #30). Note `AMCC`
-    /// (prefix) is distinct from the M5 CPU cluster `MACC*`, which is NOT excluded.
-    static func isPMPHistogramExcluded(_ requestor: String) -> Bool {
+    /// True for the PMP histogram's `AMCC` memory-controller aggregate. It is not an additive
+    /// requestor lane: M5 exposes it alongside CPU/GPU/etc. channels with a permanent ~32 GB/s
+    /// floor, while M3 Max/macOS 27 exposes it as the only `DCS BW` channel and its only usable
+    /// total. `samplePMPHistogram` decides which role applies from the rest of the inventory.
+    /// `AMCC` (prefix) is distinct from the M5 CPU cluster `MACC*`.
+    static func isPMPHistogramAggregate(_ requestor: String) -> Bool {
         requestor.uppercased().hasPrefix("AMCC")
+    }
+
+    /// Use AMCC as the measured total only for the aggregate-only PMP layout observed on M3
+    /// Max/macOS 27. If any additive requestor lane exists, preserve the M4/M5 behavior: ignore
+    /// AMCC and sum the classified lanes. More than one aggregate is ambiguous, so report no
+    /// aggregate total rather than guessing how multiple memory-controller channels compose.
+    static func pmpMeasuredTotalGBs(aggregateGBs: Double?,
+                                    aggregateChannelCount: Int,
+                                    perRequestorChannelCount: Int) -> Double? {
+        guard aggregateChannelCount == 1, perRequestorChannelCount == 0 else { return nil }
+        return aggregateGBs
     }
 
     private static func samplePMPHistogram(delta: CFDictionary) -> BandwidthSample {
         var cpu = 0.0, gpu = 0.0, media = 0.0, other = 0.0
+        var aggregateGBs: Double?
+        var aggregateChannelCount = 0
+        var perRequestorChannelCount = 0
 
         IOReportIterate(delta) { channel in
             guard IOReportChannelGetFormat(channel) == kKtopIOReportFormatState,
@@ -304,9 +314,6 @@ public final class BandwidthSampler {
             // breakdown channels would double-count if also summed in.
             guard name.uppercased().hasSuffix(" RD+WR") else { return Int32(kKtopIOReportIterOk) }
             let requestor = String(name.dropLast(6))   // strip " RD+WR"
-            // Skip the AMCC memory-controller aggregate — its buckets start at 32GB/s so it
-            // never reads below ~32 and inflates other/total (M5 Max, #30). Not additive.
-            if Self.isPMPHistogramExcluded(requestor) { return Int32(kKtopIOReportIterOk) }
 
             let stateCount = Int(IOReportStateGetCount(channel))
             var buckets: [(gbs: Double, residency: UInt64)] = []
@@ -318,6 +325,13 @@ public final class BandwidthSampler {
                 buckets.append((gbs, IOReportStateGetResidency(channel, Int32(i))))
             }
             let value = Self.weightedAverageGBs(buckets)
+
+            if Self.isPMPHistogramAggregate(requestor) {
+                aggregateGBs = value
+                aggregateChannelCount += 1
+                return Int32(kKtopIOReportIterOk)
+            }
+            perRequestorChannelCount += 1
 
             switch Self.classifyPMPHistogramRequestor(requestor) {
             case .cpu:            cpu += value
@@ -333,9 +347,12 @@ public final class BandwidthSampler {
         result.gpuGBs = gpu
         result.mediaGBs = media
         result.otherGBs = other
+        result.measuredTotalGBs = Self.pmpMeasuredTotalGBs(
+            aggregateGBs: aggregateGBs,
+            aggregateChannelCount: aggregateChannelCount,
+            perRequestorChannelCount: perRequestorChannelCount
+        )
         result.isEstimated = true
-        // No authoritative chip-wide total in this path — BandwidthSample.totalGBs falls back
-        // to summing cpu+gpu+media+other, which is exactly what we want here.
         return result
     }
 
