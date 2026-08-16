@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-25
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-snapshot result of AI-runtime detection: the matched processes plus
 //             grouped roll-ups (RAM / CPU% per kind, primary kind, embedded port).
@@ -71,5 +71,12 @@ public struct AIRuntimeSample: Sendable, Equatable, Codable {
 
     public var ollamaEmbeddedPort: Int? {
         processes.first { $0.kind == .ollama && $0.embeddedPort != nil }?.embeddedPort
+    }
+
+    /// mlx-dspark's console script runs under a python interpreter, so ProcessSampler's argv
+    /// gate admits it and a non-default `--port N` surfaces here for the canonical installs
+    /// (uv tool / pipx / venv) — no settings field needed. nil falls back to the default :8080.
+    public var mlxDSparkEmbeddedPort: Int? {
+        processes.first { $0.kind == .mlxDSpark && $0.embeddedPort != nil }?.embeddedPort
     }
 }

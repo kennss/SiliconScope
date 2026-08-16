@@ -1,12 +1,13 @@
 //
 //  File:      AIRuntimeMatchTests.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-08
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Adversarial tests for AIRuntimeKind.match — the bundle-first, two-stage
 //             classifier. Locks in the cases that must NOT regress (Ollama runner is not
 //             llama.cpp; generic server/main are not runtimes; empty path never crashes;
-//             the short "exo" substring never false-positives on hexo/Plexos/nexo).
+//             the short "exo" substring never false-positives on hexo/Plexos/nexo; an
+//             mlx-dspark cache/checkout path in an unrelated argv is not mlx-dspark).
 //  Notes:     argv strings are REPRESENTATIVE, not pinned from a live run (the runner's
 //             --port is dynamic). The logic under test is pure (path/name/args -> kind),
 //             so synthetic inputs exercise it deterministically.
@@ -82,6 +83,58 @@ final class AIRuntimeMatchTests: XCTestCase {
         // Must NOT be misclassified as bare MLX even with no argv.
         XCTAssertNotEqual(AIRuntimeKind.match(path: "/Users/x/.local/bin/rapid-mlx",
                                               name: "rapid-mlx", args: nil), .mlx)
+    }
+
+    // mlx-dspark (ARahim3/mlx-dspark) — OpenAI-compatible speculative-decoding server, default
+    // :8080. Its console entry point is a shebang Python file, so macOS reports the interpreter
+    // and `/bin/mlx-dspark` lives in argv (mirrors vLLM/exo) — which is why the positives below
+    // pass `path:` = the python binary.
+    func testMlxDSparkMatch() {
+        // Canonical launch via the console entry point (uv tool / pipx / venv install) — including
+        // a non-default --port, which must surface as the embedded port so the API probe follows
+        // the server instead of knocking on :8080.
+        let uvToolPy = "/Users/x/.local/share/uv/tools/mlx-dspark/bin/python3"
+        let args = "\(uvToolPy) /Users/x/.local/bin/mlx-dspark serve --model mlx-community/Qwen3-8B-8bit " +
+                   "--port 18080 --prefix-cache-dir /Users/x/.cache/mlx-dspark"
+        XCTAssertEqual(AIRuntimeKind.match(path: uvToolPy, name: "python3", args: args), .mlxDSpark)
+        XCTAssertEqual(AIRuntimeKind.embeddedPort(args: args), 18080)
+        // Module invocation via python — argv carries `-m mlx_dspark`.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                           args: "python -m mlx_dspark serve --model mlx-community/Qwen3-8B-8bit"), .mlxDSpark)
+        // Bare launch (no arguments at all) — the entry point ends the argv, so the
+        // end-of-string half of the trailing bound must still match.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                           args: "/opt/homebrew/bin/python3.12 /Users/x/.local/bin/mlx-dspark"), .mlxDSpark)
+        // Defensive: a proc table that reports the script itself still resolves with no argv.
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Users/x/.local/bin/mlx-dspark",
+                                           name: "mlx-dspark", args: nil), .mlxDSpark)
+        // Must NOT degrade to bare .mlx.
+        XCTAssertNotEqual(AIRuntimeKind.match(path: uvToolPy, name: "python3", args: args), .mlx)
+    }
+
+    // An `mlx-dspark` SEGMENT in an unrelated argv or path must NOT be treated as the runtime.
+    // The sharpest case is self-inflicted: an mlx-dspark-named folder (its --prefix-cache-dir, a
+    // checkout) shows up in OTHER tools' argv (a backup script, du, tar) — only the
+    // `/bin/mlx-dspark` entry point, its basename, or a `-m mlx_dspark` invocation is
+    // authoritative. Mirrors testVllmDoesNotFalsePositive / #38.
+    func testMlxDSparkDoesNotFalsePositive() {
+        // argv side — another python tool sweeping an mlx-dspark cache dir is not the runtime.
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python /Users/x/backup.py --src /Users/x/.cache/mlx-dspark"))
+        // argv side — `pip install mlx-dspark` installs the package, it does not serve a model.
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python -m pip install mlx-dspark"))
+        // PATH side — an `mlx-dspark` source-checkout folder running tests is not the runtime.
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/me/src/mlx-dspark/.venv/bin/pytest",
+                                         name: "pytest", args: nil))
+        // Trailing bound — a sibling helper script or a same-prefixed package is not the runtime
+        // (the signals require a space or end-of-argv after the entry point / module name).
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python /Users/x/.venv/bin/mlx-dspark-backup --src /Users/x/data"))
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python /Users/x/.venv/bin/mlx-dspark.cache --src /Users/x/data"))
+        XCTAssertNil(AIRuntimeKind.match(path: "/opt/homebrew/bin/python3.12", name: "python3.12",
+                                         args: "python -m mlx_dspark_tools clean-cache"))
     }
 
     func testOMLXMatch() {

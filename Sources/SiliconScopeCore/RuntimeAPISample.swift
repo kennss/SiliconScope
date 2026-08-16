@@ -1,7 +1,7 @@
 //
 //  File:      RuntimeAPISample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-07-02
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Result of an OPT-IN poll of a local AI runtime's HTTP API (Ollama,
 //             llama.cpp server, LM Studio, exo). Carries the loaded model(s), the authoritative
@@ -46,7 +46,7 @@ public struct RuntimeModelInfo: Sendable, Equatable, Identifiable, Codable {
 }
 
 public struct RuntimeAPISample: Sendable, Equatable, Codable {
-    public enum Source: String, Sendable, Equatable, Codable { case ollama, llamaCpp, lmStudio, rapidMLX, exo, omlx }
+    public enum Source: String, Sendable, Equatable, Codable { case ollama, llamaCpp, lmStudio, rapidMLX, mlxDSpark, exo, omlx }
     public enum Status: String, Sendable, Equatable, Codable {
         case disabled            // feature off
         case unreachable         // no runtime / port closed / decode failure / stale (C4)

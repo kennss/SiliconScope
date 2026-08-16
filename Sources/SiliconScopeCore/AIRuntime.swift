@@ -1,11 +1,11 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-08
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
-//             MLX, Rapid-MLX, Jan, GPT4All, vLLM, exo). Pure logic — no syscalls; consumes
-//             the path/args that ProcessSampler already resolved.
+//             MLX, Rapid-MLX, mlx-dspark, Jan, GPT4All, vLLM, exo). Pure logic — no
+//             syscalls; consumes the path/args that ProcessSampler already resolved.
 //  Notes:     proc_name truncates to 15 chars, so the executable PATH is the primary
 //             signal and BUNDLE identity overrides basename — the Ollama runner is a
 //             llama-server child, so basename alone would misclassify it as llama.cpp.
@@ -15,7 +15,7 @@
 import Foundation
 
 public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
-    case ollama, llamaCpp, lmStudio, mlx, rapidMLX, jan, gpt4all, vllm, exo, omlx
+    case ollama, llamaCpp, lmStudio, mlx, rapidMLX, mlxDSpark, jan, gpt4all, vllm, exo, omlx
     /// On-device AI **apps** rather than model servers: they run Core ML / WhisperKit inference on
     /// the ANE and never open a port. Detected because the question this card answers is "what is
     /// driving the silicon", and an ASR app driving the Neural Engine is exactly that — indeed the
@@ -33,6 +33,7 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         case .lmStudio: return "LM Studio"
         case .mlx:      return "MLX"
         case .rapidMLX: return "Rapid-MLX"
+        case .mlxDSpark: return "mlx-dspark"
         case .jan:      return "Jan"
         case .gpt4all:  return "GPT4All"
         case .vllm:     return "vLLM"
@@ -90,6 +91,16 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         // OpenAI-compatible server is a distinct runtime (port 8000), not bare mlx_lm.
         if base == "rapid-mlx" || p.contains("rapid-mlx") || p.contains("rapid_mlx")
             || a.contains("rapid-mlx") || a.contains("rapid_mlx") { return .rapidMLX }
+        // mlx-dspark (ARahim3/mlx-dspark) — OpenAI-compatible speculative-decoding server for MLX
+        // (`mlx-dspark serve`, default :8080). Also checked before the generic MLX arm. The console
+        // entry point is a shebang Python file, so macOS reports the interpreter and `/bin/mlx-dspark`
+        // lives in argv (mirrors vLLM/exo). Every argv signal is bounded on BOTH sides — leading
+        // `/bin/` / `-m `, trailing space-or-end — so an `mlx-dspark` checkout folder, a user's
+        // --prefix-cache-dir path in an unrelated process's argv, or a sibling helper script
+        // (`mlx-dspark-backup`) can't false-positive on the substring (mirrors the vLLM bound / #38).
+        if base == "mlx-dspark"
+            || a.contains("/bin/mlx-dspark ") || a.hasSuffix("/bin/mlx-dspark")
+            || a.contains("-m mlx_dspark ") || a.hasSuffix("-m mlx_dspark") { return .mlxDSpark }
         if ["llama-server", "llama-cli", "llama-bench"].contains(base) { return .llamaCpp }
         if a.contains("mlx_lm.server") || a.contains("mlx_lm.generate") || a.contains("mlx_lm") { return .mlx }
         if base == "lms" || p.contains("LM Studio") || a.contains("LM Studio") { return .lmStudio }
