@@ -1,7 +1,7 @@
 //
 //  File:      Theme.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-27
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline,
 //             PopoverButtonStyle), plus the Layout dimension tokens.
@@ -668,6 +668,7 @@ extension AIRuntimeKind {
         case .lmStudio: return "macwindow"
         case .mlx:      return "cpu.fill"
         case .rapidMLX: return "hare.fill"
+        case .mlxDSpark: return "sparkles"   // speculative decoding — the drafter's "spark"
         case .exo:      return "point.3.connected.trianglepath.dotted"   // distributed cluster
         // On-device apps, not servers: a waveform reads as "audio in, text out", which is what
         // both of these do on the Neural Engine.

@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-16
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -214,6 +214,7 @@ final class SiliconScopeMonitor {
     private struct ProbeInputs {
         let kind: AIRuntimeKind?
         let ollamaEmbedded: Int?
+        let mlxDSparkEmbedded: Int?
         let ollamaPort: Int
         let lmStudioPort: Int
         let omlxPort: Int
@@ -225,6 +226,7 @@ final class SiliconScopeMonitor {
     private func currentProbeInputs() -> ProbeInputs {
         ProbeInputs(kind: snapshot.aiRuntime.primaryKind,
                     ollamaEmbedded: snapshot.aiRuntime.ollamaEmbeddedPort,
+                    mlxDSparkEmbedded: snapshot.aiRuntime.mlxDSparkEmbeddedPort,
                     ollamaPort: Self.port(forKey: "aiRuntimeOllamaPort", default: 11434),
                     lmStudioPort: Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234),
                     omlxPort: Self.port(forKey: "aiRuntimeOmlxPort", default: 8000),
@@ -239,6 +241,7 @@ final class SiliconScopeMonitor {
                 guard let inputs = self?.currentProbeInputs() else { return }
                 let result = await client.probe(primaryKind: inputs.kind,
                                                 ollamaEmbeddedPort: inputs.ollamaEmbedded,
+                                                mlxDSparkEmbeddedPort: inputs.mlxDSparkEmbedded,
                                                 ollamaPort: inputs.ollamaPort,
                                                 lmStudioPort: inputs.lmStudioPort,
                                                 omlxPort: inputs.omlxPort,
@@ -327,6 +330,7 @@ final class SiliconScopeMonitor {
         case .exo:      return 52415
         case .omlx:     return Self.port(forKey: "aiRuntimeOmlxPort", default: 8000)
         case .llamaCpp: return snapshot.aiRuntime.ollamaEmbeddedPort ?? 8080
+        case .mlxDSpark: return snapshot.aiRuntime.mlxDSparkEmbeddedPort ?? 8080
         default:        return Self.port(forKey: "aiRuntimeOllamaPort", default: 11434)
         }
     }

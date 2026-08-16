@@ -1,13 +1,13 @@
 //
 //  File:      RuntimeAPIClient.swift
 //  Created:   2026-06-14
-//  Updated:   2026-07-02
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Opt-in probes of local AI runtime HTTP APIs, keyed by the detected runtime.
 //             Ollama /api/ps gives the authoritative model size + GPU/CPU split (size_vram
 //             / size); llama.cpp /metrics gives real tokens/sec; LM Studio reports the
-//             loaded model id + quant + context; exo/Rapid-MLX expose an OpenAI-compatible
-//             /v1/models. All sudoless, localhost-only (LocalHTTP).
+//             loaded model id + quant + context; exo/Rapid-MLX/mlx-dspark expose an
+//             OpenAI-compatible /v1/models. All sudoless, localhost-only (LocalHTTP).
 //  Notes:     Every JSON field is optional (version drift tolerant). A non-answer maps to
 //             runningNoServer / apiNotApplicable / unreachable — never a crash. tokens/sec
 //             is left nil unless the runtime actually reports it.
@@ -19,7 +19,7 @@ public struct RuntimeAPIClient: Sendable {
     public init() {}
 
     /// Probes the runtime that feature ① identified as primary.
-    public func probe(primaryKind: AIRuntimeKind?, ollamaEmbeddedPort: Int?,
+    public func probe(primaryKind: AIRuntimeKind?, ollamaEmbeddedPort: Int?, mlxDSparkEmbeddedPort: Int?,
                       ollamaPort: Int, lmStudioPort: Int, omlxPort: Int, omlxApiKey: String) async -> RuntimeAPISample {
         switch primaryKind {
         case .ollama:   return await probeOllama(port: ollamaPort)
@@ -28,6 +28,8 @@ public struct RuntimeAPIClient: Sendable {
         case .rapidMLX: return await probeOpenAI(port: 8000, apiKey: nil, source: .rapidMLX)   // OpenAI-compatible
         case .exo:      return await probeOpenAI(port: 52415, apiKey: nil, source: .exo)       // OpenAI-compatible cluster
         case .omlx:     return await probeOpenAI(port: omlxPort, apiKey: omlxApiKey, source: .omlx)
+        case .mlxDSpark:                              // OpenAI-compatible; its own argv --port wins
+            return await probeOpenAI(port: mlxDSparkEmbeddedPort ?? 8080, apiKey: nil, source: .mlxDSpark)
         case .some:                                   // mlx / jan / gpt4all / vllm
             var s = RuntimeAPISample(); s.status = .runningNoServer; return s
         case .none:

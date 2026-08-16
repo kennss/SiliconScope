@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-10
+//  Updated:   2026-08-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -93,6 +93,7 @@ if let kind = ai.primaryKind {
 if CommandLine.arguments.contains("--ai") {
     let result = await RuntimeAPIClient().probe(
         primaryKind: ai.primaryKind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
+        mlxDSparkEmbeddedPort: ai.mlxDSparkEmbeddedPort,
         ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
     let src = result.source.map { " · \($0.rawValue)" } ?? ""
     print("\nruntime API: \(result.status.rawValue)\(src)")
@@ -113,9 +114,10 @@ if CommandLine.arguments.contains("--bench") {
     let kind = ai.primaryKind
     let api = await RuntimeAPIClient().probe(
         primaryKind: kind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
+        mlxDSparkEmbeddedPort: ai.mlxDSparkEmbeddedPort,
         ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
     if let kind, let model = api.loadedModels.first?.name {
-        let port = switch kind { case .lmStudio: 1234; case .rapidMLX: 8000; case .exo: 52415; case .omlx: 8000; default: 11434 }
+        let port = switch kind { case .lmStudio: 1234; case .rapidMLX: 8000; case .exo: 52415; case .omlx: 8000; case .mlxDSpark: ai.mlxDSparkEmbeddedPort ?? 8080; default: 11434 }
         print("\nbenchmark: \(kind.displayName) · \(model) — generating…")
         if let r = await BenchmarkClient().run(kind: kind, port: port, model: model, apiKey: nil) {
             print(String(format: "  decode: %.1f tok/s  (%d tokens)", r.tokensPerSec, r.tokenCount))
