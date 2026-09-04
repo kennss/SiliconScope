@@ -103,7 +103,13 @@ Mac 端的 agent **不需要 sudo**，所以透過 `ssh` 執行也能一路跑�
 > **不在同一個區域網路**（Tailscale、VPN、雲端）？mDNS 到不了，請在 **Add machine…** 裡以位址新增；
 > 比起把連接埠曝露到公開網際網路，更建議走 Tailscale 或 SSH 通道。
 
-**移除 agent** —— 在那台機器上帶 `--uninstall` 執行安裝指令碼（`curl -fsSL …/install-agent.sh | sh -s -- --uninstall`，或本機的 `sh install-agent.sh --uninstall`）。它會停止服務並刪除二進位、權杖、憑證與鑰匙圈。接著在檢視端 Mac 的 Fleet 側邊欄右鍵該機器 → **Forget pairing**。
+**移除 agent** —— 在那台機器上用同一個安裝指令碼帶 `--uninstall` 執行：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh -s -- --uninstall
+```
+
+它會停止服務並刪除二進位、權杖、憑證與鑰匙圈。接著在檢視端 Mac 的 Fleet 側邊欄右鍵該機器 → **Forget pairing**。
 
 ## 3.0 新功能
 

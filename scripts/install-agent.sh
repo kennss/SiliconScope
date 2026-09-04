@@ -2,7 +2,7 @@
 #
 #  File:      install-agent.sh
 #  Created:   2026-07-22
-#  Updated:   2026-07-24
+#  Updated:   2026-09-05
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  THE install entry point for the SiliconScope fleet agent — one URL for every platform.
 #             On macOS it hands off to install-agent-mac.sh; on Linux it detects the CPU arch, fetches
@@ -30,7 +30,12 @@ SERVICE="/etc/systemd/system/sscope-agent.service"
 # --- platform dispatch: this is THE install URL for every platform ---
 if [ "$(uname -s)" = "Darwin" ]; then
   echo "▸ macOS detected — handing off to the Mac agent installer…"
-  exec sh -c "curl -fsSL 'https://raw.githubusercontent.com/$REPO/main/scripts/install-agent-mac.sh' | sh"
+  # Forward our arguments. Without `-s -- "$@"` the handoff dropped whatever the user typed, so
+  # `--uninstall` reached this script and then vanished — and the Mac installer, seeing no
+  # arguments, performed a fresh INSTALL. Asking to remove the agent reinstalled it (#54). The
+  # uninstall branch it needs has been there since #34; only the flag never arrived.
+  curl -fsSL "https://raw.githubusercontent.com/$REPO/main/scripts/install-agent-mac.sh" | sh -s -- "$@"
+  exit $?
 fi
 
 # --- platform detection ---

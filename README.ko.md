@@ -106,7 +106,13 @@ Mac 에이전트는 **sudo가 필요 없어서** `ssh`로 돌려도 멈추지 �
 > **Add machine…**에서 주소로 추가하세요. 포트를 공개 인터넷에 노출하기보다 Tailscale이나 SSH
 > 터널을 권장합니다.
 
-**에이전트 제거** — 해당 기계에서 설치 스크립트를 `--uninstall`로 실행하면 됩니다(`curl -fsSL …/install-agent.sh | sh -s -- --uninstall`, 또는 로컬에 있으면 `sh install-agent.sh --uninstall`). 서비스를 멈추고 바이너리·토큰·인증서·키체인을 지웁니다. 그다음 뷰어 Mac에서 Fleet 사이드바의 해당 기계를 우클릭 → **Forget pairing**.
+**에이전트 제거** — 해당 기계에서 같은 설치 스크립트를 `--uninstall`로 실행합니다:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh -s -- --uninstall
+```
+
+서비스를 멈추고 바이너리·토큰·인증서·키체인을 지웁니다. 그다음 뷰어 Mac에서 Fleet 사이드바의 해당 기계를 우클릭 → **Forget pairing**.
 
 ## 3.0 새 기능
 

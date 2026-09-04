@@ -111,7 +111,13 @@ Mac のエージェントは **sudo が不要** なので、`ssh` 越しでも�
 > 場合は mDNS が届かないので、**Add machine…** でアドレスを指定して追加します。ポートを公開
 > インターネットに晒すより、Tailscale や SSH トンネル経由を推奨します。
 
-**エージェントの削除** — そのマシンでインストーラを `--uninstall` 付きで実行します（`curl -fsSL …/install-agent.sh | sh -s -- --uninstall`、ローカルにあれば `sh install-agent.sh --uninstall`）。サービスを停止し、バイナリ・トークン・証明書・キーチェーンを削除します。そのあとビューア側の Mac で、Fleet サイドバーのそのマシンを右クリック →  **Forget pairing**。
+**エージェントの削除** — そのマシンで同じインストーラを `--uninstall` 付きで実行します：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh -s -- --uninstall
+```
+
+サービスを停止し、バイナリ・トークン・証明書・キーチェーンを削除します。そのあとビューア側の Mac で、Fleet サイドバーのそのマシンを右クリック → **Forget pairing**。
 
 ## 3.0 の新機能
 

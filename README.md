@@ -109,7 +109,14 @@ On a Mac you actually sit at, you don't need the agent at all: **Settings → Sh
 > add it by address in **Add machine…**; prefer Tailscale or an SSH tunnel over exposing the port
 > publicly.
 
-**To remove an agent** — on that machine, run the installer with `--uninstall` (`curl -fsSL …/install-agent.sh | sh -s -- --uninstall`, or `sh install-agent.sh --uninstall` if you have it locally). It stops the service and deletes the binary, token, certificate and keychain. Then, on the viewer Mac, right-click the machine in the Fleet sidebar → **Forget pairing**.
+**To remove an agent** — run the same installer with `--uninstall` on that machine:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kennss/SiliconScope/main/scripts/install-agent.sh | sh -s -- --uninstall
+```
+
+It stops the service and deletes the binary, token, certificate and keychain. Then, on the viewer
+Mac, right-click the machine in the Fleet sidebar → **Forget pairing**.
 
 ## New in 3.0
 
