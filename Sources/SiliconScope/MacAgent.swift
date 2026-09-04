@@ -1,7 +1,7 @@
 //
 //  File:      MacAgent.swift
 //  Created:   2026-07-22
-//  Updated:   2026-08-10
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App-side "share this Mac to the Fleet" controller. Runs a FleetAgentServer (Core) that
 //             serves this Mac's MachineMetrics over TLS + mDNS, so another Mac's Fleet view discovers
@@ -133,7 +133,7 @@ extension SiliconScopeMonitor {
             agentVersion: agentVersion, tsMillis: Int64(Date().timeIntervalSince1970 * 1000),
             loadAvg1: Self.loadAvg1(), anePeakWatts: anePeakWatts, mediaPeakGBs: mediaPeakGBs,
             bandwidthPeakGBs: bandwidthPeakGBs,
-            tokenRate: Self.fleetTokenRate.latest()
+            tokenRate: Self.fleetTokenRate.latest(llamaCppPort: snapshot.aiRuntime.llamaCppPort)
         )
     }
 

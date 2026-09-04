@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-16
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -92,7 +92,7 @@ if let kind = ai.primaryKind {
 // Opt-in runtime API probe (one shot). Run: sscope-cli --ai
 if CommandLine.arguments.contains("--ai") {
     let result = await RuntimeAPIClient().probe(
-        primaryKind: ai.primaryKind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
+        primaryKind: ai.primaryKind, llamaCppPort: ai.llamaCppPort,
         mlxDSparkEmbeddedPort: ai.mlxDSparkEmbeddedPort,
         ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
     let src = result.source.map { " · \($0.rawValue)" } ?? ""
@@ -113,7 +113,7 @@ if CommandLine.arguments.contains("--ai") {
 if CommandLine.arguments.contains("--bench") {
     let kind = ai.primaryKind
     let api = await RuntimeAPIClient().probe(
-        primaryKind: kind, ollamaEmbeddedPort: ai.ollamaEmbeddedPort,
+        primaryKind: kind, llamaCppPort: ai.llamaCppPort,
         mlxDSparkEmbeddedPort: ai.mlxDSparkEmbeddedPort,
         ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
     if let kind, let model = api.loadedModels.first?.name {

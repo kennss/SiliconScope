@@ -1,7 +1,7 @@
 //
 //  File:      RuntimeAPIClient.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-16
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Opt-in probes of local AI runtime HTTP APIs, keyed by the detected runtime.
 //             Ollama /api/ps gives the authoritative model size + GPU/CPU split (size_vram
@@ -19,12 +19,18 @@ public struct RuntimeAPIClient: Sendable {
     public init() {}
 
     /// Probes the runtime that feature ① identified as primary.
-    public func probe(primaryKind: AIRuntimeKind?, ollamaEmbeddedPort: Int?, mlxDSparkEmbeddedPort: Int?,
+    public func probe(primaryKind: AIRuntimeKind?, llamaCppPort: Int?, mlxDSparkEmbeddedPort: Int?,
                       ollamaPort: Int, lmStudioPort: Int, omlxPort: Int, omlxApiKey: String) async -> RuntimeAPISample {
         switch primaryKind {
         case .ollama:   return await probeOllama(port: ollamaPort)
         case .lmStudio: return await probeLMStudio(port: lmStudioPort)
-        case .llamaCpp: return await probeLlamaCpp(port: ollamaEmbeddedPort ?? 8080)
+        // Only the port a llama.cpp process was observed on. The old `?? 8080` fallback is what
+        // made a Homebrew Ollama — whose runner has no /Ollama.app/ or /.ollama/ in its path, so
+        // it classifies as llama.cpp by basename — probe :8080 while its server sat on the port
+        // in its own argv, and knock on whoever really owned :8080 (#52/#53).
+        case .llamaCpp:
+            guard let port = llamaCppPort else { var s = RuntimeAPISample(); s.status = .runningNoServer; return s }
+            return await probeLlamaCpp(port: port)
         case .rapidMLX: return await probeOpenAI(port: 8000, apiKey: nil, source: .rapidMLX)   // OpenAI-compatible
         case .exo:      return await probeOpenAI(port: 52415, apiKey: nil, source: .exo)       // OpenAI-compatible cluster
         case .omlx:     return await probeOpenAI(port: omlxPort, apiKey: omlxApiKey, source: .omlx)

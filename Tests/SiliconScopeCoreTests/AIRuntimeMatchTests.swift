@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeMatchTests.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-16
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Adversarial tests for AIRuntimeKind.match — the bundle-first, two-stage
 //             classifier. Locks in the cases that must NOT regress (Ollama runner is not
@@ -245,5 +245,72 @@ final class AIRuntimeMatchTests: XCTestCase {
         XCTAssertEqual(s.primaryKind, .ollama)
         XCTAssertEqual(s.primaryMemoryBytes, 16 << 30)
         XCTAssertEqual(s.ollamaEmbeddedPort, 54321)
+    }
+
+    // MARK: - Ollama outside a bundle
+
+    /// A Homebrew (or hand-installed) Ollama has no /Ollama.app/ in its path and an argv of just
+    /// `ollama serve`, so before the basename rule the API server matched nothing at all — only its
+    /// runner child was ever seen. Verified live: `ollama serve` on :11434 was absent from
+    /// `sscope-cli --ai` until this rule existed.
+    func testHomebrewOllamaServerIsDetected() {
+        XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/ollama", name: "ollama",
+                                           args: "ollama serve"), .ollama)
+        XCTAssertEqual(AIRuntimeKind.match(path: "/usr/local/bin/ollama", name: "ollama",
+                                           args: "ollama serve"), .ollama)
+    }
+
+    /// Exact basename, not a substring — a checkout, a wrapper script or a UI project that merely
+    /// has "ollama" in its path is not the Ollama runtime (the #38 bound, applied here too).
+    func testOllamaSubstringInAPathIsNotOllama() {
+        XCTAssertNil(AIRuntimeKind.match(path: "/Users/x/src/ollama-ui/node_modules/.bin/serve",
+                                         name: "serve", args: "serve --port 3000"))
+        XCTAssertNil(AIRuntimeKind.match(path: "/usr/local/bin/ollama-helper",
+                                         name: "ollama-helper", args: "ollama-helper --sync"))
+    }
+
+    // MARK: - llamaCppPort (#53): probe only what is actually there
+
+    /// The case that made SiliconScope knock on a stranger's server: no llama.cpp at all. nil is
+    /// the whole fix — it has to mean "ask nobody", never "try the usual port".
+    func testNoLlamaCppMeansNoPortToProbe() {
+        var s = AIRuntimeSample()
+        XCTAssertNil(s.llamaCppPort)
+        s.processes = [
+            .init(pid: 1, kind: .lmStudio, displayName: "LM Studio", cpuPercent: 0, memoryBytes: 8 << 30, embeddedPort: nil),
+            .init(pid: 2, kind: .ollama, displayName: "Ollama", cpuPercent: 0, memoryBytes: 2 << 30, embeddedPort: 54321),
+        ]
+        XCTAssertNil(s.llamaCppPort, "a machine with no llama.cpp must produce no llama.cpp probe")
+    }
+
+    /// A Homebrew Ollama's runner carries neither /Ollama.app/ nor /.ollama/, so it classifies as
+    /// llama.cpp by basename — and its real port lives in argv. Reading it is what stops the probe
+    /// landing on whoever owns :8080 (#52).
+    func testLlamaCppUsesItsOwnArgvPort() {
+        var s = AIRuntimeSample()
+        s.processes = [
+            .init(pid: 3, kind: .llamaCpp, displayName: "llama.cpp", cpuPercent: 0, memoryBytes: 6 << 30, embeddedPort: 50894),
+        ]
+        XCTAssertEqual(s.llamaCppPort, 50894)
+    }
+
+    /// A hand-started llama-server with no --port really is on 8080 — so probing it is observation,
+    /// not guesswork, and must keep working.
+    func testLlamaCppWithoutArgvPortFallsBackToItsOwnDefault() {
+        var s = AIRuntimeSample()
+        s.processes = [
+            .init(pid: 4, kind: .llamaCpp, displayName: "llama.cpp", cpuPercent: 0, memoryBytes: 6 << 30, embeddedPort: nil),
+        ]
+        XCTAssertEqual(s.llamaCppPort, 8080)
+    }
+
+    /// An explicit port anywhere among several llama.cpp processes beats the default.
+    func testExplicitPortWinsOverTheDefault() {
+        var s = AIRuntimeSample()
+        s.processes = [
+            .init(pid: 5, kind: .llamaCpp, displayName: "llama.cpp", cpuPercent: 0, memoryBytes: 1 << 30, embeddedPort: nil),
+            .init(pid: 6, kind: .llamaCpp, displayName: "llama.cpp", cpuPercent: 0, memoryBytes: 6 << 30, embeddedPort: 9911),
+        ]
+        XCTAssertEqual(s.llamaCppPort, 9911)
     }
 }

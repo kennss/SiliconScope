@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-16
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
 //             MLX, Rapid-MLX, mlx-dspark, Jan, GPT4All, vLLM, exo). Pure logic — no
@@ -101,6 +101,13 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if base == "mlx-dspark"
             || a.contains("/bin/mlx-dspark ") || a.hasSuffix("/bin/mlx-dspark")
             || a.contains("-m mlx_dspark ") || a.hasSuffix("-m mlx_dspark") { return .mlxDSpark }
+        // Ollama installed outside a bundle — Homebrew's /opt/homebrew/bin/ollama, or a manual
+        // drop in /usr/local/bin. Stage 1 sees no /Ollama.app/ in the path, and the server's argv
+        // is just `ollama serve`, so nothing matched: the API server was invisible while only its
+        // runner child (whose argv carries a ~/.ollama model path) got detected. Exact basename —
+        // the same precision as `lms` / `omlx`, so it cannot false-positive the way a bare
+        // substring would, and it gives a Homebrew install parity with the bundle rule above.
+        if base == "ollama" { return .ollama }
         if ["llama-server", "llama-cli", "llama-bench"].contains(base) { return .llamaCpp }
         if a.contains("mlx_lm.server") || a.contains("mlx_lm.generate") || a.contains("mlx_lm") { return .mlx }
         if base == "lms" || p.contains("LM Studio") || a.contains("LM Studio") { return .lmStudio }

@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-16
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-snapshot result of AI-runtime detection: the matched processes plus
 //             grouped roll-ups (RAM / CPU% per kind, primary kind, embedded port).
@@ -78,5 +78,19 @@ public struct AIRuntimeSample: Sendable, Equatable, Codable {
     /// (uv tool / pipx / venv) — no settings field needed. nil falls back to the default :8080.
     public var mlxDSparkEmbeddedPort: Int? {
         processes.first { $0.kind == .mlxDSpark && $0.embeddedPort != nil }?.embeddedPort
+    }
+
+    /// Where a llama.cpp server that is ACTUALLY RUNNING listens: its own `--port` when it was
+    /// given one (Ollama's runner child always is), otherwise llama-server's documented default.
+    ///
+    /// ⚠️ `nil` means "no llama.cpp process exists", and callers must read it as *there is nothing
+    /// to ask* — never as a cue to try a conventional port anyway. Guessing is what made
+    /// SiliconScope GET 127.0.0.1:8080/metrics and :8081/metrics every 3 s on every Mac, whether
+    /// or not any AI runtime was installed, so whoever else happened to own 8080 kept receiving
+    /// our traffic (#53). Observe the process, don't poll the neighbourhood.
+    public var llamaCppPort: Int? {
+        let servers = processes(of: .llamaCpp)
+        guard !servers.isEmpty else { return nil }
+        return servers.first { $0.embeddedPort != nil }?.embeddedPort ?? 8080
     }
 }

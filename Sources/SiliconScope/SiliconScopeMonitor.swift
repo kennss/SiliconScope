@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-04
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -219,7 +219,7 @@ final class SiliconScopeMonitor {
 
     private struct ProbeInputs {
         let kind: AIRuntimeKind?
-        let ollamaEmbedded: Int?
+        let llamaCppPort: Int?
         let mlxDSparkEmbedded: Int?
         let ollamaPort: Int
         let lmStudioPort: Int
@@ -231,7 +231,7 @@ final class SiliconScopeMonitor {
     /// across the network call (avoids a retain cycle and a frozen monitor).
     private func currentProbeInputs() -> ProbeInputs {
         ProbeInputs(kind: snapshot.aiRuntime.primaryKind,
-                    ollamaEmbedded: snapshot.aiRuntime.ollamaEmbeddedPort,
+                    llamaCppPort: snapshot.aiRuntime.llamaCppPort,
                     mlxDSparkEmbedded: snapshot.aiRuntime.mlxDSparkEmbeddedPort,
                     ollamaPort: Self.port(forKey: "aiRuntimeOllamaPort", default: 11434),
                     lmStudioPort: Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234),
@@ -246,7 +246,7 @@ final class SiliconScopeMonitor {
             while !Task.isCancelled {
                 guard let inputs = self?.currentProbeInputs() else { return }
                 let result = await client.probe(primaryKind: inputs.kind,
-                                                ollamaEmbeddedPort: inputs.ollamaEmbedded,
+                                                llamaCppPort: inputs.llamaCppPort,
                                                 mlxDSparkEmbeddedPort: inputs.mlxDSparkEmbedded,
                                                 ollamaPort: inputs.ollamaPort,
                                                 lmStudioPort: inputs.lmStudioPort,
@@ -335,7 +335,10 @@ final class SiliconScopeMonitor {
         case .rapidMLX: return 8000
         case .exo:      return 52415
         case .omlx:     return Self.port(forKey: "aiRuntimeOmlxPort", default: 8000)
-        case .llamaCpp: return snapshot.aiRuntime.ollamaEmbeddedPort ?? 8080
+        // Same rule as the API probe: the port a llama.cpp process was observed on, never a
+        // conventional one. `?? 8080` here read an *Ollama*-kind port for a *llama.cpp* runtime,
+        // so it was nil whenever it mattered and the benchmark went to :8080 (#52/#53).
+        case .llamaCpp: return snapshot.aiRuntime.llamaCppPort ?? 8080
         case .mlxDSpark: return snapshot.aiRuntime.mlxDSparkEmbeddedPort ?? 8080
         default:        return Self.port(forKey: "aiRuntimeOllamaPort", default: 11434)
         }

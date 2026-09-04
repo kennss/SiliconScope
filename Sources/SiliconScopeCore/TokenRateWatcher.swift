@@ -1,14 +1,15 @@
 //
 //  File:      TokenRateWatcher.swift
 //  Created:   2026-08-10
-//  Updated:   2026-08-10
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Collects the decode rate (tokens/sec) a local LLM runtime reports for its OWN work,
 //             so a Mac serving models can publish it the way the Linux agent already does
 //             (agent/tokenrate.go). Same two sources, same wire shape — a fleet must not describe
 //             a Mac and a Linux box in different vocabularies.
 //  Notes:     - llama.cpp server: `llamacpp:predicted_tokens_seconds` on /metrics (needs --metrics).
-//               A plain HTTP poll, current by construction.
+//               A plain HTTP poll, current by construction — but ONLY against a port the caller
+//               observed a llama.cpp process on. This type deliberately holds no port list (#53).
 //             - LM Studio: no HTTP rate at all; `lms log stream --json --stats` emits a `stats`
 //               object per FINISHED prediction. Push, so it needs a long-lived child process and
 //               the value is "last known" rather than live — hence `measuredAt` on the wire.
@@ -27,12 +28,7 @@ public final class TokenRateWatcher: @unchecked Sendable {
     private var lmStudio: FleetTokenRate?
     private var started = false
 
-    /// Ports a llama.cpp-compatible server conventionally listens on (8080 is llama-server's default).
-    private let llamaCppPorts: [Int]
-
-    public init(llamaCppPorts: [Int] = [8080, 8081]) {
-        self.llamaCppPorts = llamaCppPorts
-    }
+    public init() {}
 
     /// Begins watching LM Studio. No-op when its CLI is absent — a machine without LM Studio simply
     /// has no stream to read, which is not an error worth surfacing.
@@ -54,24 +50,25 @@ public final class TokenRateWatcher: @unchecked Sendable {
     /// The rate to publish now: the live HTTP gauge when a llama.cpp server answers, otherwise the
     /// last prediction LM Studio reported. Preferring HTTP is deliberate — that number describes the
     /// present, while the stream's may be hours old.
-    public func latest() -> FleetTokenRate? {
-        if let r = readLlamaCppRate() { return r }
+    /// `llamaCppPort` is where a llama.cpp server was OBSERVED to be running
+    /// (`AIRuntimeSample.llamaCppPort`); pass nil when none is. Nil means no HTTP request is made
+    /// at all — this watcher no longer owns a list of ports to try, because owning one is exactly
+    /// how it ended up polling two localhost ports forever on machines with no runtime (#53).
+    public func latest(llamaCppPort: Int?) -> FleetTokenRate? {
+        if let port = llamaCppPort, let r = readLlamaCppRate(port: port) { return r }
         lock.lock(); defer { lock.unlock() }
         return lmStudio
     }
 
     // MARK: - llama.cpp
 
-    private func readLlamaCppRate() -> FleetTokenRate? {
-        for port in llamaCppPorts {
-            guard let url = URL(string: "http://127.0.0.1:\(port)/metrics"),
-                  let text = Self.getSync(url, timeout: 1.5),
-                  let v = Self.parsePrometheus(text, key: "llamacpp:predicted_tokens_seconds")
-            else { continue }
-            return FleetTokenRate(tokensPerSec: v, source: "llama.cpp", model: nil,
-                                  measuredAt: Int64(Date().timeIntervalSince1970 * 1000), ttftSec: nil)
-        }
-        return nil
+    private func readLlamaCppRate(port: Int) -> FleetTokenRate? {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/metrics"),
+              let text = Self.getSync(url, timeout: 1.5),
+              let v = Self.parsePrometheus(text, key: "llamacpp:predicted_tokens_seconds")
+        else { return nil }
+        return FleetTokenRate(tokensPerSec: v, source: "llama.cpp", model: nil,
+                              measuredAt: Int64(Date().timeIntervalSince1970 * 1000), ttftSec: nil)
     }
 
     /// Pulls one gauge out of a Prometheus text exposition. `# HELP` / `# TYPE` lines repeat the key
