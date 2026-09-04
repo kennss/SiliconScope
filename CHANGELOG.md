@@ -1,5 +1,86 @@
 # Changelog
 
+## v4.2.0 — 2026-09-05
+
+**A menu-bar app whose menu bar needed a window.** Set SiliconScope to launch at
+login and it came up as a Dock icon with an empty menu bar — no CPU, no GPU, no
+anything — until you clicked the icon and a window appeared. The sampling loop
+that draws the menu-bar items was started from the dashboard window, so with no
+window there was nothing to draw from. Startup now belongs to the app, not to a
+window: the monitor, the Dock-icon setting and Fleet all come up at launch, and
+a login launch no longer pulls the window in front of what you were doing.
+([#51](https://github.com/kennss/SiliconScope/issues/51), reported by @csthenry)
+
+Two things had been quietly riding on that same window. "Show Dock icon" off
+still showed one at login, because the setting was applied from the window that
+never opened — the exact mode Settings recommends was the one that did not hold.
+And a Mac with **Share this Mac** enabled stayed invisible to its own fleet until
+somebody opened its dashboard.
+
+**🔌 SiliconScope was knocking on ports nobody asked it to.** It sent
+`GET 127.0.0.1:8080/metrics` and `:8081/metrics` every three seconds on every
+Mac — no runtime detection in front of it, whether or not any AI runtime was
+installed, roughly 57,000 requests a day — and whoever else owned 8080 received
+all of them. Three separate places guessed at a port instead of looking; they now
+take the one a llama.cpp process was actually observed on, and the watcher no
+longer carries a list of ports to try, so it cannot reach anything nobody pointed
+it at. Measured on a machine with no llama.cpp: 16 requests to each port in 45
+seconds before, zero after.
+([#53](https://github.com/kennss/SiliconScope/issues/53), reported by @csthenry,
+who also traced it to the right line)
+
+**🖥 The dropdown opened on the wrong desktop.** With a full-screen app in front,
+a menu-bar icon still responded to the click but its panel opened back on Space 1
+where you could not see it. A status item's popover does not inherit the status
+bar's own Spaces behaviour, so it was never allowed onto the Space you were
+looking at.
+([#49](https://github.com/kennss/SiliconScope/issues/49), reported by @blackbox-zz)
+
+**🌓 A light-mode button in a dark window.** SiliconScope's window is
+unconditionally dark, but it had never said so, so on a light-mode Mac macOS drew
+the chrome for a light app over it: a pale sidebar-toggle chip and a title in
+dark-on-dark. The menu-bar dropdowns had the same seam. The menu-bar icons still
+read the real menu bar, so they keep matching your wallpaper rather than the app.
+([#50](https://github.com/kennss/SiliconScope/issues/50), reported by @chapter09)
+
+**🏷 Fleet machines can be renamed — and the list is finally in an order you can
+read.** "It seems random." It was not: the list has always been alphabetical, but
+it sorted on the mDNS instance name while showing the machine's hostname, and
+those are different strings — a Mac advertising "Mark's Mac mini" reports
+"mark-mini". An order keyed on something you cannot see is indistinguishable from
+no order. One name now does both jobs, and you can set it yourself: right-click a
+machine → **Rename…**. The name is yours and stays on this Mac; empty the field
+to go back to the one the machine reports. Renaming never touches the machine's
+pairing — its token and pinned certificate are keyed separately and survive it.
+([#55](https://github.com/kennss/SiliconScope/issues/55), asked for by @parkamonster)
+
+**🧹 `--uninstall` reinstalled the agent.** The one-line installer hands macOS off
+to the Mac installer, and the handoff dropped the flag you typed — so asking to
+remove the agent installed it again. The uninstall itself had been there since
+#34; it was never reached. The README had the mirror image of the same problem:
+install was a copy-button block while uninstall was prose with the URL trimmed to
+`…/`, so the command you need while trying to get rid of something was the one
+you had to reassemble by hand. It is a block of its own now, in all six
+languages.
+([#54](https://github.com/kennss/SiliconScope/issues/54), reported by @parkamonster)
+
+**🤖 mlx-dspark is recognised.** `mlx-dspark serve` drives the GPU while the AI
+card said "No local AI runtime detected" — its console entry point is a shebang
+Python file, so macOS reports the interpreter and the real name lives in argv.
+SiliconScope now reads it there and follows the `--port` it was actually started
+with. A Homebrew-installed **Ollama** was invisible for a related reason: its
+server carries neither `/Ollama.app/` nor `/.ollama/` in its path, and only its
+model-loading child was ever detected.
+
+**Also fixed.** Memory bandwidth stayed at 0 on an M3 Max under macOS 27, where
+`PMP0` exposes only the aggregate histogram
+([#46](https://github.com/kennss/SiliconScope/issues/46), reported by
+@Collinw24). An unpopulated IOReport energy rail reports `INT64_MIN`, which was
+being summed as a real reading
+([#42](https://github.com/kennss/SiliconScope/pull/42), fixed by @YuriNachos). A
+battery whose capacities cannot be read reported "0 % — Normal"; unknown health
+now says so instead of claiming a healthy cell.
+
 ## v4.1.3 — 2026-08-10
 
 **Fleet can tell you which machine is generating, and how fast.** It already
