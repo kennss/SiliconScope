@@ -1,7 +1,7 @@
 //
 //  File:      FleetMachineDetailView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-08-10
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail pane for one fleet machine. When metrics are in, it renders the SAME
 //             DashboardView the local "This Mac" uses — in remote mode, so a remote Mac looks
@@ -46,7 +46,7 @@ struct FleetMachineDetailView: View {
                 placeholder("hourglass", "Connecting…", .secondary)
             }
         }
-        .navigationTitle(entry?.metrics?.hostname ?? entry?.source.label ?? machineID)
+        .navigationTitle(entry?.displayName ?? machineID)
     }
 
     private var pairingPrompt: some View {

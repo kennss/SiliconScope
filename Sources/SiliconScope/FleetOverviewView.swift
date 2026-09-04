@@ -1,7 +1,7 @@
 //
 //  File:      FleetOverviewView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-08-10
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  At-a-glance view of every machine at once — an adaptive grid of compact tiles. THIS
 //             MAC is always the first tile (a laptop glyph, taps through to its full dashboard);
@@ -32,7 +32,7 @@ struct FleetOverviewView: View {
                               needsPairing: false, error: nil, isLocal: true, onTap: onSelectLocal)
                 }
                 ForEach(fleet.entries) { entry in
-                    FleetTile(hostname: entry.metrics?.hostname ?? entry.source.label,
+                    FleetTile(hostname: entry.displayName,
                               metrics: entry.metrics, history: fleet.history[entry.id] ?? [],
                               needsPairing: entry.needsPairing, error: entry.error,
                               isLocal: false, onTap: { onSelect(entry.id) })

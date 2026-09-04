@@ -1,7 +1,7 @@
 //
 //  File:      FleetMonitor.swift
 //  Created:   2026-07-21
-//  Updated:   2026-09-04
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Mac-side fleet aggregator: owns mDNS discovery (FleetDiscovery), holds the set of
 //             discovered machines, and polls each on an interval for the latest MachineMetrics (or
@@ -31,6 +31,18 @@ final class FleetMonitor {
         var error: String? = nil
         var lastUpdated: Date? = nil
         var needsPairing: Bool = false   // agent returned 401 — user must enter its token
+
+        /// The machine's pairing key — its mDNS instance name, or a manual entry's name. Identity,
+        /// not presentation: `FleetPairingStore` keys the token and the TOFU pin by it, and
+        /// `unpair(name:)` takes it. A rename must never change this.
+        var pairingKey: String { source.label }
+
+        /// The one name to show AND to sort by: a nickname the user set, else the hostname the
+        /// machine reports, else its pairing key. Views used to show the hostname while the list
+        /// sorted on the pairing key, so the order looked random (#55).
+        var displayName: String {
+            FleetNicknameStore.displayName(nicknameKey: source.label, hostname: metrics?.hostname)
+        }
     }
 
     /// One point in a machine's rolling history, for the detail view's sparklines.
@@ -96,7 +108,20 @@ final class FleetMonitor {
             }
             return Entry(source: src)
         }
-        .sorted { $0.source.label.localizedCaseInsensitiveCompare($1.source.label) == .orderedAscending }
+        resort()
+    }
+
+    /// Orders `entries` by the name actually on screen. Called wherever a display name can change:
+    /// sources replaced, a poll delivering a hostname for the first time, or a rename.
+    private func resort() {
+        entries.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
+    /// Give a machine a name of your own, or pass nil/blank to go back to the one it reports.
+    /// Stored against the pairing key, so the token and the pinned certificate are untouched.
+    func rename(_ nickname: String?, forPairingKey key: String) {
+        FleetNicknameStore.setNickname(nickname, for: key)
+        resort()
     }
 
     /// Store a machine's pairing token, rebuild its source with the token applied, and re-poll now.
@@ -201,6 +226,9 @@ final class FleetMonitor {
                 }
             }
         }
+        // A machine's hostname arrives with its first successful poll, and the list is ordered by
+        // the displayed name — so the order is only correct once those have landed.
+        resort()
         sampleLocal()   // refresh This Mac's overview tile on the same cadence as the remotes
     }
 

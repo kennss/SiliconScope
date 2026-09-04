@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeRootView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-08-10
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The single-window shell: a NavigationSplitView with a "Devices" sidebar (This Mac +
 //             every discovered fleet agent) and a detail pane that shows the selected device's
@@ -35,6 +35,9 @@ struct SiliconScopeRootView: View {
     let fleet: FleetMonitor
     @Binding var selection: DeviceSelection?
     @State private var showAddMachine = false
+    /// Pairing key of the machine being renamed; non-nil drives the rename prompt.
+    @State private var renameKey: String?
+    @State private var renameText = ""
 
     var body: some View {
         NavigationSplitView {
@@ -56,6 +59,12 @@ struct SiliconScopeRootView: View {
                                 } else {
                                     fleet.removeDiscovered(name: entry.source.label)
                                 }
+                            },
+                            onRename: {
+                                renameKey = entry.pairingKey
+                                // Seed the field with the name on screen, so renaming is an edit
+                                // rather than a blank prompt — and clearing it restores that name.
+                                renameText = entry.displayName
                             }
                         )
                         .tag(DeviceSelection.remote(entry.id))
@@ -104,6 +113,20 @@ struct SiliconScopeRootView: View {
                     onPairingLink: { fleet.applyPairingLink($0) }
                 )
             }
+            // Renaming is a one-field edit, so it gets a prompt rather than a sheet. Bound to the
+            // pairing key, not to a row: the list re-sorts under the prompt the moment the name
+            // changes, and an index would then point at a different machine.
+            .alert("Rename machine", isPresented: Binding(get: { renameKey != nil },
+                                                          set: { if !$0 { renameKey = nil } })) {
+                TextField("Name", text: $renameText)
+                Button("Save") {
+                    if let key = renameKey { fleet.rename(renameText, forPairingKey: key) }
+                    renameKey = nil
+                }
+                Button("Cancel", role: .cancel) { renameKey = nil }
+            } message: {
+                Text("A name for this Mac's own list. Leave it empty to go back to the name the machine reports.")
+            }
         } detail: {
             switch selection ?? .thisMac {
             case .fleet:
@@ -127,13 +150,14 @@ private struct DeviceSidebarRow: View {
     let isManual: Bool
     let onUnpair: (String) -> Void
     let onRemove: () -> Void
+    let onRename: () -> Void
 
     var body: some View {
         HStack(spacing: Space.row) {
             Circle().fill(statusColor).frame(width: Layout.Dot.status, height: Layout.Dot.status)
             VStack(alignment: .leading, spacing: Space.hair) {
                 HStack(spacing: Space.tight) {
-                    Text(entry.metrics?.hostname ?? entry.source.label)
+                    Text(entry.displayName)
                         .font(Theme.font(.body)).lineLimit(1)
                     Image(systemName: entry.needsPairing ? "lock.slash" : "lock.fill")
                         .font(.system(size: Icon.small))
@@ -146,8 +170,12 @@ private struct DeviceSidebarRow: View {
         .contentShape(Rectangle())
         .padding(.vertical, Space.hair)
         .contextMenu {
+            // Naming is a viewer-side label only — it writes a nickname keyed by the pairing key,
+            // never the key itself, so the token and the pinned certificate survive it (#55).
+            Button("Rename…") { onRename() }
+            Divider()
             if !entry.needsPairing {
-                Button("Forget pairing", role: .destructive) { onUnpair(entry.source.label) }
+                Button("Forget pairing", role: .destructive) { onUnpair(entry.pairingKey) }
             }
             // Both kinds can be removed, but they mean different things: deleting a manual entry
             // deletes the address, while a discovered agent keeps advertising — so removing it
