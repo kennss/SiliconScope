@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeApp.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-30
+//  Updated:   2026-09-04
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App entry point. Declares the full dashboard Window and Settings, backed by one
 //             shared SiliconScopeMonitor. The menu-bar items are NOT scenes here — they're AppKit
@@ -44,10 +44,83 @@ private struct SettingsOpenerBridge: View {
 /// of quitting the whole app (the macOS default for the last-window-closed). Reopens the dashboard
 /// on a Dock-icon click. This is the right behavior for a menu-bar-resident monitor (issue #13).
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// False when macOS launched us as a login item rather than the user opening the app. A login
+    /// launch must come up quietly: no window pulled to the front, no focus stolen (#51).
+    /// Defaults to `true` so that if a window somehow appears before this is read, behaviour is
+    /// the familiar user-launch one rather than a silent surprise.
+    @MainActor private(set) static var isDefaultLaunch = true
+
+    /// Everything that makes SiliconScope a menu-bar monitor starts HERE, at app launch — never
+    /// from a window. The menu-bar items are reconciled from the monitor loop, so hanging that
+    /// loop off the dashboard's `onAppear` meant a login-launched app showed a Dock icon and an
+    /// empty menu bar until the user clicked the icon to summon a window (#51). Fleet discovery
+    /// and share mode had the same dependency, so a Mac set to share itself stayed invisible to
+    /// the fleet for the same reason.
+    func applicationDidFinishLaunching(_ note: Notification) {
+        let isDefault = (note.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool) ?? true
+        MainActor.assumeIsolated {
+            Self.isDefaultLaunch = isDefault
+            startAppServices()
+            // Pull the app forward only when the USER opened it — a login launch must not jump in
+            // front of whatever they are actually doing (#51). This decision lives here rather
+            // than in the window's onAppear because **onAppear runs FIRST** (measured: onAppear →
+            // didFinishLaunching → startAppServices), so the window cannot yet know how the app
+            // was launched. By this point the window, if there is one, already exists.
+            if isDefault { NSApplication.shared.activate(ignoringOtherApps: true) }
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ app: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows { MainActor.assumeIsolated { openMainDashboard() } }
         return true
+    }
+}
+
+/// Brings up the parts of the app that have nothing to do with a window: the Dock-icon policy, the
+/// sampling loop that feeds the menu-bar items, fleet discovery, and share mode. Idempotent —
+/// `SiliconScopeMonitor.start()` guards on its own loop task — so an extra call is harmless.
+@MainActor func startAppServices() {
+    applyDockIconPolicy()
+    if let icon = SiliconScopeApp.loadAppIcon() {
+        NSApplication.shared.applicationIconImage = icon
+    }
+    // The monitor is the one thing that must come up right here: the menu-bar items are
+    // reconciled from its loop, which is why hanging it off a window left a login-launched app
+    // with an empty menu bar (#51). start() only spawns a task, so it cannot stall the launch.
+    let monitor = SiliconScopeMonitor.shared
+    monitor.start()
+
+    // ⚠️ Fleet startup must NOT run inside applicationDidFinishLaunching. FleetDiscovery.start()
+    // calls emit() synchronously, which reads each paired machine's token through
+    // SecItemCopyMatching — a blocking call into securityd, and one that can sit behind an access
+    // prompt macOS cannot present until the app has finished launching. Doing it on the launch
+    // path deadlocked the launch outright: no window, no menu bar, no status items at all
+    // (measured with `sample`: the main thread parked in mach_msg beneath SecItemCopyMatching
+    // while SecurityAgent waited). Share mode has the same exposure — it owns a keychain of its
+    // own (#34). Both run on the NEXT main-actor turn: AppKit gets to finish launching, and
+    // neither waits for a window, so #51 still holds.
+    Task { @MainActor in
+        // This Mac is always the first Fleet-overview tile: feed the live monitor to the fleet
+        // aggregator so it samples this Mac on the same cadence as remote agents.
+        let fleet = FleetMonitor.shared
+        fleet.localProvider = {
+            let host = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+            let v = ProcessInfo.processInfo.operatingSystemVersion
+            let os = "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+            return monitor.machineMetricsMac(machineId: "local", hostname: host,
+                                             osName: os, agentVersion: "local")
+        }
+        // Discovery still starts as early as it safely can: mDNS takes a moment, so machines are
+        // already listed by the time the user opens the Devices sidebar.
+        fleet.start()
+
+        // Share this Mac to the fleet when enabled (Settings toggle, or SSCOPE_SHARE=1 for dev).
+        MacAgentController.shared.configure(monitor: monitor)
+        if UserDefaults.standard.bool(forKey: "shareThisMac")
+            || ProcessInfo.processInfo.environment["SSCOPE_SHARE"] == "1" {
+            MacAgentController.shared.startIfConfigured()
+        }
     }
 }
 
@@ -62,10 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct SiliconScopeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var monitor = SiliconScopeMonitor()
+    @State private var monitor = SiliconScopeMonitor.shared
     // Fleet — machines are discovered automatically via mDNS ("_sscope-agent._tcp"); no hardcoded
     // endpoints. FleetMonitor owns discovery + polling behind the MachineMetrics boundary.
-    @State private var fleet = FleetMonitor()
+    @State private var fleet = FleetMonitor.shared
     // Which device the single window's detail pane shows. Optional to satisfy List(selection:).
     @State private var deviceSelection: DeviceSelection? = .thisMac
 
@@ -103,38 +176,28 @@ struct SiliconScopeApp: App {
     private var mainWindow: some Scene {
         Window("SiliconScope", id: "siliconscope-main") {
             SiliconScopeRootView(monitor: monitor, fleet: fleet, selection: $deviceSelection)
+                // This window's surface is unconditionally dark — `Theme.bg` is a fixed near-black,
+                // not a dynamic system color — but nothing ever told AppKit that. On a light-mode
+                // Mac the chrome AppKit draws for the window therefore rendered light over it: the
+                // sidebar-toggle button became a pale chip and the title text dark-on-dark (#50).
+                // Pinning the appearance makes every system-drawn control match the surface we
+                // paint. Scoped to this window deliberately: `NSApp.appearance` would also override
+                // the status button's effectiveAppearance, which MetricBarController reads to pick
+                // menu-bar ink from the REAL menu bar background.
+                .preferredColorScheme(.dark)
                 .background(SettingsOpenerBridge())   // routes dropdown "Settings" → openSettings()
                 .onAppear {
-                    applyDockIconPolicy()
-                    if let icon = Self.loadAppIcon() {
-                        NSApplication.shared.applicationIconImage = icon
-                    }
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    // Only the window's own business lives here. Everything app-wide — the monitor
+                    // loop, the Dock-icon policy, fleet discovery, share mode — starts in
+                    // `startAppServices()` from `applicationDidFinishLaunching`, because a
+                    // menu-bar app must work with no window at all (#51).
+                    //
                     // Closing the window hides it (we stay in the menu bar) rather than destroying
                     // it, so openMainDashboard() can bring the same window back. Pairs with the
                     // AppDelegate's terminate-after-last-window = false.
                     NSApplication.shared.windows
                         .first { $0.identifier?.rawValue == "siliconscope-main" }?
                         .isReleasedWhenClosed = false
-                    monitor.start()
-                    // This Mac is always the first Fleet-overview tile: feed the live monitor to the
-                    // fleet aggregator so it samples this Mac on the same cadence as remote agents.
-                    fleet.localProvider = {
-                        let host = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
-                        let v = ProcessInfo.processInfo.operatingSystemVersion
-                        let os = "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
-                        return monitor.machineMetricsMac(machineId: "local", hostname: host,
-                                                         osName: os, agentVersion: "local")
-                    }
-                    // Start discovery immediately: mDNS takes a moment, so machines are already
-                    // listed by the time the user opens the Devices sidebar.
-                    fleet.start()
-                    // Share this Mac to the fleet when enabled (Settings toggle, or SSCOPE_SHARE=1 for dev).
-                    MacAgentController.shared.configure(monitor: monitor)
-                    if UserDefaults.standard.bool(forKey: "shareThisMac")
-                        || ProcessInfo.processInfo.environment["SSCOPE_SHARE"] == "1" {
-                        MacAgentController.shared.startIfConfigured()
-                    }
                 }
         }
         .windowResizability(.contentMinSize)
@@ -166,7 +229,7 @@ struct SiliconScopeApp: App {
     /// `Bundle.module`'s generated accessor calls `fatalError` when its resource
     /// bundle is not recognized as a bundle; the SwiftPM bundle is a flat folder
     /// with no Info.plist, which macOS 27's stricter validation rejects -> crash.
-    private static func loadAppIcon() -> NSImage? {
+    fileprivate static func loadAppIcon() -> NSImage? {
         // Packaged .app: AppIcon.icns sits directly in Contents/Resources.
         if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: url) {

@@ -1,7 +1,7 @@
 //
 //  File:      FleetMonitor.swift
 //  Created:   2026-07-21
-//  Updated:   2026-08-10
+//  Updated:   2026-09-04
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Mac-side fleet aggregator: owns mDNS discovery (FleetDiscovery), holds the set of
 //             discovered machines, and polls each on an interval for the latest MachineMetrics (or
@@ -19,6 +19,11 @@ import SiliconScopeCore
 @MainActor
 @Observable
 final class FleetMonitor {
+    /// The app's one fleet aggregator — app-lifetime for the same reason as
+    /// `SiliconScopeMonitor.shared`: discovery and sharing must come up at launch, not when a
+    /// window happens to open (#51).
+    static let shared = FleetMonitor()
+
     struct Entry: Identifiable {
         let source: any FleetSource
         var id: String { source.id }

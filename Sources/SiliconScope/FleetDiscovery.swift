@@ -1,7 +1,7 @@
 //
 //  File:      FleetDiscovery.swift
 //  Created:   2026-07-21
-//  Updated:   2026-08-10
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  mDNS/Bonjour auto-discovery of fleet agents on the LAN. Browses "_sscope-agent._tcp",
 //             resolves each service to host:port, and hands FleetMonitor an https HTTPFleetSource
@@ -37,7 +37,32 @@ final class FleetDiscovery {
     /// (when share mode is on, the local agent would otherwise self-discover as a duplicate).
     private static let localComputerName = Host.current().localizedName ?? ""
 
-    init(onChange: @escaping ([any FleetSource]) -> Void) { self.onChange = onChange }
+    /// Set while a `tokenLoaded` rebuild is already scheduled, so a burst of token reads coalesces
+    /// into one emit rather than one per machine.
+    private var rebuildScheduled = false
+
+    init(onChange: @escaping ([any FleetSource]) -> Void) {
+        self.onChange = onChange
+        // A token now arrives asynchronously (FleetPairingStore reads the Keychain off the main
+        // thread so it can never stall the UI or the launch). Rebuild when one lands, the same way
+        // the TOFU fingerprint already triggers a rebuild on first connect.
+        // Not removed: this object is owned by the app-lifetime FleetMonitor, and the block holds
+        // `self` weakly, so there is neither a cycle nor a dangling observer to clean up.
+        NotificationCenter.default.addObserver(
+            forName: FleetPairingStore.tokenLoaded, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.rebuildScheduled else { return }
+                self.rebuildScheduled = true
+                Task { @MainActor [weak self] in
+                    self?.rebuildScheduled = false
+                    self?.rebuild()
+                }
+            }
+        }
+    }
+
+
 
     func start() {
         guard browser == nil else { return }

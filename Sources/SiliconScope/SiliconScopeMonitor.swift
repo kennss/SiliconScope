@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-16
+//  Updated:   2026-09-04
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -18,6 +18,12 @@ import SiliconScopeCore
 @MainActor
 @Observable
 final class SiliconScopeMonitor {
+    /// The app's one live monitor. App-lifetime, **not** window-lifetime: the menu-bar items are
+    /// reconciled from this loop (`MetricBarController.shared.sync`), so it has to exist and run
+    /// whether or not a dashboard window is open. Owning it here rather than in a `@State` on the
+    /// App is what lets `applicationDidFinishLaunching` start it (#51).
+    static let shared = SiliconScopeMonitor()
+
     private(set) var snapshot = SystemSnapshot()
     let topology: CPUTopology?
 

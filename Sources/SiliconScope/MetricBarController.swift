@@ -1,7 +1,7 @@
 //
 //  File:      MetricBarController.swift
 //  Created:   2026-06-19
-//  Updated:   2026-07-27
+//  Updated:   2026-09-04
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style per-metric menu-bar items via AppKit NSStatusItem. SwiftUI's
 //             MenuBarExtra can't do dynamic toggling here (a conditional scene won't compile
@@ -70,6 +70,12 @@ final class MetricBarController: NSObject {
         item.autosaveName = config.autosaveName
         let popover = NSPopover()
         popover.behavior = .transient
+        // The dropdown paints `Theme.bg` — a fixed near-black — so the chrome AppKit draws around
+        // it must be dark for the same reason the main window's is (#50). Left to inherit, a
+        // light-mode Mac drew a pale arrow and border into a near-black panel. Set per popover
+        // rather than on `NSApp`, which would also override the status button's effectiveAppearance
+        // that `refresh()` reads to pick menu-bar ink from the real menu bar background.
+        popover.appearance = NSAppearance(named: .darkAqua)
         if let button = item.button {
             button.target = self
             button.action = #selector(buttonClicked(_:))
@@ -98,7 +104,27 @@ final class MetricBarController: NSObject {
         closeAllPopovers(except: id)
         closeCombinedPopover()
         entry.popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-        entry.popover.contentViewController?.view.window?.makeKey()
+        if let window = entry.popover.contentViewController?.view.window {
+            // A status-item popover does NOT inherit the status bar's Spaces behavior. Measured
+            // on macOS 26.5: NSStatusBarWindow carries `.fullScreenAuxiliary`, but the
+            // _NSPopoverWindow AppKit creates for us defaults to `.ignoresCycle` alone. With no
+            // Space-joining flag, macOS keeps the dropdown on the app's own Space, so while a
+            // full-screen app is frontmost the icon still responds but the panel opens offscreen
+            // back in Space 1 (github.com/kennss/SiliconScope#49). `.fullScreenAuxiliary` lets it
+            // share a full-screen Space; `.moveToActiveSpace` makes it follow the user instead of
+            // pinning to every Space the way `.canJoinAllSpaces` would. Inserted rather than
+            // assigned so AppKit's own flags survive, and applied after show() because the
+            // backing window does not exist until then — it is reused for later opens.
+            //
+            // ⚠️ The re-order is load-bearing, not tidying. `.moveToActiveSpace` is evaluated when
+            // the window is ORDERED FRONT, and show() has already placed it by the time we can
+            // reach it — so inserting the flag alone left the very first dropdown of a session
+            // stranded on the app's own Space while every later one worked (measured: identical
+            // `isShown`/`isVisible`/`collectionBehavior`, popover absent from the captured
+            // full-screen Space). Ordering it front again applies the flag we just set.
+            window.collectionBehavior.insert([.fullScreenAuxiliary, .moveToActiveSpace])
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     /// Dismiss the combined "SS" MenuBarExtra popover. SwiftUI has no public API to close a

@@ -1,7 +1,7 @@
 //
 //  File:      FleetPairingStore.swift
 //  Created:   2026-07-22
-//  Updated:   2026-08-10
+//  Updated:   2026-09-05
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-machine Fleet security state. The bearer token (secret) lives in the Keychain; the
 //             TOFU TLS cert fingerprint (public — just a hash) lives in UserDefaults. Both are keyed
@@ -35,28 +35,59 @@ enum FleetPairingStore {
 
     // MARK: - Bearer token (secret → Keychain)
 
+    /// Posted once a token has been read off the main thread, so discovery can rebuild its sources
+    /// with it. Mirrors what the TOFU fingerprint already does on first connect.
+    static let tokenLoaded = Notification.Name("ai.calidalab.SiliconScope.fleetTokenLoaded")
+
     /// Tokens already read this launch, so discovery does not re-enter the Keychain on every mDNS
     /// event.
     ///
-    /// ⚠️ This is a HANG fix, not an optimisation. `FleetDiscovery` is `@MainActor` and calls this
-    /// once per machine from `emit()`, which runs on every discovery change — so a synchronous
-    /// `SecItemCopyMatching` sits on the main thread N times per event. Whenever securityd is slow,
-    /// or shows an access prompt, the whole window freezes until it answers (observed twice, and
-    /// the reason the app appeared to lock up on launch and on opening Fleet).
+    /// ⚠️ This is a HANG fix, not an optimisation. `FleetDiscovery` is `@MainActor` and calls
+    /// `token(for:)` once per machine from `emit()`, which runs on every discovery change — so a
+    /// synchronous `SecItemCopyMatching` would sit on the MAIN THREAD N times per event. Whenever
+    /// securityd is slow, or shows an access prompt, everything stops until it answers.
     ///
     /// Correctness: the cache is authoritative because every write goes through `setToken` /
     /// `removeToken` below, which update it. A token changed by another process would be missed —
     /// nothing else writes these items.
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: String?] = [:]
+    /// Names with a Keychain read already in flight, so N discovery events don't spawn N reads.
+    nonisolated(unsafe) private static var loading: Set<String> = []
 
+    /// The cached token, or nil while one is still being read. **Never enters the Keychain on the
+    /// calling thread.**
+    ///
+    /// ⚠️ Caching alone was not enough: the FIRST read per machine still blocked whoever called,
+    /// and that caller is `@MainActor` discovery. Once fleet startup moved onto the launch path
+    /// (#51) that first read stopped being a freeze and became a launch DEADLOCK — the app came up
+    /// with no window, no menu bar and no status items, main thread parked in `mach_msg` beneath
+    /// `SecItemCopyMatching` while SecurityAgent waited on a prompt the half-launched app could not
+    /// present (measured with `sample`). So the read moved off-thread entirely.
+    ///
+    /// A machine therefore looks unpaired for the tick between discovery and the token arriving;
+    /// `tokenLoaded` then makes discovery rebuild with it. One unauthenticated poll that returns
+    /// 401 is the right trade against an app that cannot start.
     static func token(for name: String) -> String? {
         cacheLock.lock()
         if let hit = cache[name] { cacheLock.unlock(); return hit }
+        let alreadyReading = loading.contains(name)
+        loading.insert(name)
         cacheLock.unlock()
-        let value = readTokenFromKeychain(name)
-        cacheLock.lock(); cache[name] = value; cacheLock.unlock()
-        return value
+        if !alreadyReading { readTokenOffThread(name) }
+        return nil
+    }
+
+    private static func readTokenOffThread(_ name: String) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let value = readTokenFromKeychain(name)
+            cacheLock.lock()
+            cache[name] = value
+            loading.remove(name)
+            cacheLock.unlock()
+            guard value != nil else { return }   // nothing gained by rebuilding for an unpaired machine
+            DispatchQueue.main.async { NotificationCenter.default.post(name: tokenLoaded, object: name) }
+        }
     }
 
     private static func readTokenFromKeychain(_ name: String) -> String? {
