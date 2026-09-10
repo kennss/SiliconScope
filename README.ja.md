@@ -22,7 +22,7 @@ Linux GPU マシン、借りているクラウドインスタンス — そこ�
 ペアリング済みの接続で同じダッシュボードに合流します。リモートの Mac は **Neural Engine を含めて**
 ローカルとまったく同じように表示されます。
 
-*[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本語）と [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（ドイツ語）に掲載されました。*
+*[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本語）、[OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（英語）と [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（ドイツ語）に掲載されました。*
 
 ![ローカル LLM 負荷時の SiliconScope ダッシュボード](docs/img/dashboard.png)
 

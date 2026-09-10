@@ -21,7 +21,7 @@
 租來的雲端執行個體 —— 在那邊跑一個小小的 agent，它就會透過加密且已配對的連線加入同一個儀表板。
 遠端 Mac 依然是完整待遇，**連 Neural Engine 都在**。
 
-*已獲 [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）與 [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德國）報導。*
+*已獲 [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（美國）、[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）與 [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德國）報導。*
 
 ![本地 LLM 負載下的 SiliconScope 儀表板](docs/img/dashboard.png)
 

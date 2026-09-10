@@ -21,7 +21,7 @@ accelerators — and grown into a daily-driver monitor that can stand in for iSt
 the desk, a rented cloud instance: run a small agent there and it joins the same dashboard, over an
 encrypted, paired connection. Remote Macs keep the full treatment, **Neural Engine included**.
 
-*Featured on [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP) and [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE).*
+*Featured on [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/) (US), [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP) and [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE).*
 
 ![SiliconScope dashboard with the Replay scrubber](docs/img/dashboard.png)
 

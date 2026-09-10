@@ -21,7 +21,7 @@
 租来的云实例 —— 在那边跑一个小小的 agent，它就会通过加密并已配对的连接加入同一个仪表盘。
 远程 Mac 依然是完整待遇，**连 Neural Engine 都在**。
 
-*已由 [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）与 [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德国）报道。*
+*已由 [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（美国）、[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）与 [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德国）报道。*
 
 ![本地 LLM 负载下的 SiliconScope 仪表盘](docs/img/dashboard.png)
 

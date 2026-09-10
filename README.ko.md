@@ -21,7 +21,7 @@ Engine)**, **Media Engine**, **메모리 대역폭**을 일급 지표로 추적�
 빌려 쓰는 클라우드 인스턴스 — 거기에 작은 에이전트를 띄우면 암호화된 페어링 연결로 같은
 대시보드에 합류합니다. 원격 Mac은 **Neural Engine까지 포함해** 로컬과 똑같이 표시됩니다.
 
-*[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)(일본) · [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)(독일)에 소개되었습니다.*
+*[OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)(미국) · [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)(일본) · [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)(독일)에 소개되었습니다.*
 
 ![로컬 LLM 부하 상태의 SiliconScope 대시보드](docs/img/dashboard.png)
 

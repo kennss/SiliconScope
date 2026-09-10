@@ -1,9 +1,9 @@
 ---
-import { STRINGS, REPO, RELEASES_LATEST, SPECTALO, type Lang } from '../i18n';
+import { STRINGS, REPO, RELEASES_LATEST, SPECTALO, PRESS, type Lang } from '../i18n';
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const t = STRINGS[lang];
-const stars = '700+';            // GitHub stargazers (rounded so it stays accurate as it grows)
+const stars = '900+';            // GitHub stargazers (rounded so it stays accurate as it grows)
 const v = 305;                   // asset cache-bust version (Cloudflare serves images immutable for 1y)
 const alt = lang === 'ko' ? { href: '/', label: 'EN' } : { href: '/ko/', label: '한국어' };
 const self = lang === 'ko' ? 'KO' : 'EN';
@@ -39,6 +39,15 @@ const self = lang === 'ko' ? 'KO' : 'EN';
         ? <span>GitHub 스타 <b>{stars}</b>개 · 고맙습니다</span>
         : <span><b>{stars}</b> stars on GitHub · thank you</span>}
     </a>
+    <p class="press">
+      {t.hero.press}{' '}
+      {PRESS.map((p, i) => (
+        <>
+          {i > 0 && <span class="sep"> · </span>}
+          <a href={p.href} target="_blank" rel="noopener">{p.name}</a>
+        </>
+      ))}
+    </p>
     <div class="badges">{t.hero.badges.map((b) => <span>{b}</span>)}</div>
     <div class="hero-shot"><img src={`/img/dashboard.png?v=${v}`} alt="SiliconScope dashboard" loading="eager" /></div>
   </section>

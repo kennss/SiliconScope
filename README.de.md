@@ -24,7 +24,7 @@ eine Linux-GPU-Kiste unter dem Schreibtisch, eine gemietete Cloud-Instanz: Dort 
 Agent, und die Maschine tritt über eine verschlüsselte, gekoppelte Verbindung demselben Dashboard
 bei. Ferne Macs bekommen die volle Behandlung — **Neural Engine inklusive**.
 
-*Vorgestellt auf [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE) und [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP).*
+*Vorgestellt auf [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE), [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/) (US) und [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP).*
 
 ![SiliconScope-Dashboard unter Last eines lokalen LLM](docs/img/dashboard.png)
 

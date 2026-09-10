@@ -5,6 +5,14 @@ export const REPO = 'https://github.com/kennss/SiliconScope';
 export const RELEASES_LATEST = 'https://github.com/kennss/SiliconScope/releases/latest';
 export const SPECTALO = 'https://spectalo.calidalab.ai';
 
+/// Press coverage, newest first. Kept here rather than inline so both locales link the same
+/// articles and only the lead-in sentence is translated.
+export const PRESS = [
+  { name: 'OWC Rocket Yard', href: 'https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/' },
+  { name: 'AAPL Ch.', href: 'https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html' },
+  { name: 'ifun.de', href: 'https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/' },
+];
+
 export const STRINGS = {
   en: {
     nav: { features: 'Features', privacy: 'Privacy', download: 'Download' },
@@ -14,6 +22,7 @@ export const STRINGS = {
       download: 'Download for Apple Silicon',
       github: 'View on GitHub',
       badges: ['Free', 'Open source · MIT', 'No sudo', 'macOS 14+'],
+      press: 'Featured on',
     },
     features: [
       { tag: 'New in 4.0 · Fleet', title: 'Your other machines, in the same dashboard',
@@ -57,6 +66,7 @@ export const STRINGS = {
       download: 'Apple Silicon용 다운로드',
       github: 'GitHub에서 보기',
       badges: ['무료', '오픈소스 · MIT', 'sudo 불필요', 'macOS 14+'],
+      press: '소개된 곳',
     },
     features: [
       { tag: '4.0 신규 · Fleet', title: '내 다른 기계들까지, 같은 대시보드에',
