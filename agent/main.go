@@ -135,9 +135,9 @@ func main() {
 func sample() MachineMetrics {
 	return MachineMetrics{
 		MachineID:    machineID(),
-		Hostname:     firstLine("/etc/hostname"),
+		Hostname:     hostname(),
 		OS:           osPrettyName(),
-		Kind:         "linux",
+		Kind:         machineKind,
 		AgentVersion: agentVersion,
 		TS:           time.Now().UnixMilli(),
 		CPU:          readCPU(),
