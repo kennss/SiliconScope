@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics+Mac.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-09-12
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Maps a local Apple-Silicon live snapshot (SystemSnapshot + CPUTopology) into the
 //             source-agnostic MachineMetrics wire schema, so a Mac can serve itself to the fleet the
@@ -61,8 +61,14 @@ public extension MachineMetrics {
         )
 
         let chip = topology?.chipName ?? "Apple Silicon"
+
+        #if arch(x86_64)
+        // Intel has none of this: no unified-memory GPU, ANE, or per-domain power (all IOReport).
+        let gpus: [FleetGPU] = []
+        let apple: FleetApple? = nil
+        #else
         // Unified memory: GPU "VRAM" = bytes the GPU is using now, against total physical RAM.
-        let gpu = FleetGPU(
+        let gpus: [FleetGPU] = [FleetGPU(
             index: 0,
             name: chip,
             driver: "Apple",
@@ -74,9 +80,9 @@ public extension MachineMetrics {
             powerLimitW: 0,
             processes: [],
             freqMHz: s.gpu.freqMHz
-        )
+        )]
 
-        let apple = FleetApple(
+        let apple: FleetApple? = FleetApple(
             chip: chip,
             aneWatts: s.power.aneWatts,
             anePeakWatts: anePeakWatts,
@@ -102,13 +108,14 @@ public extension MachineMetrics {
             ),
             fanRPMs: s.thermal.fanRPMs
         )
+        #endif
 
         return MachineMetrics(
             machineId: machineId, hostname: hostname, os: osName, kind: "mac",
             agentVersion: agentVersion, ts: tsMillis, cpu: cpu, memory: memory,
             // A Mac serving models reports its decode rate the same way the Linux agent does, so
             // the fleet describes both in one vocabulary. nil when no runtime publishes one.
-            gpus: [gpu], llm: tokenRate.map { FleetLLM(ollama: nil, rate: $0) }, apple: apple
+            gpus: gpus, llm: tokenRate.map { FleetLLM(ollama: nil, rate: $0) }, apple: apple
         )
     }
 }
