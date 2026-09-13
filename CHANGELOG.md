@@ -1,5 +1,48 @@
 # Changelog
 
+## v4.3.0 — 2026-09-14
+
+**SiliconScope was starting LM Studio, and restarting it.** `lms log stream` — the
+only way LM Studio reports a decode rate — starts LM Studio in service mode when
+it is not already running. The token-rate watcher ran it at startup and, whenever
+the stream ended, again 15 seconds later, forever. So SiliconScope launched LM
+Studio at login and brought it back within 15 seconds of you quitting it. The app
+and the headless agent each did this independently, so killing it could not win.
+It also happened with **Connect to local AI runtimes** switched off, which is the
+setting that should have governed it.
+
+The watcher no longer has an entry point that spawns anything on its own. It
+attaches only while an LM Studio process is actually observed, from the process
+scan the app already performs — the same rule the llama.cpp port has followed
+since 4.2.0: read what is there, never ask a runtime's CLI and thereby summon it.
+In the app the toggle now governs this too, as its own description always
+promised. A monitor may not start what it monitors.
+([#60](https://github.com/kennss/SiliconScope/issues/60), reported by @vgorlovi)
+
+**💻 An Intel Mac in your fleet now reports what it actually has.** It used to
+announce itself as "Apple Silicon" with 0 cores, 0 % CPU, a 0 °C GPU with
+fabricated VRAM, and a Neural Engine row — a 2019 i9 has none of those. The one
+missing IOReport group took the core count and the chip name down with it, and
+the rest was built from zeroed samples. Core count and CPU usage come from sysctl
+and mach, which are correct on both architectures, so they are read directly now;
+the GPU and Apple blocks are omitted rather than sent as zeros.
+
+The chip-level metrics stay absent on Intel, because the hardware is: no Neural
+Engine, no Media Engine, and no unified-memory bandwidth or per-domain power,
+which come from an interface only Apple Silicon publishes. That is now written in
+the README in all six translations, where the platform line used to describe the
+app and leave the agent unsaid. The app itself remains Apple Silicon only.
+([#59](https://github.com/kennss/SiliconScope/pull/59) by @mimen, for
+[#56](https://github.com/kennss/SiliconScope/issues/56) raised by @parkamonster)
+
+**🌡 M5 Max reports a memory temperature.** The `m5` sensor table curated no
+memory keys at all, so the Memory group was simply empty on those machines.
+`Tm0p` reads back around 55 °C on an M5 Max and is now included; `Tm1p`/`Tm2p`,
+which the M4 table carries, were probed on that die and are absent, so they are
+left out rather than listed unverified.
+([#58](https://github.com/kennss/SiliconScope/pull/58) by @mimen, verified on
+hardware)
+
 ## v4.2.0 — 2026-09-05
 
 **A menu-bar app whose menu bar needed a window.** Set SiliconScope to launch at
