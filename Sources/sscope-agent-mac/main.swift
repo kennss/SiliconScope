@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-05
+//  Updated:   2026-09-13
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Headless SiliconScope fleet agent for a Mac (launchd / CLI). Samples this Mac's live
 //             metrics via Core's SystemSampler once a second, maps them to MachineMetrics, and serves
@@ -123,8 +123,10 @@ let osv = ProcessInfo.processInfo.operatingSystemVersion
 let osName = "macOS \(osv.majorVersion).\(osv.minorVersion).\(osv.patchVersion)"
 
 // Publishes tok/s when a local runtime reports one (LM Studio's stream / llama.cpp's /metrics).
+// Created idle: it attaches only while an LM Studio process is observed. Starting it eagerly
+// spawned `lms log stream`, and that LAUNCHES LM Studio — a headless agent must report what the
+// machine is doing, never add to it (#60).
 let tokenRate = TokenRateWatcher()
-tokenRate.start()
 
 let sampler = SystemSampler()
 let topology = sampler.topology
@@ -146,7 +148,8 @@ sampleQueue.async {
             tsMillis: Int64(now.timeIntervalSince1970 * 1000), loadAvg1: loadAvg1(),
             anePeakWatts: engine.anePeakWatts, mediaPeakGBs: engine.mediaPeakGBs,
             bandwidthPeakGBs: engine.bandwidthPeakGBs,
-            tokenRate: tokenRate.latest(llamaCppPort: snap.aiRuntime.llamaCppPort)
+            tokenRate: tokenRate.latest(llamaCppPort: snap.aiRuntime.llamaCppPort,
+                                        lmStudioRunning: snap.aiRuntime.isLMStudioRunning)
         )
         if let d = try? JSONEncoder().encode(metrics) { cache.set(d) }
         Thread.sleep(forTimeInterval: 0.8)   // total cadence ≈ 1 s

@@ -1,7 +1,7 @@
 //
 //  File:      MacAgent.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-05
+//  Updated:   2026-09-13
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App-side "share this Mac to the Fleet" controller. Runs a FleetAgentServer (Core) that
 //             serves this Mac's MachineMetrics over TLS + mDNS, so another Mac's Fleet view discovers
@@ -115,13 +115,11 @@ extension SiliconScopeMonitor {
     /// live path (RuntimeAPISample + the benchmark button); this exists so one screen does not apply
     /// two definitions of the same number.
     ///
-    /// Started on first use rather than at launch: it spawns `lms log stream` when LM Studio is
-    /// installed, and someone who never opens Fleet should not pay for a child process.
-    private static let fleetTokenRate: TokenRateWatcher = {
-        let w = TokenRateWatcher()
-        w.start()
-        return w
-    }()
+    /// Created idle. It attaches to LM Studio's log stream only while an LM Studio process is
+    /// actually observed, and only while the user has opted into reading local runtimes — the
+    /// eager `start()` that used to live here spawned `lms log stream`, which LAUNCHES LM Studio,
+    /// at every app launch and again 15 s after the user quit it (#60).
+    private static let fleetTokenRate = TokenRateWatcher()
 
     /// Map the current live snapshot into the fleet wire schema, injecting the values that live
     /// outside SystemSnapshot (engine peaks + 1-min load average).
@@ -133,7 +131,13 @@ extension SiliconScopeMonitor {
             agentVersion: agentVersion, tsMillis: Int64(Date().timeIntervalSince1970 * 1000),
             loadAvg1: Self.loadAvg1(), anePeakWatts: anePeakWatts, mediaPeakGBs: mediaPeakGBs,
             bandwidthPeakGBs: bandwidthPeakGBs,
-            tokenRate: Self.fleetTokenRate.latest(llamaCppPort: snapshot.aiRuntime.llamaCppPort)
+            // "Connect to local AI runtimes" governs every way we touch a local runtime, reading
+            // its log stream included — the Settings copy promises exactly that ("the loaded model,
+            // processor split, and tokens/sec"). With it off we attach to nothing (#60).
+            tokenRate: Self.fleetTokenRate.latest(
+                llamaCppPort: snapshot.aiRuntime.llamaCppPort,
+                lmStudioRunning: UserDefaults.standard.bool(forKey: "aiRuntimeAPIEnabled")
+                    && snapshot.aiRuntime.isLMStudioRunning)
         )
     }
 

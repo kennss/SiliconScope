@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-05
+//  Updated:   2026-09-13
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-snapshot result of AI-runtime detection: the matched processes plus
 //             grouped roll-ups (RAM / CPU% per kind, primary kind, embedded port).
@@ -88,6 +88,13 @@ public struct AIRuntimeSample: Sendable, Equatable, Codable {
     /// SiliconScope GET 127.0.0.1:8080/metrics and :8081/metrics every 3 s on every Mac, whether
     /// or not any AI runtime was installed, so whoever else happened to own 8080 kept receiving
     /// our traffic (#53). Observe the process, don't poll the neighbourhood.
+    /// Whether an LM Studio process is running right now.
+    ///
+    /// ⚠️ Read this before touching the `lms` CLI, never after: `lms log stream` STARTS LM Studio
+    /// in service mode when it is not already up, so asking it for a rate is enough to launch the
+    /// app (#60). Observation first, attachment second.
+    public var isLMStudioRunning: Bool { !processes(of: .lmStudio).isEmpty }
+
     public var llamaCppPort: Int? {
         let servers = processes(of: .llamaCpp)
         guard !servers.isEmpty else { return nil }

@@ -1,7 +1,7 @@
 //
 //  File:      TokenRateWatcher.swift
 //  Created:   2026-08-10
-//  Updated:   2026-09-05
+//  Updated:   2026-09-13
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Collects the decode rate (tokens/sec) a local LLM runtime reports for its OWN work,
 //             so a Mac serving models can publish it the way the Linux agent already does
@@ -26,24 +26,64 @@ import Foundation
 public final class TokenRateWatcher: @unchecked Sendable {
     private let lock = NSLock()
     private var lmStudio: FleetTokenRate?
-    private var started = false
+    /// The running `lms log stream` child, when one is attached. Held so the stream can be torn
+    /// down the moment LM Studio is no longer observed.
+    private var stream: Process?
+    /// Last observation, so an attach can be edge-triggered rather than level-triggered.
+    private var wasRunning = false
 
     public init() {}
 
-    /// Begins watching LM Studio. No-op when its CLI is absent — a machine without LM Studio simply
-    /// has no stream to read, which is not an error worth surfacing.
-    public func start() {
-        lock.lock()
-        let already = started
-        started = true
-        lock.unlock()
-        guard !already, let bin = Self.lmsBinary() else { return }
+    /// Attaches to, or detaches from, LM Studio's log stream to match what is ACTUALLY running.
+    ///
+    /// ⚠️ This must never be the thing that makes LM Studio run. `lms log stream` starts LM Studio
+    /// in service mode when it is not already up, so the previous design — spawn it, and on failure
+    /// retry every 15 s forever — meant SiliconScope launched LM Studio at login and relaunched it
+    /// within 15 s of the user quitting it. Two processes did this independently (the app and the
+    /// headless agent), so killing it could not win (#60). A monitor may not start what it monitors.
+    ///
+    /// `running` is an OBSERVATION the caller already made (`AIRuntimeSample`), not something this
+    /// type goes looking for — the same rule the llama.cpp port follows since #53.
+    /// Whether to attach the log stream, given the current observation, the previous one, and
+    /// whether a stream is already up. Pure and extracted from the process-spawning path so the
+    /// rule that stops #60 can be tested without launching anything.
+    ///
+    /// Attaching is edge-triggered: `running` alone is not enough, because the stream dies the
+    /// moment LM Studio quits while the process scan behind `running` is up to a sample stale.
+    /// A level test therefore sees "not attached, still running" in that gap and re-attaches —
+    /// spawning `lms`, which starts LM Studio again. Only a false→true transition can attach.
+    static func shouldAttach(running: Bool, wasRunning: Bool, attached: Bool) -> Bool {
+        running && !wasRunning && !attached
+    }
 
-        Thread.detachNewThread { [weak self] in
-            while self != nil {
-                self?.runLMStudioStream(bin)
-                Thread.sleep(forTimeInterval: 15)   // LM Studio not running, or it quit — retry quietly
-            }
+    /// Detaching is level-triggered on purpose: the moment LM Studio is not observed we let the
+    /// stream go, however we got here.
+    static func shouldDetach(running: Bool, attached: Bool) -> Bool { !running && attached }
+
+    private func syncLMStudioStream(running: Bool) {
+        lock.lock()
+        let attached = stream != nil
+        // ⚠️ Attach on the RISING EDGE of the observation, never on its level. The stream dies the
+        // instant LM Studio quits, but the process scan behind `running` is up to a sample old — so
+        // a level test sees "not attached, still running" in that gap and re-attaches, which spawns
+        // `lms` and brings LM Studio straight back. That is the resurrection loop of #60 rebuilt
+        // from the other side; measured it happening before this edge check existed. Requiring
+        // false→true means the only thing that can attach is a scan that freshly saw the app alive.
+        let attach = Self.shouldAttach(running: running, wasRunning: wasRunning, attached: attached)
+        let detach = Self.shouldDetach(running: running, attached: attached)
+        wasRunning = running
+        lock.unlock()
+
+        if attach, let bin = Self.lmsBinary() {
+            Thread.detachNewThread { [weak self] in self?.runLMStudioStream(bin) }
+        } else if detach {
+            lock.lock()
+            let proc = stream
+            stream = nil
+            // A rate from a runtime that has since quit describes nothing current.
+            lmStudio = nil
+            lock.unlock()
+            proc?.terminate()
         }
     }
 
@@ -54,7 +94,12 @@ public final class TokenRateWatcher: @unchecked Sendable {
     /// (`AIRuntimeSample.llamaCppPort`); pass nil when none is. Nil means no HTTP request is made
     /// at all — this watcher no longer owns a list of ports to try, because owning one is exactly
     /// how it ended up polling two localhost ports forever on machines with no runtime (#53).
-    public func latest(llamaCppPort: Int?) -> FleetTokenRate? {
+    ///
+    /// `lmStudioRunning` is likewise an observation: true only when an LM Studio process was seen.
+    /// It is what attaches and detaches the log stream, so a machine where LM Studio is not running
+    /// never causes it to start.
+    public func latest(llamaCppPort: Int?, lmStudioRunning: Bool) -> FleetTokenRate? {
+        syncLMStudioStream(running: lmStudioRunning)
         if let port = llamaCppPort, let r = readLlamaCppRate(port: port) { return r }
         lock.lock(); defer { lock.unlock() }
         return lmStudio
@@ -117,7 +162,13 @@ public final class TokenRateWatcher: @unchecked Sendable {
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
         guard (try? proc.run()) != nil else { return }
-        defer { if proc.isRunning { proc.terminate() } }
+        lock.lock(); stream = proc; lock.unlock()
+        defer {
+            if proc.isRunning { proc.terminate() }
+            // Clear the slot only if it is still ours: a detach already replaced it with nil, and
+            // stomping that would leave `syncLMStudioStream` believing nothing is attached.
+            lock.lock(); if stream === proc { stream = nil }; lock.unlock()
+        }
 
         // Read line-wise: one prediction event carries its whole output, so lines are long but the
         // stream is slow — a simple accumulating read is enough and avoids a byte-at-a-time loop.
