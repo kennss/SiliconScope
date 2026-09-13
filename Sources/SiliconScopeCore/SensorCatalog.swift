@@ -1,7 +1,7 @@
 //
 //  File:      SensorCatalog.swift
 //  Created:   2026-06-19
-//  Updated:   2026-06-24
+//  Updated:   2026-09-12
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Curated per-generation SMC temperature-key tables for Apple Silicon (M1–M5).
 //             Apple's SMC FourCC keys are near-arbitrary and change every generation, so the
@@ -107,7 +107,8 @@ public enum SensorCatalog {
              ("Tp0a", "P-Core 5"), ("Tp0d", "P-Core 6"), ("Tp0g", "P-Core 7"), ("Tp0j", "P-Core 8"),
              ("Tp0m", "P-Core 9"), ("Tp0p", "P-Core 10"), ("Tp0u", "P-Core 11"), ("Tp0y", "P-Core 12")]) +
         gpu([("Tg0U", "GPU 1"), ("Tg0X", "GPU 2"), ("Tg0d", "GPU 3"), ("Tg0g", "GPU 4"),
-             ("Tg0j", "GPU 5"), ("Tg1Y", "GPU 6"), ("Tg1c", "GPU 7"), ("Tg1g", "GPU 8")])
+             ("Tg0j", "GPU 5"), ("Tg1Y", "GPU 6"), ("Tg1c", "GPU 7"), ("Tg1g", "GPU 8")]) +
+        mem([("Tm0p", "Memory 1")])   // verified on M5 Max; Tm1p/Tm2p absent on this die
 
     /// CPU brand string via sysctl (e.g. "Apple M1 Max").
     private static func brandString() -> String {
