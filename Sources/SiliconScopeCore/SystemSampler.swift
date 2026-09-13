@@ -1,7 +1,7 @@
 //
 //  File:      SystemSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-14
+//  Updated:   2026-09-12
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Aggregates every SiliconScopeCore sampler into one SystemSnapshot. Intended
 //             to run on a single background thread driven by the UI's refresh loop.
@@ -56,14 +56,20 @@ public final class SystemSampler: @unchecked Sendable {
     private var lastProcessSample: Date = .distantPast
     private let processInterval: TimeInterval = 2.5
 
+    /// Not read through `cpu`: that sampler cannot construct on Intel (no IOReport).
+    private let resolvedTopology = CPUTopology.detect()
+
+    /// Whole-machine CPU usage for hosts without IOReport. Nil on Apple Silicon, where `cpu` serves.
+    private let tickCPU: TickCPUSampler?
+
     public init() {
-        let topology = cpu?.topology
-        gpu = topology.flatMap { GPUSampler(topology: $0) }
-        let coreCount = topology.map { $0.eCoreCount + $0.pCoreCount } ?? 0
-        temperature = TemperatureSampler(coreCount: coreCount)
+        gpu = cpu.flatMap { GPUSampler(topology: $0.topology) }
+        temperature = TemperatureSampler(
+            coreCount: resolvedTopology.eCoreCount + resolvedTopology.pCoreCount)
+        tickCPU = cpu == nil ? TickCPUSampler() : nil
     }
 
-    public var topology: CPUTopology? { cpu?.topology }
+    public var topology: CPUTopology? { resolvedTopology }
 
     /// Produces one full snapshot. The four delta samplers (power, CPU, GPU, bandwidth) each
     /// sleep `interval` internally; they run CONCURRENTLY here, so this blocks for roughly
@@ -83,7 +89,13 @@ public final class SystemSampler: @unchecked Sendable {
             group.enter(); queue.async { work(); group.leave() }
         }
         parallel { let r = self.power?.sample(interval: interval) ?? PowerSample(); io.withLock { $0.power = r } }
-        parallel { let r = self.cpu?.sample(interval: interval) ?? CPUSample(); io.withLock { $0.cpu = r } }
+        parallel {
+            var sample = self.cpu?.sample(interval: interval) ?? CPUSample()
+            // No cluster split on Intel; mac() weights the P slot by core count.
+            if let tick = self.tickCPU { sample.pUsage = tick.sampleUsage() }
+            let r = sample
+            io.withLock { $0.cpu = r }
+        }
         parallel { let r = self.gpu?.sample(interval: interval) ?? GPUSample(); io.withLock { $0.gpu = r } }
         parallel { let r = self.bandwidth?.sample(interval: interval) ?? BandwidthSample(); io.withLock { $0.bandwidth = r } }
         group.wait()
