@@ -104,6 +104,11 @@ added *and* paired in a single step.
 
 On a Mac you actually sit at, you don't need the agent at all: **Settings → Share this Mac**.
 
+**On an Intel Mac** the agent reports CPU and memory — what that machine actually has. The
+chip-level metrics are absent because the hardware is: no Neural Engine, no Media Engine, and no
+unified-memory bandwidth or per-domain power, which come from an interface only Apple Silicon
+publishes. The app itself remains Apple Silicon only.
+
 > **Headless Mac?** Enable **System Settings → General → Sharing → Remote Login** first — you can't
 > install anything on it otherwise. **Off your LAN** (Tailscale, VPN, cloud)? mDNS can't reach it, so
 > add it by address in **Add machine…**; prefer Tailscale or an SSH tunnel over exposing the port

@@ -111,6 +111,11 @@ der Rechner ist in einem Schritt hinzugefügt *und* gekoppelt.
 Auf einem Mac, an dem du tatsächlich sitzt, brauchst du gar keinen Agent:
 **Einstellungen → Share this Mac**.
 
+**Auf einem Intel-Mac** meldet der Agent CPU und Speicher — was diese Maschine tatsächlich hat. Die
+Chip-Metriken fehlen, weil die Hardware fehlt: keine Neural Engine, keine Media Engine, und keine
+Unified-Memory-Bandbreite oder Leistung pro Domäne, die aus einer Schnittstelle stammen, die nur
+Apple Silicon veröffentlicht. Die App selbst bleibt Apple Silicon vorbehalten.
+
 > **Mac ohne Bildschirm?** Aktiviere zuerst **Systemeinstellungen → Allgemein → Freigabe →
 > Entfernte Anmeldung** — sonst lässt sich dort nichts installieren. **Außerhalb deines LAN**
 > (Tailscale, VPN, Cloud)? Dorthin kommt mDNS nicht, also per Adresse unter **Add machine…**

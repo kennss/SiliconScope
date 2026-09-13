@@ -99,6 +99,10 @@ Mac 端的 agent **不需要 sudo**，所以通过 `ssh` 执行也能一路跑�
 
 如果是你自己在用的 Mac，连 agent 都不需要：**设置 → Share this Mac**。
 
+**在 Intel Mac 上**，agent 会报告 CPU 与内存——那台机器真正拥有的东西。芯片级指标缺失是因为硬件本身缺失：
+没有神经网络引擎、没有媒体引擎，也没有统一内存带宽或分域功耗，它们来自只有 Apple Silicon 才公开的接口。
+应用本身仍然只支持 Apple Silicon。
+
 > **无头 Mac？** 请先打开**系统设置 → 通用 → 共享 → 远程登录**，否则你没法在上面装任何东西。
 > **不在同一局域网**（Tailscale、VPN、云）？mDNS 到不了，请在 **Add machine…** 里按地址添加；
 > 相比把端口暴露到公网，更推荐走 Tailscale 或 SSH 隧道。
