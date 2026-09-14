@@ -1,7 +1,7 @@
 //
 //  File:      TemperatureSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-01
+//  Updated:   2026-09-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads categorized temperatures sudolessly. Prefers the rich Apple Silicon
 //             HID sensor set (IOHIDEventSystem, via HIDSensorReader) — the source iStat
@@ -147,7 +147,14 @@ public final class TemperatureSampler {
     static func curatedSample(smc: SMCReader, gen: AppleSiliconGen) -> TemperatureSample? {
         var byCategory: [SensorCategory: [TempSensor]] = [:]
         for entry in SensorCatalog.curated(for: gen) {
-            guard let value = smc.readDouble(entry.key), value > 5, value < 130 else { continue }
+            // Dropped rather than shown: a die reading below its floor is the SMC handing back
+            // something that is not a temperature (#57). Dropping the whole CPU group when every
+            // core key is affected is deliberate — `sample()` then sees the category as missing and
+            // fills it from the HID sensors, which are a different interface and were unaffected on
+            // the reporting machine. That path already exists, and it only costs the HID read on
+            // the ticks where the curated read actually failed.
+            guard let value = smc.readDouble(entry.key),
+                  value > entry.category.plausibleFloorCelsius, value < 130 else { continue }
             byCategory[entry.category, default: []].append(
                 TempSensor(rawName: entry.key, name: entry.name, celsius: value))
         }
