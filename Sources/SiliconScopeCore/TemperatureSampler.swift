@@ -115,13 +115,17 @@ public final class TemperatureSampler {
     /// generation plus every curated key with the value it reads back (nil = absent on this
     /// Mac, i.e. wrong/missing for this model). Surfaced by `sscope-cli --sensors` so a
     /// contributor on an unvalidated chip can confirm or correct the table.
+    /// `rejected` carries a value the key returned that the panel refuses to publish — a die
+    /// reading below its floor. A diagnostic must not hide it: seeing the SMC's six-value cycle
+    /// raw is how it stays visible from the outside at all. But printing it as a plain temperature
+    /// made this the one surface that disagreed with the dashboard, which is worth neither (#57).
     public func curatedReadout()
-        -> (generation: String, entries: [(key: String, name: String, celsius: Double?)]) {
+        -> (generation: String, entries: [(key: String, name: String, celsius: Double?, rejected: Double?)]) {
         let gen = SensorCatalog.detectGeneration()
-        let entries = SensorCatalog.curated(for: gen).map { e -> (String, String, Double?) in
-            let v = smc?.readDouble(e.key)
-            let valid = (v.map { $0 > 5 && $0 < 130 } ?? false) ? v : nil
-            return (e.key, e.name, valid)
+        let entries = SensorCatalog.curated(for: gen).map { e -> (String, String, Double?, Double?) in
+            guard let v = smc?.readDouble(e.key), v < 130 else { return (e.key, e.name, nil, nil) }
+            if v > e.category.plausibleFloorCelsius { return (e.key, e.name, v, nil) }
+            return (e.key, e.name, nil, v)
         }
         return (String(describing: gen), entries)
     }
@@ -190,6 +194,16 @@ public final class TemperatureSampler {
             guard categories.contains(category) else { continue }
             hidByCategory[category, default: []].append(
                 TempSensor(rawName: s.name, name: label, celsius: s.celsius))
+        }
+        // The curated keys read the cores; `tdie*` are the die points nearest them. When both they
+        // and the assorted `tdev`/`TP` rails are present, keeping only `tdie*` makes the substituted
+        // reading describe the same thing the curated one did as closely as the HID set allows.
+        // It does not make the two identical — they are different sensors on the same die, and the
+        // published figure still steps when the source flips (#57). Narrowing the set is what we
+        // can do honestly; inventing agreement is not.
+        if let cpu = hidByCategory[.cpu] {
+            let die = cpu.filter { $0.rawName.lowercased().contains("tdie") }
+            if !die.isEmpty { hidByCategory[.cpu] = die }
         }
         guard !hidByCategory.isEmpty else { return sample }
 
@@ -264,7 +278,12 @@ public final class TemperatureSampler {
 
         if n.contains("gpu") { return (.gpu, label) }
         if n.contains("dram") || n.contains("ddr") { return (.memory, label) }
-        return (.cpu, label)   // tdie / tdev / TP* / tcal — SoC die / CPU complex
+        // ⚠️ `tcal` is a calibration reference, not a reading. It sits at 51.8-51.9 °C on every
+        // machine we have data for — M1 Max, M2 Max, base M4, M5 Max — and does not move under an
+        // all-core load. Left in the CPU group it became the group's MAXIMUM, so a die averaging
+        // 38 °C reported "max 52" and the hottest number on screen was a constant (#57).
+        if n.contains("tcal") { return (.other, label) }
+        return (.cpu, label)   // tdie / tdev / TP* — SoC die / CPU complex
     }
 
     /// Trailing numeric id of an Apple Silicon HID sensor name (" 5" from "pACC MTR Temp Sensor5"),

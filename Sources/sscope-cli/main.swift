@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-05
+//  Updated:   2026-09-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -140,8 +140,18 @@ if CommandLine.arguments.contains("--sensors") {
     }
     var hit = 0
     for e in readout.entries {
-        if let c = e.celsius { hit += 1; print(String(format: "  %-5@ %-10@ %5.1f C", e.key as NSString, e.name as NSString, c)) }
-        else { print(String(format: "  %-5@ %-10@     —  (not present)", e.key as NSString, e.name as NSString)) }
+        if let c = e.celsius {
+            hit += 1
+            print(String(format: "  %-5@ %-10@ %5.1f C", e.key as NSString, e.name as NSString, c))
+        } else if let r = e.rejected {
+            // Shown, not hidden — and labelled, so this readout cannot silently disagree with the
+            // dashboard the way it did before (#57).
+            print(String(format: "  %-5@ %-10@ %5.1f C  (rejected: below the %.0f C floor for a %@ die)",
+                         e.key as NSString, e.name as NSString, r,
+                         SensorCategory.cpu.plausibleFloorCelsius, "CPU/GPU" as NSString))
+        } else {
+            print(String(format: "  %-5@ %-10@     —  (not present)", e.key as NSString, e.name as NSString))
+        }
     }
     if !readout.entries.isEmpty { print("  → \(hit)/\(readout.entries.count) curated keys read back") }
 

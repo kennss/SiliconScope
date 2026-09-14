@@ -59,3 +59,39 @@ final class SensorFloorTests: XCTestCase {
         }
     }
 }
+
+/// Follow-ups from the same report: the substituted reading has to describe the die, not the
+/// machine's calibration constant, and the diagnostic must not silently disagree with the panel.
+final class HIDSubstitutionTests: XCTestCase {
+
+    /// ⚠️ `tcal` sits at 51.8–51.9 °C on every machine we have data for and does not move under an
+    /// all-core load. Classed as a CPU sensor it became the group's maximum, so a die averaging
+    /// 38 °C reported "max 52" — the hottest number on screen was a constant.
+    func testTcalIsNotACPUSensor() {
+        XCTAssertEqual(TemperatureSampler.friendlyHID("PMU tcal").category, .other)
+        XCTAssertEqual(TemperatureSampler.friendlyHID("PMU2 tcal").category, .other)
+    }
+
+    /// The die points stay where they are — removing one non-sensor must not empty the group.
+    func testDiePointsAreStillCPUSensors() {
+        for name in ["PMU tdie3", "PMU tdev1", "PMU TP0s"] {
+            XCTAssertEqual(TemperatureSampler.friendlyHID(name).category, .cpu, name)
+        }
+    }
+
+    /// When the curated bank fails, the substitute is drawn from the die points nearest the cores
+    /// rather than from every rail HID happens to expose.
+    func testSupplementPrefersTheDiePointsWhenBothArePresent() {
+        let hid = [("PMU tdie1", 40.2), ("PMU tdie2", 40.7), ("PMU tdev4", 27.4), ("PMU TP0s", 39.9)]
+        let out = TemperatureSampler.supplement(TemperatureSample(), withHID: hid, categories: [.cpu])
+        let names = Set(out.groups.first { $0.category == .cpu }?.sensors.map(\.rawName) ?? [])
+        XCTAssertEqual(names, ["PMU tdie1", "PMU tdie2"])
+    }
+
+    /// A machine with no `tdie` at all must still get a CPU reading rather than an empty group.
+    func testSupplementKeepsWhatItHasWhenThereAreNoDiePoints() {
+        let hid = [("PMU TP0s", 39.9), ("PMU tdev4", 27.4)]
+        let out = TemperatureSampler.supplement(TemperatureSample(), withHID: hid, categories: [.cpu])
+        XCTAssertEqual(out.groups.first { $0.category == .cpu }?.sensors.count, 2)
+    }
+}

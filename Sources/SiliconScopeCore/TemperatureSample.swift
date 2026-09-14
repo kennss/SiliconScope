@@ -30,7 +30,7 @@ public enum SensorCategory: String, Sendable, CaseIterable, Codable {
     ///
     /// Other things genuinely do run cool — a battery at 31 °C, NAND at 26 °C, an ambient sensor at
     /// 27 °C — so the floor is per category rather than one number for everything.
-    var plausibleFloorCelsius: Double {
+    public var plausibleFloorCelsius: Double {
         switch self {
         case .cpu, .gpu:                   return 20
         case .memory, .battery, .other:    return 5
