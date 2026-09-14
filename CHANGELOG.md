@@ -20,6 +20,24 @@ name — the app alone is not enough, since the name has to be sent.
 ([#56](https://github.com/kennss/SiliconScope/issues/56), caught by @parkamonster
 within the hour)
 
+**🌡 Single digits are not a die temperature.** On an M2 Max under macOS 26.6.2
+the SMC intermittently serves a fixed six-value cycle — 5.3 / 6.0 / 6.7 / 7.4 /
+8.4 and blanks — on the CPU core keys, flipping per bank every second or two.
+SiliconScope published them, so a running die read 6.7 °C and the CPU header
+alternated between 42 °C and 7 °C.
+
+It is not our decode: a second, unrelated SMC reader sees the identical values on
+the identical keys, so they are served to anything that reads them. We cannot fix
+what the SMC returns, but we can decline to call it a temperature. A powered die
+is warmer than the room it sits in — every verified idle reading across M1, M2,
+M4 and M5 is 37 °C or above — so a die sensor reporting single digits is dropped
+rather than shown, and when every core key is affected the reading comes from the
+HID sensors instead, which are a different interface and were unaffected. Things
+that genuinely run cool keep their own floor: a battery at 31 °C and NAND at
+26 °C are real. Machines reading correctly are untouched.
+([#57](https://github.com/kennss/SiliconScope/issues/57), diagnosed by @kruzif-x
+with ten runs, a cross-reader comparison and a two-minute watch)
+
 ## v4.3.0 — 2026-09-14
 
 **SiliconScope was starting LM Studio, and restarting it.** `lms log stream` — the
