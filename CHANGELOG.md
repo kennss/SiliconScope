@@ -1,5 +1,25 @@
 # Changelog
 
+## v4.3.1 — 2026-09-14
+
+**An Intel Mac still read "Apple Silicon" — from our side this time.** 4.3.0
+stopped the Intel agent sending a fabricated Apple block, and the label survived
+anyway: the viewer resolved a remote machine's name from that block, then from a
+GPU, and an Intel Mac now sends neither. The fabrication moved rather than went
+away.
+
+The name had no home of its own on the wire. It is a property of every machine,
+not an Apple-Silicon one, so it travels on the common CPU block now — filled from
+sysctl on both architectures, and from `/proc/cpuinfo` by the Linux agent. And a
+machine that did not tell us what it is is no longer assumed to be an Apple
+Silicon one: the name resolves to nothing and the header shows nothing, rather
+than a claim. A Linux GPU box keeps the heading it has always had.
+
+**Update the agent on any Intel Mac in your fleet** for it to report its real
+name — the app alone is not enough, since the name has to be sent.
+([#56](https://github.com/kennss/SiliconScope/issues/56), caught by @parkamonster
+within the hour)
+
 ## v4.3.0 — 2026-09-14
 
 **SiliconScope was starting LM Studio, and restarting it.** `lms log stream` — the
