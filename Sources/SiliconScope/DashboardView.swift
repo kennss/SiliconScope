@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-27
+//  Updated:   2026-09-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -346,7 +346,9 @@ private struct HeaderView: View {
         HStack(alignment: .firstTextBaseline, spacing: Space.card) {
             Text("SiliconScope").font(Theme.font(.headline, .strong))
             if let t = topology {
-                Text(t.chipName).font(Theme.font(.body)).foregroundStyle(Theme.dim)
+                if !t.chipName.isEmpty {
+                    Text(t.chipName).font(Theme.font(.body)).foregroundStyle(Theme.dim)
+                }
                 Text("\(t.eCoreCount + t.pCoreCount) cores · \(t.coreSummary)")
                     .font(Theme.font(.body)).foregroundStyle(Theme.faint)
             }

@@ -54,6 +54,9 @@ type CPU struct {
 	Cores        int     `json:"cores"`
 	UsagePercent float64 `json:"usagePercent"`
 	LoadAvg1     float64 `json:"loadAvg1"`
+	// Model name, e.g. "AMD Ryzen 9 5950X". Omitted when /proc/cpuinfo does not say, rather than
+	// guessed — the viewer renders no name at all instead of asserting one it was not given.
+	Model string `json:"model,omitempty"`
 }
 
 type Memory struct {
@@ -232,7 +235,7 @@ func portFromAddr(addr string) int {
 // MARK: - CPU
 
 func readCPU() CPU {
-	c := CPU{Cores: runtime.NumCPU(), LoadAvg1: loadAvg1()}
+	c := CPU{Cores: runtime.NumCPU(), LoadAvg1: loadAvg1(), Model: cpuModel()}
 	t1, i1 := procStatTotals()
 	time.Sleep(200 * time.Millisecond)
 	t2, i2 := procStatTotals()
@@ -264,6 +267,26 @@ func procStatTotals() (total, idle uint64) {
 		}
 	}
 	return
+}
+
+// cpuModel returns the "model name" line from /proc/cpuinfo, or "" when it is absent. Empty is a
+// real answer here: the viewer shows no name rather than inventing one.
+func cpuModel() string {
+	b, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "model name", "Model": // x86 and arm64 spell it differently
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func loadAvg1() float64 {

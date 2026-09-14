@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics+Mac.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-12
+//  Updated:   2026-09-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Maps a local Apple-Silicon live snapshot (SystemSnapshot + CPUTopology) into the
 //             source-agnostic MachineMetrics wire schema, so a Mac can serve itself to the fleet the
@@ -42,7 +42,9 @@ public extension MachineMetrics {
             pUsagePercent: s.cpu.pUsage * 100,
             eFreqMHz: s.cpu.eFreqMHz,
             pFreqMHz: s.cpu.pFreqMHz,
-            eCores: eCores, pCores: pCores
+            eCores: eCores, pCores: pCores,
+            // Sent on both architectures: sysctl knows the name whether or not IOReport does.
+            model: topology?.chipName
         )
 
         let memory = FleetMemory(

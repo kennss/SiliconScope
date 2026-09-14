@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics.swift
 //  Created:   2026-07-21
-//  Updated:   2026-08-10
+//  Updated:   2026-09-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The source-agnostic fleet metric schema — the boundary the Mac aggregator consumes
 //             for every remote machine, regardless of how the data arrives. Mirrors the Go Linux
@@ -51,15 +51,22 @@ public struct FleetCPU: Codable, Sendable, Equatable {
     public let pFreqMHz: Double?
     public let eCores: Int?          // Apple E/P core counts (nil on Linux)
     public let pCores: Int?
+    /// What this machine calls its CPU, e.g. "Apple M1 Max" or "Intel(R) Core(TM) i9-9880H".
+    ///
+    /// ⚠️ Lives here, on the common block, because every machine has one. It used to travel only
+    /// inside `apple.chip`, so the moment an Intel Mac correctly stopped sending that block it had
+    /// nowhere left to say its own name and the viewer fell back to printing "Apple Silicon" at it
+    /// (#56). A name is not an Apple-Silicon-only fact.
+    public let model: String?
 
     public init(cores: Int, usagePercent: Double, loadAvg1: Double,
                 eUsagePercent: Double? = nil, pUsagePercent: Double? = nil,
                 eFreqMHz: Double? = nil, pFreqMHz: Double? = nil,
-                eCores: Int? = nil, pCores: Int? = nil) {
+                eCores: Int? = nil, pCores: Int? = nil, model: String? = nil) {
         self.cores = cores; self.usagePercent = usagePercent; self.loadAvg1 = loadAvg1
         self.eUsagePercent = eUsagePercent; self.pUsagePercent = pUsagePercent
         self.eFreqMHz = eFreqMHz; self.pFreqMHz = pFreqMHz
-        self.eCores = eCores; self.pCores = pCores
+        self.eCores = eCores; self.pCores = pCores; self.model = model
     }
 }
 

@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics+Snapshot.swift
 //  Created:   2026-07-22
-//  Updated:   2026-07-22
+//  Updated:   2026-09-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reverse mapping: synthesize a local-style SystemSnapshot (+ CPUTopology) from a remote
 //             MachineMetrics, so the SAME DashboardView renders a remote Mac exactly like This Mac.
@@ -75,7 +75,13 @@ public extension MachineMetrics {
         s.temperature.cpuCelsius = 0   // not sent remotely; die-temp history stays flat
 
         let topo = CPUTopology(
-            chipName: apple?.chip ?? gpus.first?.name ?? "Apple Silicon",
+            // ⚠️ No "Apple Silicon" fallback. A remote machine that did not tell us its name is
+            // not thereby an Apple Silicon machine — that assumption printed "Apple Silicon" on an
+            // Intel Mac mini for as long as the label existed, and kept doing it after the agent
+            // stopped sending the fabricated Apple block (#56). An empty name renders as nothing,
+            // which is what we actually know. `gpus.first?.name` stays last so a Linux GPU box
+            // keeps the heading it has always had.
+            chipName: apple?.chip ?? cpu.model ?? gpus.first?.name ?? "",
             eCoreCount: cpu.eCores ?? 0,
             pCoreCount: cpu.pCores ?? cpu.cores,
             eFreqsMHz: [],
