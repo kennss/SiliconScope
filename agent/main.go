@@ -45,6 +45,7 @@ type MachineMetrics struct {
 	CPU          CPU    `json:"cpu"`
 	Memory       Memory `json:"memory"`
 	GPUs         []GPU  `json:"gpus"`
+	Disks        []Disk `json:"disks"`
 	LLM          *LLM   `json:"llm,omitempty"`
 }
 
@@ -80,6 +81,17 @@ type GPU struct {
 	PowerDrawW         float64   `json:"powerDrawW"`
 	PowerLimitW        float64   `json:"powerLimitW"`
 	Processes          []GPUProc `json:"processes"`
+}
+
+// Disk is one mounted local filesystem's capacity. The viewer derives used as total - free, so no
+// third number is sent. FSType is omitempty (not every platform exposes it cheaply). Always
+// emitted as a real array, never nil — a nil slice marshals to `null`, which broke the viewer's
+// decode for GPU-less machines (#33).
+type Disk struct {
+	Mount      string `json:"mount"`
+	TotalBytes int64  `json:"totalBytes"`
+	FreeBytes  int64  `json:"freeBytes"`
+	FSType     string `json:"fsType,omitempty"`
 }
 
 type LLMModel struct {
@@ -143,6 +155,7 @@ func sample() MachineMetrics {
 		CPU:          readCPU(),
 		Memory:       readMemory(),
 		GPUs:         readGPUs(),
+		Disks:        readDisks(),
 		LLM:          readLLM(),
 	}
 }

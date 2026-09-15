@@ -135,3 +135,11 @@ func osPrettyName() string {
 	}
 	return product
 }
+
+// readDisks has no Windows implementation yet, so it reports an empty set rather than a guess.
+//
+// ⚠️ Empty, never nil. A nil slice marshals to `null`, which is what broke the viewer's decode for
+// GPU-less machines in #33 — the same reason the Linux reader guarantees a non-nil slice. The
+// storage card simply does not render when the set is empty, which is the correct picture for a
+// machine we cannot yet measure the drives of.
+func readDisks() []Disk { return []Disk{} }

@@ -15,8 +15,10 @@ import (
 	"bufio"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -160,4 +162,87 @@ func readFile(path string) string {
 		return ""
 	}
 	return string(b)
+}
+
+// topDisks caps the list at the 8 largest by capacity (largest first) so a host with many mounts
+// can't bloat the payload, and guarantees a non-nil slice (never `null`, #33).
+func topDisks(disks []Disk) []Disk {
+	sort.Slice(disks, func(i, j int) bool { return disks[i].TotalBytes > disks[j].TotalBytes })
+	if len(disks) > 8 {
+		disks = disks[:8]
+	}
+	if disks == nil {
+		return []Disk{}
+	}
+	return disks
+}
+
+// localFSTypes are the real on-disk filesystems worth reporting. Everything else in /proc/mounts is
+// pseudo/virtual (proc, sysfs, tmpfs, devtmpfs, squashfs, cgroup*, fuse*, devpts): it either reports
+// RAM-backed or zero capacity, or re-exposes storage already counted elsewhere.
+var localFSTypes = map[string]bool{
+	"ext4": true, "ext3": true, "xfs": true, "btrfs": true, "zfs": true, "f2fs": true,
+}
+
+// readDisks parses /proc/mounts, keeps real local filesystems, dedupes by backing device so bind
+// mounts don't double-count, and statfs's each. Free uses Bavail*Bsize, NOT Bfree*Bsize: Bfree
+// includes root-reserved blocks an unprivileged process can't use, so it overstates free space.
+func readDisks() []Disk {
+	f, err := os.Open("/proc/mounts")
+	if err != nil {
+		return []Disk{} // never nil — a nil slice marshals to `null` and breaks the viewer (#33)
+	}
+	defer f.Close()
+
+	byDevice := map[string]int{} // backing device -> index into disks
+	disks := []Disk{}
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		fields := strings.Fields(s.Text())
+		if len(fields) < 3 {
+			continue
+		}
+		device, mount, fsType := fields[0], unescapeMount(fields[1]), fields[2]
+		// A container's root is an overlay, and it is that machine's real disk from the inside, so
+		// accept overlay at "/" even though it is otherwise a stacking filesystem worth skipping.
+		if !localFSTypes[fsType] && !(fsType == "overlay" && mount == "/") {
+			continue
+		}
+		// Bind mounts of a single file (a container's /etc/hosts) carry the whole backing device's
+		// statfs numbers while naming a file. Only a directory is a filesystem.
+		if fi, err := os.Stat(mount); err != nil || !fi.IsDir() {
+			continue
+		}
+		var st syscall.Statfs_t
+		if syscall.Statfs(mount, &st) != nil {
+			continue
+		}
+		bsize := int64(st.Bsize)
+		d := Disk{
+			Mount:      mount,
+			TotalBytes: int64(st.Blocks) * bsize,
+			FreeBytes:  int64(st.Bavail) * bsize,
+			FSType:     fsType,
+		}
+		// One device appears once per bind mount, so keep the shortest mount path: that is the
+		// filesystem's own root rather than a bind of some file inside it.
+		if i, ok := byDevice[device]; ok {
+			if len(mount) < len(disks[i].Mount) {
+				disks[i] = d
+			}
+			continue
+		}
+		byDevice[device] = len(disks)
+		disks = append(disks, d)
+	}
+	return topDisks(disks)
+}
+
+// unescapeMount decodes the octal escapes /proc/mounts uses for space (\040), tab (\011), newline
+// (\012), and backslash (\134) in a mount path, so a path with a space reads correctly.
+func unescapeMount(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	return strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`).Replace(s)
 }
