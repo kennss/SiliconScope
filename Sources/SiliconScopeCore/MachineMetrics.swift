@@ -30,13 +30,33 @@ public struct MachineMetrics: Codable, Sendable, Identifiable, Equatable {
     @DefaultEmpty public var gpus: [FleetGPU]
     public let llm: FleetLLM?
     public let apple: FleetApple?      // Apple-Silicon extras; nil on Linux
+    // Local-filesystem capacity. OPTIONAL: a pre-disks agent omits the key and still decodes
+    // (arrives nil), and the UI renders nothing rather than an empty card.
+    public let disks: [FleetDisk]?
 
     public init(machineId: String, hostname: String, os: String, kind: String, agentVersion: String,
                 ts: Int64, cpu: FleetCPU, memory: FleetMemory, gpus: [FleetGPU],
-                llm: FleetLLM? = nil, apple: FleetApple? = nil) {
+                llm: FleetLLM? = nil, apple: FleetApple? = nil, disks: [FleetDisk]? = nil) {
         self.machineId = machineId; self.hostname = hostname; self.os = os; self.kind = kind
         self.agentVersion = agentVersion; self.ts = ts; self.cpu = cpu; self.memory = memory
-        self.gpus = gpus; self.llm = llm; self.apple = apple
+        self.gpus = gpus; self.llm = llm; self.apple = apple; self.disks = disks
+    }
+}
+
+public struct FleetDisk: Codable, Sendable, Equatable {
+    public let mount: String
+    public let totalBytes: Int64
+    public let freeBytes: Int64
+    public let fsType: String?
+
+    public init(mount: String, totalBytes: Int64, freeBytes: Int64, fsType: String? = nil) {
+        self.mount = mount; self.totalBytes = totalBytes; self.freeBytes = freeBytes; self.fsType = fsType
+    }
+
+    /// Used is DERIVED, never transmitted — the agent sends only total + free.
+    public var usedBytes: Int64 { max(0, totalBytes - freeBytes) }
+    public var usedFraction: Double {
+        totalBytes > 0 ? Double(min(usedBytes, totalBytes)) / Double(totalBytes) : 0
     }
 }
 
