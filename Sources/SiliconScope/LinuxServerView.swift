@@ -1,7 +1,7 @@
 //
 //  File:      LinuxServerView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-08-10
+//  Updated:   2026-09-14
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail dashboard for a remote LINUX / NVIDIA server — GPU-centric, distinct from the
 //             Mac layout. An identity row (CPU cores / RAM / GPU name / VRAM), then two paired
@@ -42,6 +42,9 @@ struct LinuxServerView: View {
                     dualChart(title: "CPU / RAM", caption: cpuCaption(m),
                               history.map { $0.cpu / 100 }, MetricPalette.cpuC,
                               history.map { $0.memFrac }, MetricPalette.ramC)
+
+                    // nil disks = an agent too old to report them → no card at all, not an empty one.
+                    if let disks = m.disks, !disks.isEmpty { storageCard(disks) }
 
                     if let g, !g.processes.isEmpty { computeProcesses(g) }
                     if let rate = m.llm?.rate { tokenRateCard(rate) }
@@ -126,6 +129,19 @@ struct LinuxServerView: View {
                     .frame(height: Layout.Meter.fleetChart)
             } else {
                 Color.clear.frame(height: Layout.Meter.fleetChart)
+            }
+        }
+    }
+
+    /// Per-volume capacity. `used` is derived (total − free) on FleetDisk, not sent. A disk has no
+    /// identity colour, so the fill uses the state ramp — "how full" is itself the reading (the same
+    /// encoding the local Disk card uses).
+    private func storageCard(_ disks: [FleetDisk]) -> some View {
+        card("STORAGE") {
+            ForEach(disks, id: \.mount) { d in
+                Bar(label: d.mount, value: d.usedFraction,
+                    detail: formatBytesOfTotal(UInt64(d.usedBytes), UInt64(max(0, d.totalBytes))),
+                    encoding: .state)
             }
         }
     }
