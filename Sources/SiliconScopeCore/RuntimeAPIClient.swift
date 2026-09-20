@@ -1,13 +1,14 @@
 //
 //  File:      RuntimeAPIClient.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-05
+//  Updated:   2026-09-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Opt-in probes of local AI runtime HTTP APIs, keyed by the detected runtime.
 //             Ollama /api/ps gives the authoritative model size + GPU/CPU split (size_vram
 //             / size); llama.cpp /metrics gives real tokens/sec; LM Studio reports the
 //             loaded model id + quant + context; exo/Rapid-MLX/mlx-dspark expose an
-//             OpenAI-compatible /v1/models. All sudoless, localhost-only (LocalHTTP).
+//             OpenAI-compatible /v1/models, while oMLX reports per-model loaded state on
+//             /v1/models/status. All sudoless, localhost-only (LocalHTTP).
 //  Notes:     Every JSON field is optional (version drift tolerant). A non-answer maps to
 //             runningNoServer / apiNotApplicable / unreachable — never a crash. tokens/sec
 //             is left nil unless the runtime actually reports it.
@@ -33,7 +34,10 @@ public struct RuntimeAPIClient: Sendable {
             return await probeLlamaCpp(port: port)
         case .rapidMLX: return await probeOpenAI(port: 8000, apiKey: nil, source: .rapidMLX)   // OpenAI-compatible
         case .exo:      return await probeOpenAI(port: 52415, apiKey: nil, source: .exo)       // OpenAI-compatible cluster
-        case .omlx:     return await probeOpenAI(port: omlxPort, apiKey: omlxApiKey, source: .omlx)
+        // oMLX gets its own probe: its /v1/models is the installed catalog (unloaded models
+        // included, in id order), so the generic OpenAI path both over-reports and picks a
+        // model by alphabet instead of by what is actually resident.
+        case .omlx:     return await probeOMLX(port: omlxPort, apiKey: omlxApiKey)
         case .mlxDSpark:                              // OpenAI-compatible; its own argv --port wins
             return await probeOpenAI(port: mlxDSparkEmbeddedPort ?? 8080, apiKey: nil, source: .mlxDSpark)
         case .some:                                   // mlx / jan / gpt4all / vllm
@@ -119,6 +123,52 @@ public struct RuntimeAPIClient: Sendable {
         return s
     }
 
+    // MARK: - oMLX (127.0.0.1:8000; /v1/models/status carries the real per-model loaded flag)
+
+    /// oMLX's `/v1/models` lists every *installed* model — unloaded ones included, in
+    /// case-sensitive id order — so reading it as "loaded" marks the whole catalog resident
+    /// and makes `primaryModel` whatever id sorts first (`DeepSeek…` before `gemma…`),
+    /// independently of what the user actually loaded or switched to.
+    /// `/v1/models/status` carries an authoritative `loaded` boolean per model; `/api/status`
+    /// names the loaded set on builds that predate it.
+    private func probeOMLX(port: Int, apiKey: String) async -> RuntimeAPISample {
+        var s = RuntimeAPISample(); s.source = .omlx
+        var headers: [String: String] = [:]
+        if !apiKey.isEmpty { headers["Authorization"] = "Bearer \(apiKey)" }
+        if let data = try? await http.get(port: port, path: "/v1/models/status", headers: headers),
+           let resp = try? JSONDecoder().decode(OMLXModelStatus.self, from: data) {
+            s.status = .ok; s.lastUpdated = Date()
+            s.loadedModels = Self.omlxLoadedModels(resp.models)
+            return s
+        }
+        if let data = try? await http.get(port: port, path: "/api/status", headers: headers),
+           let resp = try? JSONDecoder().decode(OMLXStatus.self, from: data) {
+            s.status = .ok; s.lastUpdated = Date()
+            s.loadedModels = (resp.loaded_models ?? []).map {
+                RuntimeModelInfo(name: $0, sizeBytes: 0, sizeVRAMBytes: 0,
+                                 parameterSize: nil, quantization: nil, contextLength: nil)
+            }
+            return s
+        }
+        s.status = .runningNoServer
+        return s
+    }
+
+    /// Keeps only what oMLX reports as actually resident, most-recently-used first, so
+    /// `primaryModel` is the model the user has been working with rather than a catalog
+    /// entry. A model whose `loaded` flag is absent is NOT assumed loaded — that assumption
+    /// is precisely the over-reporting this guards against. `last_access == nil` sorts last.
+    static func omlxLoadedModels(_ models: [OMLXModelStatus.Model]?) -> [RuntimeModelInfo] {
+        (models ?? [])
+            .filter { $0.loaded == true }
+            .sorted { ($0.last_access ?? -Double.infinity) > ($1.last_access ?? -Double.infinity) }
+            .map {
+                RuntimeModelInfo(name: $0.id, sizeBytes: 0, sizeVRAMBytes: 0,
+                                 parameterSize: nil, quantization: nil,
+                                 contextLength: $0.max_context_window ?? $0.model_context_length)
+            }
+    }
+
     // MARK: - llama.cpp server (/health, /metrics, /props)
 
     private func probeLlamaCpp(port: Int) async -> RuntimeAPISample {
@@ -176,6 +226,22 @@ public struct RuntimeAPIClient: Sendable {
         let data: [Model]?
         struct Model: Codable { let id: String }
     }
+
+    /// Internal (not private) so the decoder contract is unit-testable.
+    struct OMLXModelStatus: Codable {
+        let models: [Model]?
+        struct Model: Codable {
+            let id: String
+            let loaded: Bool?
+            let is_loading: Bool?
+            let last_access: Double?
+            let model_context_length: Int?
+            let max_context_window: Int?
+        }
+    }
+
+    /// Fallback shape for oMLX builds without /v1/models/status.
+    struct OMLXStatus: Codable { let loaded_models: [String]? }
 
     private struct LlamaProps: Codable {
         let model_path: String?
