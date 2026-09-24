@@ -1,7 +1,7 @@
 //
 //  File:      TokenRateWatcher.swift
 //  Created:   2026-08-10
-//  Updated:   2026-09-13
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Collects the decode rate (tokens/sec) a local LLM runtime reports for its OWN work,
 //             so a Mac serving models can publish it the way the Linux agent already does
@@ -154,10 +154,44 @@ public final class TokenRateWatcher: @unchecked Sendable {
         return nil
     }
 
-    private func runLMStudioStream(_ bin: String) {
+    /// Builds a process that runs `executable` and takes it down when THIS process goes away, by
+    /// any route — quit, crash, force-quit, SIGKILL.
+    ///
+    /// ⚠️ A child outlives its parent on macOS; nothing reaps it. `lms log stream` was spawned
+    /// directly and was stopped only when LM Studio disappeared, so every time SiliconScope itself
+    /// ended — an ordinary ⌘Q included — an `lms` process was left behind, reparented to launchd,
+    /// holding a connection to LM Studio for the life of the login session. Twelve had built up on
+    /// the development Mac in one day, each started at the moment a copy of the app was stopped.
+    ///
+    /// The fix cannot live in a termination handler: SIGKILL and crashes run none. So the child is
+    /// started under a tiny `/bin/sh` guardian whose stdin is a pipe from us that we never write.
+    /// When we exit, the kernel closes our end, the guardian's `read` sees end-of-file, and it
+    /// stops the child. No polling — the guardian sleeps in `read` and costs nothing until then.
+    ///   - The guardian gives its own stdout away after starting the child, so the child is the
+    ///     only writer on our output pipe: its exit still reads as end-of-stream to us.
+    ///   - `terminate()` on the returned process reaches the child through the guardian's trap.
+    static func guardedProcess(executable: String, arguments: [String]) -> (process: Process, lifeline: Pipe) {
+        let script = """
+            "$0" "$@" &
+            child=$!
+            exec >/dev/null
+            trap 'kill "$child" 2>/dev/null; exit 0' TERM INT HUP
+            while read -r _; do :; done
+            kill "$child" 2>/dev/null
+            """
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: bin)
-        proc.arguments = ["log", "stream", "--json", "--stats"]
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", script, executable] + arguments
+        let lifeline = Pipe()
+        proc.standardInput = lifeline
+        return (proc, lifeline)
+    }
+
+    private func runLMStudioStream(_ bin: String) {
+        // `lifeline` must stay alive as long as the stream: releasing it closes our end of the
+        // guardian's stdin, which the guardian reads as "the parent is gone".
+        let (proc, lifeline) = Self.guardedProcess(executable: bin, arguments: ["log", "stream", "--json", "--stats"])
+        defer { withExtendedLifetime(lifeline) {} }
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
