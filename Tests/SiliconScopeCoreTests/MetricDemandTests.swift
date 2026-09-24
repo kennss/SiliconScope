@@ -21,7 +21,9 @@ final class MetricDemandTests: XCTestCase {
     /// depends on is switched off, so it shows a value frozen at whatever it last read.
     func testEveryChannelMapsToTheGroupThatProducesIt() {
         XCTAssertEqual(DataChannel.socPower.metricGroup, .power)
-        XCTAssertEqual(DataChannel.anePower.metricGroup, .power)
+        // An ANE item needs its measured activity as well as its watts: on macOS 27 the activity is
+        // the only live ANE evidence (#65).
+        XCTAssertEqual(DataChannel.anePower.metricGroup, [.power, .ane])
         XCTAssertEqual(DataChannel.cpuEfficiency.metricGroup, .cpu)
         XCTAssertEqual(DataChannel.gpuMemory.metricGroup, .gpu)
         XCTAssertEqual(DataChannel.mediaThroughput.metricGroup, .bandwidth)

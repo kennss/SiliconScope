@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarIcon.swift
 //  Created:   2026-06-16
-//  Updated:   2026-07-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The live menu-bar glyph used as the MenuBarExtra label: six mini bars —
 //             CPU / GPU / ANE / Media Engine / Memory-usage / Memory-bandwidth — that track
@@ -18,7 +18,8 @@
 //             sample-count parity. Each bar is a 0...1 fraction:
 //               CPU  = cpu.pUsage (P-cores — what heavy/AI work loads)
 //               GPU  = gpu.usage
-//               ANE  = aneWatts / anePeakWatts (no public utilization API → power proxy)
+//               ANE  = measured residency (SoC Stats › Cluster Power States) where available,
+//                      else aneWatts / anePeakWatts as before
 //               MEDIA= mediaGBs / mediaPeakGBs (Media Engine bandwidth proxy)
 //               MEM  = memory.usedFraction (unified-memory used)
 //               MEMBW= totalGBs / observed bandwidthPeak (achievable BW is ~half the
@@ -57,14 +58,14 @@ struct MenuBarIcon: View {
     /// (P-CPU, GPU, ANE, Media, MEM, Mem-BW) plus the alert state, which needs thermal pressure
     /// and the memory rates. A group missing here is a group the monitor would stop sampling
     /// while this glyph kept drawing it — see MetricDemand.swift.
-    static let demand: MetricGroup = [.cpu, .gpu, .power, .bandwidth, .memory, .thermal]
+    static let demand: MetricGroup = [.cpu, .gpu, .power, .ane, .bandwidth, .memory, .thermal]
 
     static func barState(for monitor: SiliconScopeMonitor) -> (values: [Double], alert: Bool, blinkDim: Bool) {
         let s = monitor.snapshot
         let values: [Double] = [
             s.cpu.pUsage,
             s.gpu.usage,
-            min(1, s.power.aneWatts / max(monitor.anePeakWatts, 0.1)),
+            s.aneFraction(peakWatts: monitor.anePeakWatts),
             min(1, s.bandwidth.mediaGBs / max(monitor.mediaPeakGBs, 0.5)),
             s.memory.usedFraction,                  // MEM usage (5th)
             min(1, s.bandwidth.totalGBs / max(monitor.bandwidthPeakGBs, 1)),  // Mem BW vs observed peak (6th)

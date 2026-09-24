@@ -421,15 +421,20 @@ public struct FleetApple: Codable, Sendable, Equatable {
     /// same reason `anePeakWatts` is: it is state accumulated over the agent's own history, which
     /// a viewer polling once a second never sees. nil from an agent that predates it.
     public let gpuClockPeakMHz: Double?
+    /// Measured Neural Engine residency, 0…1 (ANESample.activeFraction). nil from a machine without
+    /// the channel or an agent that predates it — then the ANE reads from its power, as before.
+    public let aneActiveFraction: Double?
 
     public init(chip: String, aneWatts: Double, anePeakWatts: Double, mediaGBs: Double,
                 mediaPeakGBs: Double, socWatts: Double, power: FleetPower,
                 bandwidth: FleetBandwidth, fanRPMs: [Double],
-                gpuFreqsMHz: [Double]? = nil, gpuClockPeakMHz: Double? = nil) {
+                gpuFreqsMHz: [Double]? = nil, gpuClockPeakMHz: Double? = nil,
+                aneActiveFraction: Double? = nil) {
         self.chip = chip; self.aneWatts = aneWatts; self.anePeakWatts = anePeakWatts
         self.mediaGBs = mediaGBs; self.mediaPeakGBs = mediaPeakGBs; self.socWatts = socWatts
         self.power = power; self.bandwidth = bandwidth; self.fanRPMs = fanRPMs
         self.gpuFreqsMHz = gpuFreqsMHz; self.gpuClockPeakMHz = gpuClockPeakMHz
+        self.aneActiveFraction = aneActiveFraction
     }
 
     public var hasFans: Bool { !fanRPMs.isEmpty }
@@ -449,13 +454,17 @@ public struct FleetPower: Codable, Sendable, Equatable {
     /// `PowerSample.gpuWindowSeconds`: the GPU's own basis when it is read on a faster clock than
     /// the rails (macOS 27). nil → the GPU shares `windowSeconds`.
     public let gpuWindowSeconds: Double?
+    /// `PowerSample.systemWatts`: the whole Mac's SMC-measured draw, sent where the SoC rails are
+    /// not live so a remote header can show a current figure too.
+    public let systemWatts: Double?
 
     public init(cpuWatts: Double, eCpuWatts: Double, pCpuWatts: Double,
                 gpuWatts: Double, aneWatts: Double, dramWatts: Double, windowSeconds: Double? = nil,
-                gpuWindowSeconds: Double? = nil) {
+                gpuWindowSeconds: Double? = nil, systemWatts: Double? = nil) {
         self.cpuWatts = cpuWatts; self.eCpuWatts = eCpuWatts; self.pCpuWatts = pCpuWatts
         self.gpuWatts = gpuWatts; self.aneWatts = aneWatts; self.dramWatts = dramWatts
         self.windowSeconds = windowSeconds; self.gpuWindowSeconds = gpuWindowSeconds
+        self.systemWatts = systemWatts
     }
 }
 
@@ -473,6 +482,7 @@ public extension FleetApple {
         p.measuredSocWatts = socWatts
         p.railWindowSeconds = power.windowSeconds
         p.gpuWindowSeconds = power.gpuWindowSeconds
+        p.systemWatts = power.systemWatts
         return p
     }
 }
@@ -485,11 +495,12 @@ public struct FleetBandwidth: Codable, Sendable, Equatable {
     public let totalGBs: Double
     public let isEstimated: Bool
     public let totalPeakGBs: Double?   // engine's decaying observed peak, for 0…1 scaling (nil on skew)
+    public let aneGBs: Double?         // Neural Engine lane; nil = not split (still inside otherGBs)
 
     public init(cpuGBs: Double, gpuGBs: Double, mediaGBs: Double, otherGBs: Double,
-                totalGBs: Double, isEstimated: Bool, totalPeakGBs: Double? = nil) {
+                totalGBs: Double, isEstimated: Bool, totalPeakGBs: Double? = nil, aneGBs: Double? = nil) {
         self.cpuGBs = cpuGBs; self.gpuGBs = gpuGBs; self.mediaGBs = mediaGBs
         self.otherGBs = otherGBs; self.totalGBs = totalGBs; self.isEstimated = isEstimated
-        self.totalPeakGBs = totalPeakGBs
+        self.totalPeakGBs = totalPeakGBs; self.aneGBs = aneGBs
     }
 }

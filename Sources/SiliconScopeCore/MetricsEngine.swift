@@ -25,6 +25,7 @@ public final class MetricsEngine {
         public var gpu: [Double] = []          // 0...1
         public var gpuMem: [Double] = []       // 0...1 (GPU in-use memory / total unified memory)
         public var ane: [Double] = []          // Watts
+        public var aneActive: [Double] = []    // 0...1 measured ANE residency (gap where unmeasured)
         public var media: [Double] = []        // GB/s (Media Engine)
         public var bandwidth: [Double] = []    // GB/s
         public var dieTemp: [Double] = []      // Celsius (CPU sensor average)
@@ -60,6 +61,7 @@ public final class MetricsEngine {
             roll(&gpu, value(.gpu, s.gpu.usage))
             roll(&gpuMem, value(.gpu, s.gpu.inUseMemoryFraction))
             roll(&ane, value(.power, s.power.aneWatts))
+            roll(&aneActive, value(.ane, s.ane?.activeFraction ?? .nan))
             roll(&media, value(.bandwidth, s.bandwidth.mediaGBs))
             roll(&bandwidth, value(.bandwidth, s.bandwidth.totalGBs))
             roll(&dieTemp, value(.temperature, s.temperature.cpuCelsius))

@@ -1,7 +1,7 @@
 //
 //  File:      SensorClassificationTests.swift
 //  Created:   2026-06-20
-//  Updated:   2026-07-15
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins the pure classification maps: SMC-key → category, raw HID name → friendly
 //             label/category, the per-generation curated key catalog, and the bandwidth
@@ -231,7 +231,7 @@ final class SensorClassificationTests: XCTestCase {
         for media in ["PRIM AVD DCS", "PRIM AVE0 DCS", "PRIM AVE1 DCS", "PRIM SCODEC DCS", "PRIM PRORES1 DCS"] {
             XCTAssertEqual(BandwidthSampler.classify(requestor: media), .media, media)
         }
-        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM ANE DCS"),     .other)
+        XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM ANE DCS"),     .ane)   // its own lane now
         XCTAssertEqual(BandwidthSampler.classify(requestor: "PRIM DISPINT DCS"), .other)
     }
 }

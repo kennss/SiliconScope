@@ -42,6 +42,12 @@ public struct PowerSample: Sendable, Equatable, Codable {
     /// total uses it so that every term it adds covers the same span — a live GPU figure plus a
     /// half-hour CPU average is a number that describes no moment at all.
     public var railsGPUWatts: Double? = nil
+    /// The WHOLE Mac's power draw, from the SMC's `PSTR` — display, storage and everything else
+    /// included, so never to be shown as the SoC. Read only where the SoC rails are not live
+    /// (macOS 27, #65): there it is the one live whole-machine figure left — measured every second
+    /// on an M1 Max under 27.0 (22–46 W across a working day) while the SoC total was unknown.
+    /// nil where the rails are live, or on a Mac without the key.
+    public var systemWatts: Double? = nil
 
     public init() {}
 

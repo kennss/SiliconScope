@@ -581,8 +581,8 @@ struct GPUMenuDropdown: View {
                          value: String(format: "%.1f GB in use", s.gpu.inUseMemoryGB),
                          fraction: s.gpu.inUseMemoryFraction, color: MetricPalette.gpuMemC)
             MenuMeterRow(label: "ANE est.",
-                         value: s.power.text(s.power.aneWatts),
-                         fraction: min(1, s.power.aneWatts / max(monitor.anePeakWatts, 0.1)), color: MetricPalette.aneC)
+                         value: s.aneText(),
+                         fraction: s.aneFraction(peakWatts: monitor.anePeakWatts), color: MetricPalette.aneC)
             MenuMeterRow(label: "Media",
                          value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs),
                          fraction: min(1, s.bandwidth.mediaGBs / max(monitor.mediaPeakGBs, 0.5)), color: MetricPalette.mediaC)
@@ -590,7 +590,7 @@ struct GPUMenuDropdown: View {
             // All four normalized to 0...1 (each against its tracked peak) so one axis serves them.
             Sparkline([Trace(monitor.history.gpu, MetricPalette.gpuC),
                        Trace(monitor.history.gpuMem, MetricPalette.gpuMemC),
-                       Trace(monitor.history.ane.map { $0.scaledToCeiling(max(monitor.anePeakWatts, 0.1)) }, MetricPalette.aneC),
+                       Trace(monitor.history.aneSeries(measured: s.ane != nil, peakWatts: monitor.anePeakWatts), MetricPalette.aneC),
                        Trace(monitor.history.media.map { $0.scaledToCeiling(max(monitor.mediaPeakGBs, 0.5)) }, MetricPalette.mediaC)],
                       role: .inline(height: Layout.Meter.sparklineDropdown, axis: .fraction))
             Divider()

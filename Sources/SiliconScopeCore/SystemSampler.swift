@@ -20,12 +20,14 @@ public final class SystemSampler: @unchecked Sendable {
         var cpu = CPUSample()
         var gpu = GPUSample()
         var bandwidth = BandwidthSample()
+        var ane: ANESample?
     }
 
     private let power = PowerSampler()
     private let cpu = CPUSampler()
     private let gpu: GPUSampler?
     private let bandwidth = BandwidthSampler()
+    private let aneSampler = ANESampler()
     private let memory = MemorySampler()
     private let thermal = ThermalSampler()
     private let temperature: TemperatureSampler
@@ -113,12 +115,16 @@ public final class SystemSampler: @unchecked Sendable {
         if demand.contains(.bandwidth) {
             parallel { let r = self.bandwidth?.sample(interval: interval) ?? BandwidthSample(); io.withLock { $0.bandwidth = r } }
         }
+        if demand.contains(.ane) {
+            parallel { let r = self.aneSampler?.sample(interval: interval); io.withLock { $0.ane = r } }
+        }
         group.wait()
         let r = io.withLock { $0 }
         snapshot.power = r.power
         snapshot.cpu = r.cpu
         snapshot.gpu = r.gpu
         snapshot.bandwidth = r.bandwidth
+        snapshot.ane = r.ane
 
         // The instant reads. Skipping one costs nothing to resume: the two that derive a RATE
         // (network, disk) divide by the ACTUAL elapsed nanoseconds since their last call, so a

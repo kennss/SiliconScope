@@ -156,7 +156,8 @@ private struct FleetTile: View {
 
     private func aneCaption(_ a: FleetApple) -> some View {
         (tag("ANE", MetricPalette.aneC)
-         + dim(" " + a.powerSample.text(a.aneWatts, format: "%.1fW") + " · ")
+         + dim(" " + (a.aneActiveFraction.map { String(format: "%.0f%%", $0 * 100) }
+                      ?? a.powerSample.text(a.aneWatts, format: "%.1fW")) + " · ")
          + tag("BW", MetricPalette.mediaC)
          + dim(String(format: " %.0f GB/s", a.bandwidth.totalGBs)))
             .font(Theme.font(.caption)).lineLimit(1)

@@ -40,10 +40,11 @@ public struct MetricGroup: OptionSet, Sendable, Hashable, Codable {
     public static let battery     = MetricGroup(rawValue: 1 << 9)
     public static let peripherals = MetricGroup(rawValue: 1 << 10)  // Magic devices / AirPods
     public static let processes   = MetricGroup(rawValue: 1 << 11)  // + AI-runtime detection
+    public static let ane         = MetricGroup(rawValue: 1 << 12)  // Neural Engine residency
 
     public static let all: MetricGroup = [
         .power, .cpu, .gpu, .bandwidth, .memory, .thermal, .temperature,
-        .network, .disk, .battery, .peripherals, .processes,
+        .network, .disk, .battery, .peripherals, .processes, .ane,
     ]
 
     /// The floor every tick pays regardless of what is on screen. Both are single instant reads
@@ -58,7 +59,10 @@ public extension DataChannel {
     /// (`hasHistory == false`) still need their group sampled — they render a live value.
     var metricGroup: MetricGroup {
         switch self {
-        case .socPower, .anePower:                       return .power
+        case .socPower:                                  return .power
+        // An ANE item reads its watts AND its measured activity — the only live ANE evidence on
+        // macOS 27, where the watts can be half an hour old (#65).
+        case .anePower:                                  return [.power, .ane]
         case .cpuEfficiency, .cpuPerformance:            return .cpu
         case .gpuUtilisation, .gpuMemory:                return .gpu
         case .mediaThroughput:                           return .bandwidth
@@ -116,6 +120,7 @@ public extension SystemSnapshot {
         if !measured.contains(.disk)        { s.disk = previous.disk }
         if !measured.contains(.battery)     { s.battery = previous.battery }
         if !measured.contains(.peripherals) { s.peripherals = previous.peripherals }
+        if !measured.contains(.ane)         { s.ane = previous.ane }
         // `aiRuntime` is deliberately NOT carried: SystemSampler already hands back its own cached
         // detection when `.processes` is skipped, which is the same object the last full tick used.
         if !measured.contains(.processes)   { s.processes = previous.processes }

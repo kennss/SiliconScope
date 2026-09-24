@@ -60,7 +60,8 @@ public struct EngineActivity: Sendable, Equatable {
     public init(instant s: SystemSnapshot) {
         cpuLatch = ActivityLatch(isOn: s.cpu.pUsage > Threshold.cpuPerfOn || s.cpu.eUsage > Threshold.cpuEffOn)
         gpuLatch = ActivityLatch(isOn: s.gpu.usage > Threshold.gpuUsageOn || s.power.gpuWatts > Threshold.gpuWattsOn)
-        aneLatch = ActivityLatch(isOn: s.power.aneWatts > Threshold.aneWattsOn)
+        aneLatch = ActivityLatch(isOn: s.ane.map { $0.activeFraction > Threshold.aneActiveOn }
+                                        ?? (s.power.aneWatts > Threshold.aneWattsOn))
         mediaLatch = ActivityLatch(isOn: s.bandwidth.mediaGBs > Threshold.mediaGBsOn)
     }
 
@@ -81,6 +82,10 @@ public struct EngineActivity: Sendable, Equatable {
         public static let gpuUsageOn = 0.40, gpuUsageOff = 0.25
         public static let gpuWattsOn = 4.0, gpuWattsOff = 2.0
         public static let aneWattsOn = 0.5, aneWattsOff = 0.25
+        /// Measured ANE residency. The engine is gated off whenever idle — a WhisperKit run held it
+        /// ACT for the entire window, idle it reads 0 — so a tenth of the slice is already a real
+        /// workload, and half that keeps a bursty one from flickering.
+        public static let aneActiveOn = 0.10, aneActiveOff = 0.05
         public static let mediaGBsOn = 0.1, mediaGBsOff = 0.05
     }
 
@@ -106,9 +111,13 @@ public struct EngineActivity: Sendable, Equatable {
                 ? (s.gpu.usage > Threshold.gpuUsageOff || watts > Threshold.gpuWattsOff)
                 : (s.gpu.usage > Threshold.gpuUsageOn  || watts > Threshold.gpuWattsOn))
         }
-        // ANE has no utilisation counter at all — its power IS the evidence. A half-hour average
-        // cannot say the engine is working now, so the latch holds until live power returns.
-        if measured.contains(.power), s.power.railsLive {
+        // ANE: measured residency where the machine has it — direct evidence, and live on macOS
+        // 27 where the power counter is not. Otherwise its power is the evidence, and only while
+        // that power is live: a half-hour average cannot say the engine is working now.
+        if measured.contains(.ane), let a = s.ane {
+            aneLatch.update(ane ? a.activeFraction > Threshold.aneActiveOff
+                                : a.activeFraction > Threshold.aneActiveOn)
+        } else if measured.contains(.power), s.power.railsLive {
             aneLatch.update(ane ? s.power.aneWatts > Threshold.aneWattsOff
                                 : s.power.aneWatts > Threshold.aneWattsOn)
         }

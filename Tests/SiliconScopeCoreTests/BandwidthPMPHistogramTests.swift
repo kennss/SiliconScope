@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthPMPHistogramTests.swift
 //  Created:   2026-07-15
-//  Updated:   2026-08-15
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Unit tests for the PMP "DCS BW" histogram fallback path in BandwidthSampler —
 //             the residency-weighted-average math, the "NGB/s" state-name parser, requestor
@@ -85,9 +85,11 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         for media in ["ISP0", "JPEG0", "PRORES1", "SCODEC0", "AVE0", "AVE1", "AVD0"] {
             XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(media), .media, media)
         }
-        // ANE, fabric/coherency, and display requestors have no dedicated bucket in
-        // BandwidthSample and fold into other, matching the classic path's MSR/DISP/ANS handling.
-        for other in ["ANE0", "ANS", "ATC0", "ATC3", "DISPEXT0", "DISPINT", "MSR0", "MSR1", "AMCC"] {
+        // The ANE has its own lane (it used to fold into other, hiding a WhisperKit run's ~19 GB/s
+        // there). Fabric/coherency and display requestors still have no bucket and fold into other,
+        // matching the classic path's MSR/DISP/ANS handling.
+        XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor("ANE0"), .ane)
+        for other in ["ANS", "ATC0", "ATC3", "DISPEXT0", "DISPINT", "MSR0", "MSR1", "AMCC"] {
             XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(other), .other, other)
         }
         // The per-requestor classifier never returns .total; AMCC is handled separately.
@@ -106,8 +108,11 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         for media in ["AVD", "SCODEC", "SCODEC RT", "PRORES", "ISP", "ISP RT"] {
             XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(media), .media, media)
         }
-        // M5 ANE is "ANE L0"/"ANE L1" (was "ANE0") — still folds into other (no ANE bandwidth bucket).
-        for other in ["ANE L0", "ANE L1", "MSR0", "MSR1", "DISPINT", "DISPEXT0"] {
+        // M5 names its ANE lanes "ANE L0"/"ANE L1" (was "ANE0") — both are the ANE lane.
+        for ane in ["ANE L0", "ANE L1"] {
+            XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(ane), .ane, ane)
+        }
+        for other in ["MSR0", "MSR1", "DISPINT", "DISPEXT0"] {
             XCTAssertEqual(BandwidthSampler.classifyPMPHistogramRequestor(other), .other, other)
         }
     }

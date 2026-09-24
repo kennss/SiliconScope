@@ -26,6 +26,9 @@ public struct SystemSnapshot: Sendable, Codable {
     public var memoryBudget = MemoryBudget.empty
     public var aiRuntime = AIRuntimeSample()
     public var runtimeAPI = RuntimeAPISample()   // stamped by the monitor (opt-in poll)
+    /// Measured Neural Engine activity. Optional on purpose: nil on a machine without the channel,
+    /// and a recording made before it existed decodes with it absent rather than failing.
+    public var ane: ANESample? = nil
 
     public init() {}
 
@@ -47,7 +50,7 @@ public struct SystemSnapshot: Sendable, Codable {
         if aiRuntime.primaryMemoryBytes > (2 << 30) { return "LLM (likely)" }
         // Present-tense claims rest on present-tense power only: on macOS 27 the rails can be a
         // half-hour average (#65), and "ANE (CoreML)" from that would describe the past.
-        if power.railsLive && power.aneWatts > 1.0 { return "ANE (CoreML)" }
+        if aneBusy { return "ANE (CoreML)" }
         let gpuBusy = gpu.usage > 0.25 || (power.gpuLive && power.gpuWatts > 3.0) || bandwidth.gpuGBs > 20
         guard gpuBusy else { return "idle" }
         if bandwidth.mediaGBs > 0.5 { return "GPU active — incl. video" }
@@ -60,6 +63,13 @@ public struct SystemSnapshot: Sendable, Codable {
     public var aiModelActive: Bool {
         (runtimeAPI.isReachable && !runtimeAPI.loadedModels.isEmpty)
             || aiRuntime.primaryMemoryBytes > (1 << 30)
+    }
+
+    /// The Neural Engine is doing real work now: measured residency where available, otherwise
+    /// live ANE power. Never a half-hour power average (#65).
+    public var aneBusy: Bool {
+        if let a = ane { return a.activeFraction >= 0.30 }
+        return power.railsLive && power.aneWatts > 1.0
     }
 
     /// GPU is doing genuine compute (not just light UI). Used to recognize an unmanaged /

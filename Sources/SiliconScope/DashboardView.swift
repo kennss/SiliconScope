@@ -199,10 +199,11 @@ struct DashboardView: View {
                                        gpuThrottling: s.gpuThrottling, gpuClockDrop: s.gpuClockDropFraction,
                                        memoryRisk: s.memoryRisk, activity: s.activity,
                                        onInspect: nil, allowKill: false)
-                        AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth,
+                        AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth, ane: snapshot.ane,
                                         anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
                                         gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
                                         mediaHistory: s.history.media, aneHistory: s.history.ane,
+                                        aneActiveHistory: s.history.aneActive,
                                         throttling: s.gpuThrottling)
                     }
                     .frame(height: Layout.Row.graphed)
@@ -266,10 +267,11 @@ struct DashboardView: View {
                     CPUCard(cpu: snapshot.cpu, topology: s.topology,
                             eHistory: s.history.eCPU, pHistory: s.history.pCPU,
                             throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
-                    AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth,
+                    AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth, ane: snapshot.ane,
                                     anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
                                     gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
                                     mediaHistory: s.history.media, aneHistory: s.history.ane,
+                                        aneActiveHistory: s.history.aneActive,
                                     throttling: s.gpuThrottling)
                 }
                 .frame(height: Layout.Row.graphed)   // fixed: the fill-graph absorbs content changes (shrinks/grows) so the card size stays put
@@ -382,15 +384,16 @@ private struct HeaderView: View {
                     .font(Theme.font(.body)).foregroundStyle(Theme.faint)
             }
             Spacer()
-            // On macOS 27 the SoC figure can be an average over minutes, or not known yet (#65).
-            // The header has the room to say which, so it does — the glyphs only get a "~".
-            if let note = power.basisNote {
-                Text(note).font(Theme.font(.detail)).foregroundStyle(Theme.faint).lineLimit(1)
-                    .help(power.basisExplanation ?? "")
+            // The SoC's watts where they are live; otherwise the whole Mac's, labelled "system" —
+            // see PowerSample.headerFigure (#65).
+            let figure = power.headerFigure
+            if let label = figure.label {
+                Text(label).font(Theme.font(.detail)).foregroundStyle(Theme.faint).lineLimit(1)
+                    .help(figure.help ?? "")
             }
-            Text(power.text(power.socWatts))
+            Text(figure.value)
                 .font(Theme.font(.emphasis)).foregroundStyle(Theme.dim)
-                .help(power.basisExplanation ?? "")
+                .help(figure.help ?? "")
             if battery.hasBattery {
                 HStack(spacing: Space.tight) {
                     if battery.isCharging {
@@ -485,7 +488,7 @@ private struct AIWorkloadCard: View {
     // gpuComputeBusy), NOT likelyAIEngine's loose 0.25 GPU hint — so it never contradicts the GPU row
     // below (light desktop GPU at ~idle watts must read Idle here, exactly as it does there).
     private var aiVerdict: (Color, String) {
-        if snapshot.power.railsLive && snapshot.power.aneWatts > 1.5 { return (aneColor, "ANE (CoreML)") }
+        if snapshot.aneBusy { return (aneColor, "ANE (CoreML)") }
         if snapshot.aiModelActive        { return (gpuActiveColor, "LLM (GPU/Metal)") }
         if activity.gpu {
             return (gpuActiveColor, snapshot.bandwidth.mediaGBs > 0.5 ? "GPU active — incl. video" : "GPU active")
@@ -521,7 +524,7 @@ private struct AIWorkloadCard: View {
         return activity.gpu ? (gpuActiveColor, "active", reading) : (Theme.dim, "idle", reading)
     }
     private var aneEngine: (Color, String, String) {
-        let reading = snapshot.power.text(snapshot.power.aneWatts)
+        let reading = snapshot.aneText()
         return activity.ane ? (aneColor, "active", reading) : (Theme.dim, "idle", reading)
     }
     private var mediaEngine: (Color, String, String) {
@@ -905,12 +908,15 @@ private struct AcceleratorCard: View {
     let gpu: GPUSample
     let power: PowerSample
     let bandwidth: BandwidthSample
+    /// Measured ANE residency; nil where the machine (or the recording) has none.
+    let ane: ANESample?
     let anePeak: Double
     let mediaPeak: Double
     let gpuHistory: [Double]
     let gpuMemHistory: [Double]
     let mediaHistory: [Double]
     let aneHistory: [Double]
+    let aneActiveHistory: [Double]
     let throttling: Bool                            // #18: red card border while the GPU is thermally throttled
     // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
     @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
@@ -929,14 +935,24 @@ private struct AcceleratorCard: View {
                 encoding: .identity(gpuColor))
             Bar(label: "GPU memory", value: gpu.inUseMemoryFraction,
                 detail: String(format: "%.1f GB in use", gpu.inUseMemoryGB), encoding: .identity(memColor))
-            Bar(label: "ANE est.", value: min(1, power.aneWatts / max(anePeak, 0.1)),
-                detail: power.text(power.aneWatts), encoding: .identity(aneColor))
+            // Measured residency where there is one: the bar is how busy the engine IS, and its
+            // memory traffic beside it says how hard (ANEText). Without residency, ANE power is the
+            // only evidence and the bar stays the power estimate it always was.
+            if let a = ane {
+                Bar(label: "ANE", value: a.activeFraction,
+                    detail: ANEText.activity(ane: a, bandwidth: bandwidth, power: power),
+                    encoding: .identity(aneColor))
+            } else {
+                Bar(label: "ANE est.", value: min(1, power.aneWatts / max(anePeak, 0.1)),
+                    detail: power.text(power.aneWatts), encoding: .identity(aneColor))
+            }
             Bar(label: "Media", value: min(1, bandwidth.mediaGBs / max(mediaPeak, 0.5)),
                 detail: String(format: "%.1f GB/s", bandwidth.mediaGBs), encoding: .identity(mediaColor))
         } graph: {
             Sparkline([Trace(gpuHistory, gpuColor),
                        Trace(gpuMemHistory, memColor),
-                       Trace(aneHistory.map { $0.scaledToCeiling(max(anePeak, 0.1)) }, aneColor),
+                       Trace(ane != nil ? aneActiveHistory
+                                        : aneHistory.map { $0.scaledToCeiling(max(anePeak, 0.1)) }, aneColor),
                        Trace(mediaHistory.map { $0.scaledToCeiling(max(mediaPeak, 0.5)) }, mediaColor)],
                       role: .trend)
         }
@@ -1051,6 +1067,11 @@ private struct MemoryBandwidthCard: View {
             KV(key: "CPU", value: String(format: "%.0f GB/s", bandwidth.cpuGBs))
             KV(key: "GPU", value: String(format: "%.0f GB/s", bandwidth.gpuGBs))
             KV(key: "Media", value: String(format: "%.0f GB/s", bandwidth.mediaGBs))
+            // Only where the lane was measured separately — before that, ANE traffic sat inside
+            // Other, and a 0 here would be a reading nobody took.
+            if let ane = bandwidth.aneGBs {
+                KV(key: "ANE", value: String(format: "%.0f GB/s", ane))
+            }
             KV(key: "Other", value: String(format: "%.0f GB/s", bandwidth.otherGBs))
             Spacer(minLength: 4)
             // #20: the dense Memory column has no room for its own trend, so the memory-used

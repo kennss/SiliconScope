@@ -126,6 +126,13 @@ public final class PowerSampler {
             }
         }
 
+        // Rails not live: the SoC total is unknown or half an hour old, so read the one live
+        // whole-machine figure there is. Labelled as the SYSTEM, never as the SoC (PowerSample).
+        // The A18 already reads PSTR below, as its SoC stand-in, and keeps doing so.
+        if result.railWindowSeconds != nil, !isA18 {
+            result.systemWatts = smc?.readDouble("PSTR")
+        }
+
         // A18: Energy Model only exposes GPU, so cpu/ane/dram stay 0 and the derived sum is wrong.
         // Read the real rails from SMC instead (confirmed by Dreaminko's load test, #12):
         //   PSTR = system total (direct watts); PZC0 = CPU package power.

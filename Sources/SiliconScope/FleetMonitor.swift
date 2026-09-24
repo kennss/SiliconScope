@@ -241,6 +241,8 @@ final class FleetMonitor {
         // Unknown power (macOS 27's slow counters before their first window, #65) is a gap in the
         // tile's trace, not a stretch of idle.
         let aneFrac = m.apple.map {
+            // Measured residency first — live even where the ANE's watts are not (#65).
+            if let active = $0.aneActiveFraction { return active }
             guard $0.powerSample.railsKnown else { return Double.nan }
             return $0.anePeakWatts > 0 ? min(1, $0.aneWatts / $0.anePeakWatts) : 0
         } ?? 0

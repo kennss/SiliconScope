@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-15
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly. Three read strategies,
 //             tried in order at init and locked in for the sampler's lifetime:
@@ -166,7 +166,7 @@ public final class BandwidthSampler {
 
     private static func sampleAMCStatsSimple(delta: CFDictionary, interval: TimeInterval) -> BandwidthSample {
         let seconds = max(interval, 0.001)
-        var cpu = 0.0, gpu = 0.0, media = 0.0, total = 0.0
+        var cpu = 0.0, gpu = 0.0, media = 0.0, ane = 0.0, total = 0.0
 
         IOReportIterate(delta) { channel in
             guard IOReportChannelGetFormat(channel) == kKtopIOReportFormatSimple,
@@ -194,6 +194,7 @@ public final class BandwidthSampler {
             case .cpu:   cpu += gbs
             case .gpu:   gpu += gbs
             case .media: media += gbs
+            case .ane:   ane += gbs
             case .other: break           // MSR / DISP / ANS / PCIe … folded into "other" below
             }
             return Int32(kKtopIOReportIterOk)
@@ -203,8 +204,9 @@ public final class BandwidthSampler {
         result.cpuGBs = cpu
         result.gpuGBs = gpu
         result.mediaGBs = media
+        result.aneGBs = ane
         // "DCS" is the authoritative chip total; derive other so the parts sum to it.
-        result.otherGBs = total > 0 ? max(0, total - cpu - gpu - media) : 0
+        result.otherGBs = total > 0 ? max(0, total - cpu - gpu - media - ane) : 0
         return result
     }
 
@@ -268,11 +270,12 @@ public final class BandwidthSampler {
         // CPU cluster requestors: "EACC*"/"PACC*" (M1–M4), "MACC*" (M5 Max — #30).
         if upper.hasPrefix("EACC") || upper.hasPrefix("PACC") || upper.hasPrefix("MACC") { return .cpu }
         if upper.hasPrefix("AGX") { return .gpu }
+        if upper.hasPrefix("ANE") { return .ane }           // ANE, ANEL0/ANEL1 …
         if upper.hasPrefix("ISP") || upper.hasPrefix("JPEG") || upper.hasPrefix("PRORES")
             || upper.hasPrefix("SCODEC") || upper.hasPrefix("AVE") || upper.hasPrefix("AVD") {
             return .media
         }
-        return .other   // ANE(L0/L1), ANS, ATC0-3, DISPEXT0-3, DISPINT, MSR0/1, …
+        return .other   // ANS, ATC0-3, DISPEXT0-3, DISPINT, MSR0/1, …
     }
 
     /// True for the PMP histogram's `AMCC` memory-controller aggregate. It is not an additive
@@ -296,7 +299,7 @@ public final class BandwidthSampler {
     }
 
     private static func samplePMPHistogram(delta: CFDictionary) -> BandwidthSample {
-        var cpu = 0.0, gpu = 0.0, media = 0.0, other = 0.0
+        var cpu = 0.0, gpu = 0.0, media = 0.0, ane = 0.0, other = 0.0
         var aggregateGBs: Double?
         var aggregateChannelCount = 0
         var perRequestorChannelCount = 0
@@ -337,6 +340,7 @@ public final class BandwidthSampler {
             case .cpu:            cpu += value
             case .gpu:            gpu += value
             case .media:          media += value
+            case .ane:            ane += value
             case .other, .total:  other += value
             }
             return Int32(kKtopIOReportIterOk)
@@ -346,6 +350,7 @@ public final class BandwidthSampler {
         result.cpuGBs = cpu
         result.gpuGBs = gpu
         result.mediaGBs = media
+        result.aneGBs = ane
         result.otherGBs = other
         result.measuredTotalGBs = Self.pmpMeasuredTotalGBs(
             aggregateGBs: aggregateGBs,
@@ -456,7 +461,7 @@ public final class BandwidthSampler {
     /// NeoAsitop-adapted requestor map can be unit-tested and locked against regressions.
     /// Tolerant of a leading chip-id/core-id prefix (e.g. "DIE0 ECPU0 DCS" alongside the
     /// original bare "ECPU DCS") — see github.com/kennss/SiliconScope#14.
-    enum Requestor { case total, cpu, gpu, media, other }
+    enum Requestor { case total, cpu, gpu, media, ane, other }
 
     static func classify(requestor: String) -> Requestor {
         if requestor == "DCS" { return .total }
@@ -467,6 +472,10 @@ public final class BandwidthSampler {
             return .cpu
         }
         if Self.contains(requestor, unitPrefix: "GFX") { return .gpu }
+        // The Neural Engine ("ANE0", "ANE1"). It used to fall through to "other", which is where a
+        // WhisperKit run's ~19 GB/s of ANE reads were hiding — the largest single lane on the card
+        // under an ANE workload, filed as display/storage/PCIe.
+        if Self.contains(requestor, unitPrefix: "ANE") { return .ane }
         // Media Engine = isp + strm/s-codec + prores + vdec/venc (M5: "AVD"/"AVE") + jpeg. MSR NOT media.
         if Self.contains(requestor, unitPrefix: "VENC") || Self.contains(requestor, unitPrefix: "VDEC")
             || Self.contains(requestor, unitPrefix: "AVD") || Self.contains(requestor, unitPrefix: "AVE")

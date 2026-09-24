@@ -62,6 +62,8 @@ public extension MachineMetrics {
             s.bandwidth.otherGBs = ap.bandwidth.otherGBs
             s.bandwidth.measuredTotalGBs = ap.bandwidth.totalGBs
             s.bandwidth.isEstimated = ap.bandwidth.isEstimated
+            s.bandwidth.aneGBs = ap.bandwidth.aneGBs
+            s.ane = ap.aneActiveFraction.map { ANESample(activeFraction: $0, clusters: [$0]) }
 
             s.thermal.fanRPMs = ap.fanRPMs
         }

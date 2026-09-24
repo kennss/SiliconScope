@@ -217,3 +217,33 @@ final class LiveGPUOnSlowRailsTests: XCTestCase {
         XCTAssertEqual(p.gpuWatts, 12)
     }
 }
+
+/// The header's glance figure on macOS 27, where the SoC total is not current (#65).
+final class SystemPowerFallbackTests: XCTestCase {
+
+    /// The whole-machine draw travels to a remote viewer alongside the (unknown) SoC total.
+    func testSystemPowerTravelsOnTheWire() throws {
+        var s = SystemSnapshot()
+        s.power.railWindowSeconds = 0
+        s.power.systemWatts = 38.2
+        let topo = CPUTopology(chipName: "Apple M1 Max", eCoreCount: 2, pCoreCount: 8,
+                               eFreqsMHz: [], pFreqsMHz: [], gpuFreqsMHz: [])
+        let m = MachineMetrics.mac(snapshot: s, topology: topo, hostname: "h", machineId: "m",
+                                   osName: "macOS 27.0", agentVersion: "1.2.0", tsMillis: 0, loadAvg1: 0,
+                                   anePeakWatts: 1, mediaPeakGBs: 1, bandwidthPeakGBs: 1, gpuClockPeakMHz: 0)
+        let p = try JSONDecoder().decode(MachineMetrics.self, from: JSONEncoder().encode(m))
+            .toDashboardSnapshot().snapshot.power
+        XCTAssertEqual(p.systemWatts, 38.2)
+        XCTAssertFalse(p.railsKnown)
+    }
+
+    /// ⚠️ The system figure never stands in for the SoC total itself — it includes the display and
+    /// everything else. The SoC total stays unknown; only the header shows the system figure, labelled.
+    func testSystemPowerIsNotTheSoCTotal() {
+        var p = PowerSample()
+        p.railWindowSeconds = 0
+        p.systemWatts = 38.2
+        XCTAssertEqual(p.socWatts, 0)
+        XCTAssertNil(p.measuredSocWatts)
+    }
+}

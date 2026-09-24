@@ -117,7 +117,7 @@ struct MenuBarView: View {
 
         Divider()
         KV(key: "GPU", value: String(format: "%.0f%% · ", snapshot.gpu.usagePercent) + snapshot.power.gpuText())
-        KV(key: "ANE", value: snapshot.power.text(snapshot.power.aneWatts))
+        KV(key: "ANE", value: snapshot.aneText())
         KV(key: "Media", value: String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs))
         KV(key: "Mem BW", value: String(format: "%.0f GB/s", snapshot.bandwidth.totalGBs))
         KV(key: "SoC power", value: snapshot.power.text(snapshot.power.socWatts))
@@ -151,8 +151,9 @@ struct MenuBarView: View {
                  axis: .fraction)
         graphRow("GPU", c[1], monitor.history.gpu, String(format: "%.0f%%", s.gpu.usagePercent),
                  axis: .fraction)
-        graphRow("ANE", c[2], monitor.history.ane, s.power.text(s.power.aneWatts),
-                 axis: .ceiling(max(monitor.anePeakWatts, 0.1)))
+        // Already 0…1 (residency, or watts scaled to their peak) — a ceiling axis here would scale it twice.
+        graphRow("ANE", c[2], monitor.history.aneSeries(measured: s.ane != nil, peakWatts: monitor.anePeakWatts), s.aneText(),
+                 axis: .fraction)
         graphRow("MED", c[3], monitor.history.media, String(format: "%.1f GB/s", s.bandwidth.mediaGBs),
                  axis: .ceiling(max(monitor.mediaPeakGBs, 0.5)))
         graphRow("MEM", c[4], monitor.history.memFraction, String(format: "%.0f%%", s.memory.usedPercent),

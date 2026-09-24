@@ -106,7 +106,8 @@ public extension MachineMetrics {
                 aneWatts: s.power.aneWatts,
                 dramWatts: s.power.dramWatts,
                 windowSeconds: s.power.railWindowSeconds,
-                gpuWindowSeconds: s.power.gpuWindowSeconds
+                gpuWindowSeconds: s.power.gpuWindowSeconds,
+                systemWatts: s.power.systemWatts
             ),
             bandwidth: FleetBandwidth(
                 cpuGBs: s.bandwidth.cpuGBs,
@@ -115,11 +116,13 @@ public extension MachineMetrics {
                 otherGBs: s.bandwidth.otherGBs,
                 totalGBs: s.bandwidth.totalGBs,
                 isEstimated: s.bandwidth.isEstimated,
-                totalPeakGBs: bandwidthPeakGBs
+                totalPeakGBs: bandwidthPeakGBs,
+                aneGBs: s.bandwidth.aneGBs
             ),
             fanRPMs: s.thermal.fanRPMs,
             gpuFreqsMHz: nonEmpty(topology?.gpuFreqsMHz),
-            gpuClockPeakMHz: gpuClockPeakMHz > 0 ? gpuClockPeakMHz : nil
+            gpuClockPeakMHz: gpuClockPeakMHz > 0 ? gpuClockPeakMHz : nil,
+            aneActiveFraction: s.ane?.activeFraction
         )
         #endif
 

@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-15
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Value type holding one unified-memory bandwidth reading (GB/s), split
 //             by requestor. The headline signal for local-LLM throughput (token
@@ -22,6 +22,10 @@ public struct BandwidthSample: Sendable, Equatable, Codable {
     public var cpuGBs: Double = 0
     public var gpuGBs: Double = 0
     public var mediaGBs: Double = 0    // Media Engine: video codec / ProRes traffic
+    /// Neural Engine traffic, split out of `otherGBs`. nil = not split: a recording or a remote
+    /// agent from before it existed, whose ANE traffic is still inside `otherGBs`. A 0 there would
+    /// claim an idle ANE that was never measured separately.
+    public var aneGBs: Double? = nil
     public var otherGBs: Double = 0    // display, storage, ISP, PCIe, ...
     /// Measured total when the per-requestor split is unavailable (A18 "DRAM BW", or the sole
     /// PMP0/AMCC histogram on M3 Max/macOS 27). nil → fall back to the classified requestor sum.
@@ -46,10 +50,11 @@ public struct BandwidthSample: Sendable, Equatable, Codable {
         cpuGBs = try c.decodeIfPresent(Double.self, forKey: .cpuGBs) ?? 0
         gpuGBs = try c.decodeIfPresent(Double.self, forKey: .gpuGBs) ?? 0
         mediaGBs = try c.decodeIfPresent(Double.self, forKey: .mediaGBs) ?? 0
+        aneGBs = try c.decodeIfPresent(Double.self, forKey: .aneGBs)
         otherGBs = try c.decodeIfPresent(Double.self, forKey: .otherGBs) ?? 0
         measuredTotalGBs = try c.decodeIfPresent(Double.self, forKey: .measuredTotalGBs)
         isEstimated = try c.decodeIfPresent(Bool.self, forKey: .isEstimated) ?? false
     }
 
-    public var totalGBs: Double { measuredTotalGBs ?? (cpuGBs + gpuGBs + mediaGBs + otherGBs) }
+    public var totalGBs: Double { measuredTotalGBs ?? (cpuGBs + gpuGBs + mediaGBs + (aneGBs ?? 0) + otherGBs) }
 }

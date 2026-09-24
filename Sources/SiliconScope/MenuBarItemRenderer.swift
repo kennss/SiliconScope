@@ -183,7 +183,7 @@ enum MenuBarItemRenderer {
         case .gpuUtilisation:  return percent(s.gpu.usage)
         case .gpuMemory:       return iStatGB(s.gpu.inUseMemoryGB)
         case .mediaThroughput: return String(format: "%.0f GB/s", s.bandwidth.mediaGBs)
-        case .anePower:        return s.power.text(s.power.aneWatts)
+        case .anePower:        return s.aneGlyphText
         case .memoryUsed:      return iStatGB(s.memory.usedGB)
         case .memoryFree:      return iStatGB(s.memory.freeGB)
         case .memoryPressure:  return String(format: "%.0f%%", s.memory.pressurePercent)
@@ -218,7 +218,7 @@ enum MenuBarItemRenderer {
         case .gpuUtilisation:  return s.gpu.usage
         case .gpuMemory:       return s.gpu.inUseMemoryFraction
         case .mediaThroughput: return min(1, s.bandwidth.mediaGBs / max(m.mediaPeakGBs, 0.5))
-        case .anePower:        return min(1, s.power.aneWatts / max(m.anePeakWatts, 0.1))
+        case .anePower:        return s.aneFraction(peakWatts: m.anePeakWatts)
         case .memoryUsed:      return s.memory.usedFraction
         case .memoryFree:      return 1 - s.memory.usedFraction
         case .memoryPressure:  return s.memory.pressurePercent / 100
@@ -274,7 +274,7 @@ enum MenuBarItemRenderer {
         case .gpuUtilisation:  return h.gpu
         case .gpuMemory:       return h.gpuMem
         case .mediaThroughput: return h.media.map { $0.scaledToCeiling(max(m.mediaPeakGBs, 0.5)) }
-        case .anePower:        return h.ane.map { $0.scaledToCeiling(max(m.anePeakWatts, 0.1)) }
+        case .anePower:        return h.aneSeries(measured: m.snapshot.ane != nil, peakWatts: m.anePeakWatts)
         case .memoryUsed:      return h.memFraction
         case .memoryFree:      return h.memFraction.map { 1 - $0 }
         // `dieTemp` is fed from `temperature.cpuCelsius` — the CPU sensor, which is this channel.
