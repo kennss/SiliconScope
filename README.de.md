@@ -267,6 +267,7 @@ Datenschutzorientierte, geräteinterne Software — hauptsächlich für Apple Si
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — geräteinterne Transkription + Live-Übersetzung & Simultandolmetschen (Mac/iPad). Eine datenschutzfreundliche MacWhisper-Alternative.
 - **[SpectArk](https://spectark.calidalab.ai/)** — versionierte Echtzeit-Backups für die Mac-Ordner, auf die es ankommt: jede Änderung in Sekunden gesichert, Wiederherstellungspunkte wie bei Time Machine, auf jede Festplatte oder jedes NAS.
+- **[SpectaBooks](https://spectabooks.calidalab.ai/)** — ein Reader für die Bücher, die du schon hast: Text, EPUB, PDF und Comics aus eigenen Ordnern, iCloud Drive oder Google Drive, die Leseposition synchron über iPhone, iPad und Mac, Vorlesen und Übersetzung auf dem Gerät.
 - **[SnowChat](https://snowchat.calidalab.ai/)** — Ende-zu-Ende-verschlüsselter Messenger auf unserer eigenen Signal-Protokoll-Bibliothek.
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — eine Referenzarchitektur für datenschutzwahrende agentische KI (Arbeitspapier).
 

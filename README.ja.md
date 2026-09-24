@@ -250,6 +250,7 @@ Intelligence）を備えた美しい動画プレーヤー。同じ Calida Lab �
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — オンデバイスの文字起こし＋リアルタイム翻訳・同時通訳（Mac/iPad）。プライバシー重視の MacWhisper 代替。
 - **[SpectArk](https://spectark.calidalab.ai/)** — 大切なフォルダだけを守る macOS 向けリアルタイム・バージョン管理バックアップ。変更は数秒以内に保存、Time Machine 方式の復元ポイント、任意のディスクや NAS へ。
+- **[SpectaBooks](https://spectabooks.calidalab.ai/ja/)** — 手持ちの本のためのリーダー。自分のフォルダ・iCloud Drive・Google Drive のテキスト・EPUB・PDF・コミックを読み、読んでいた位置は iPhone・iPad・Mac で引き継がれ、読み上げと翻訳はオンデバイスで。
 - **[SnowChat](https://snowchat.calidalab.ai/)** — 自社の Signal プロトコル実装によるエンドツーエンド暗号化メッセンジャー。
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — プライバシー保護型エージェント AI のリファレンスアーキテクチャ（ワーキングペーパー）。
 

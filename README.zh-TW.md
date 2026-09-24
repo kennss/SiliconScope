@@ -230,6 +230,7 @@ TestFlight 免費公測 —— 秉持同樣的理念：資料絕不離開你的�
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — 裝置端轉錄 + 即時翻譯與同步口譯（Mac/iPad）。注重隱私的 MacWhisper 替代方案。
 - **[SpectArk](https://spectark.calidalab.ai/)** — 只守護你在意的資料夾的 macOS 即時版本化備份：每次變更數秒內保存，Time Machine 式還原點，可備份到任意磁碟或 NAS。
+- **[SpectaBooks](https://spectabooks.calidalab.ai/zh/)** — 為你已有的書而做的閱讀器：讀取你自己的資料夾、iCloud Drive 或 Google Drive 中的文字、EPUB、PDF 與漫畫，閱讀位置在 iPhone、iPad 與 Mac 之間同步，朗讀與翻譯都在裝置端完成。
 - **[SnowChat](https://snowchat.calidalab.ai/)** — 基於自研 Signal 協定實作的端對端加密即時通訊。
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — 隱私保護型代理 AI 的參考架構（工作論文）。
 

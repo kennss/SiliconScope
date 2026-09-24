@@ -389,6 +389,7 @@ Privacy-first, on-device software — mostly for Apple Silicon:
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — on-device transcription + live translation & interpretation (Mac/iPad). A privacy-first MacWhisper alternative.
 - **[SpectArk](https://spectark.calidalab.ai/)** — realtime, versioned backup for the Mac folders you care about: every change saved within seconds, Time Machine–style restore points, to any disk or NAS.
+- **[SpectaBooks](https://spectabooks.calidalab.ai/)** — one reader for the books you already have: text, EPUB, PDF and comics from your own folders, iCloud Drive or Google Drive, with your place synced across iPhone, iPad and Mac, and on-device read-aloud and translation.
 - **[SnowChat](https://snowchat.calidalab.ai/)** — end-to-end encrypted messenger on our own Signal-protocol library.
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — a reference architecture for privacy-preserving agentic AI (working paper).
 
