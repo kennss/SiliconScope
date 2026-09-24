@@ -2,7 +2,7 @@
 #
 #  File:      package.sh
 #  Created:   2026-06-09
-#  Updated:   2026-08-10
+#  Updated:   2026-09-24
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  Builds release SiliconScope.app, Developer ID–signs it (hardened runtime),
 #             notarizes + staples it, then ships a notarized DMG with an /Applications
@@ -64,9 +64,13 @@ xcrun swift build -c release --product "$APP"
 # report from a machine we do not own stalls on "please build from source" (#35: a reporter was
 # asked to run --power-debug and had nothing to run it with). One extra product, ~1 MB.
 xcrun swift build -c release --product "$CLI"
-BIN=".build/release/$APP"
-CLI_BIN=".build/release/$CLI"
-RES_BUNDLE=".build/release/SiliconScope_${APP}.bundle"
+# Ask SwiftPM where it put them rather than assuming a path: the build backend changed under
+# Xcode 27 and a hard-coded path is how a stale binary gets shipped (build-mac-agent.sh was about
+# to ship the 14 Sep agent from the old backend's folder).
+BIN_DIR="$(xcrun swift build -c release --show-bin-path)"
+BIN="$BIN_DIR/$APP"
+CLI_BIN="$BIN_DIR/$CLI"
+RES_BUNDLE="$BIN_DIR/SiliconScope_${APP}.bundle"
 ICON="Sources/$APP/Resources/AppIcon.icns"
 
 echo "▸ Assembling $APP.app…"
@@ -107,6 +111,11 @@ mkdir -p "$APPDIR/Contents/Frameworks"
 cp -R "$SPARKLE_FW_SRC" "$APPDIR/Contents/Frameworks/"
 # The SPM binary links @rpath/Sparkle.framework; point rpath at the bundle's Frameworks.
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APPDIR/Contents/MacOS/$APP" 2>/dev/null || true
+
+# After every edit to the binaries, before any signature: record the SDK they were really built
+# against. Without it the app runs as a macOS 14-era binary — see stamp-sdk-version.sh.
+echo "▸ Recording the SDK version…"
+scripts/stamp-sdk-version.sh "$APPDIR/Contents/MacOS/$APP" "$APPDIR/Contents/MacOS/$CLI"
 
 echo "▸ Signing (Developer ID, hardened runtime)…"
 # Sparkle: sign nested helpers (deep -> shallow), then the framework, then the app last.

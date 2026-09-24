@@ -2,7 +2,7 @@
 #
 #  File:      build-app.sh
 #  Created:   2026-06-12
-#  Updated:   2026-07-21
+#  Updated:   2026-09-24
 #  Overview:  Builds a local SiliconScope.app bundle from the SwiftPM executable.
 #  Notes:     This is for development/local install. It does not notarize or create
 #             a DMG; use scripts/package.sh for Developer ID distribution.
@@ -72,6 +72,9 @@ mkdir -p "$APPDIR/Contents/Frameworks"
 cp -R "$BIN_DIR/Sparkle.framework" "$APPDIR/Contents/Frameworks/"
 # The SPM binary links @rpath/Sparkle.framework; point rpath at the bundle's Frameworks.
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APPDIR/Contents/MacOS/$APP" 2>/dev/null || true
+# Record the SDK actually built against, before signing — see stamp-sdk-version.sh (a local build
+# otherwise runs as a macOS 14-era binary: grey title bar, older AppKit behaviour).
+scripts/stamp-sdk-version.sh "$APPDIR/Contents/MacOS/$APP"
 
 echo "Signing (identity: $SIGN_ID)..."
 # Sparkle: sign nested helpers (deep -> shallow), then the framework, then the app last.
