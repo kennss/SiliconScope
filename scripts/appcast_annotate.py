@@ -2,7 +2,7 @@
 # ============================================================
 #  File:      appcast_annotate.py
 #  Created:   2026-07-15
-#  Updated:   2026-07-15
+#  Updated:   2026-09-24
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  Post-processes the appcast.xml that Sparkle's generate_appcast emits,
 #             injecting two things it never writes itself:
@@ -11,7 +11,8 @@
 #                  when set, users below VERSION cannot skip the update.
 #               2. <description><![CDATA[ ... ]]></description> — the release notes
 #                  shown in Sparkle's update dialog, converted from a small Markdown
-#                  subset (headings, bullet lists, **bold**, inline text) to HTML.
+#                  subset (headings, bullet lists, **bold**, inline text) to HTML;
+#                  hard-wrapped lines are joined back into their paragraph first.
 #             Only the newest <item> (matching VERSION) is annotated; the DMG
 #             enclosure and its EdDSA signature are left untouched.
 #
@@ -28,6 +29,25 @@ import re
 import sys
 
 
+def unwrap(md: str) -> list:
+    """Joins hard-wrapped lines back into their paragraph or list item.
+
+    CHANGELOG.md is wrapped at ~80 columns, and the converter below works one line at a time,
+    so without this every wrapped line became its own <p> — and a **bold** span that crossed a
+    line break was never closed. A line continues the previous one unless it is blank, a
+    heading, or starts a new list item.
+    """
+    out = []
+    for raw in md.splitlines():
+        s = raw.strip()
+        starts_block = not s or re.match(r"^(#{1,6}\s|[-*]\s)", s)
+        if out and out[-1].strip() and not starts_block and not re.match(r"^#{1,6}\s", out[-1].strip()):
+            out[-1] = out[-1].rstrip() + " " + s
+        else:
+            out.append(raw)
+    return out
+
+
 def md_to_html(md: str) -> str:
     """Convert a small, predictable Markdown subset to HTML for the Sparkle dialog."""
     out, in_ul = [], False
@@ -40,7 +60,7 @@ def md_to_html(md: str) -> str:
         text = re.sub(r"\[(.+?)\]\((https?://[^)]+)\)", r'<a href="\2">\1</a>', text)
         return text
 
-    for raw in md.splitlines():
+    for raw in unwrap(md):
         line = raw.rstrip()
         stripped = line.strip()
         if not stripped:
