@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-05
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
 //             MLX, Rapid-MLX, mlx-dspark, Jan, GPT4All, vLLM, exo). Pure logic — no
@@ -75,7 +75,18 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
 
         // Stage 1 — bundle / well-known-dir identity (authoritative).
         if p.contains("/Ollama.app/") || p.contains("/.ollama/") || a.contains("/.ollama/") { return .ollama }
-        if p.contains("/LM Studio.app/") { return .lmStudio }
+        // Both halves are needed. The bundle names LM Studio's Electron shell; the support dir
+        // names the ONE process that actually holds the loaded model — a plain `node` run out of
+        // ~/.lmstudio/.internal/utils/. That worker does carry "/LM Studio.app/..." in its argv,
+        // but argv is only collected for the AI-candidate basenames (ProcessSampler), and `node`
+        // is not one of them — so the model-holding process was invisible while the shell around
+        // it was detected, and the runtime measured ~1 GB with 8 GB of model resident. That
+        // understated RSS is what ranks `primaryKind`, and only the primary runtime is probed for
+        // its loaded model, so a second runtime with a bigger shell could take the headline and
+        // report "no model loaded" while LM Studio had one (#64). It also fed the model budget the
+        // wrong reclaimable figure. Path-only identity, exactly like `/.ollama/` above: it costs
+        // nothing extra and is bounded by slashes on both sides.
+        if p.contains("/LM Studio.app/") || p.contains("/.lmstudio/") { return .lmStudio }
         if p.contains("/Jan.app/") { return .jan }
         if p.contains("/GPT4All.app/") { return .gpt4all }
         if p.contains("/oMLX.app/") || p.contains("/omlx.app/") { return .omlx }

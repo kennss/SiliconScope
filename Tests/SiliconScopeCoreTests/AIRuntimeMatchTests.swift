@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeMatchTests.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-05
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Adversarial tests for AIRuntimeKind.match — the bundle-first, two-stage
 //             classifier. Locks in the cases that must NOT regress (Ollama runner is not
@@ -312,5 +312,78 @@ final class AIRuntimeMatchTests: XCTestCase {
             .init(pid: 6, kind: .llamaCpp, displayName: "llama.cpp", cpuPercent: 0, memoryBytes: 6 << 30, embeddedPort: 9911),
         ]
         XCTAssertEqual(s.llamaCppPort, 9911)
+    }
+}
+
+/// LM Studio's identity is split across two places, and for a long time we only knew one of them
+/// (#64). Everything here is pinned from a live M1 Max with `google/gemma-4-12b` loaded.
+final class LMStudioWorkerDetectionTests: XCTestCase {
+
+    /// The process that actually holds the model: a plain `node`, 8.7 GB resident, launched out of
+    /// the support directory. `name` is "node" and `args` is nil — not because the worker has no
+    /// argv (it carries the bundle path in a `require(...)`), but because ProcessSampler only
+    /// resolves argv for AI-candidate basenames and `node` is not one. So the path is the ONLY
+    /// thing that can name it, which is why the rule has to be a path rule.
+    func testTheModelWorkerIsIdentifiedByItsSupportDirectory() {
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Users/x/.lmstudio/.internal/utils/node",
+                                           name: "node", args: nil), .lmStudio)
+    }
+
+    /// The `lms` CLI lives there too and must keep resolving, by path now rather than by basename.
+    func testTheCLIUnderTheSupportDirectoryStillResolves() {
+        XCTAssertEqual(AIRuntimeKind.match(path: "/Users/x/.lmstudio/bin/lms",
+                                           name: "lms", args: "lms log stream --json --stats"),
+                       .lmStudio)
+    }
+
+    /// The bundle half is untouched — the Electron shell, its helpers and the crashpad handler.
+    func testTheAppBundleIsStillLMStudio() {
+        for path in ["/Applications/LM Studio.app/Contents/MacOS/LM Studio",
+                     "/Applications/LM Studio.app/Contents/Frameworks/LM Studio Helper (GPU).app/Contents/MacOS/LM Studio Helper (GPU)"] {
+            XCTAssertEqual(AIRuntimeKind.match(path: path, name: "LM Studio", args: nil), .lmStudio, path)
+        }
+    }
+
+    /// The dot and both slashes are load-bearing: a checkout or a cache folder that merely has
+    /// "lmstudio" in its name is somebody else's code (the same bound as `/.ollama/`).
+    func testASimilarlyNamedDirectoryIsNotLMStudio() {
+        for path in ["/Users/x/src/lmstudio-clone/node",
+                     "/Users/x/Downloads/lmstudio/build/server",
+                     "/opt/lmstudio-tools/bin/helper"] {
+            XCTAssertNil(AIRuntimeKind.match(path: path, name: "node", args: nil), path)
+        }
+    }
+
+    /// ⚠️ The reported symptom, in the numbers that produce it. Only the primary runtime is
+    /// probed for its loaded model, and primary is whichever kind has the most resident memory.
+    /// With the worker uncounted, a headless LM Studio (`lms server start`, ~80 MB visible) is
+    /// outweighed by an idle Ollama that has nothing loaded — so the app faithfully reported
+    /// Ollama's empty model list as "runtime running — no model loaded" while LM Studio was
+    /// serving a model. Counting the worker settles the election by the real footprint.
+    func testAnUncountedWorkerHandsTheHeadlineToTheWrongRuntime() {
+        func proc(_ kind: AIRuntimeKind, _ bytes: UInt64, _ pid: Int32) -> AIRuntimeProcess {
+            .init(pid: pid, kind: kind, displayName: kind.displayName,
+                  cpuPercent: 0, memoryBytes: bytes, embeddedPort: nil)
+        }
+        let visible = [proc(.lmStudio, 82 << 20, 1), proc(.ollama, 90 << 20, 2), proc(.ollama, 25 << 20, 3)]
+
+        var uncounted = AIRuntimeSample()
+        uncounted.processes = visible
+        XCTAssertEqual(uncounted.primaryKind, .ollama, "the bug: an idle Ollama outweighs a serving LM Studio")
+
+        var counted = AIRuntimeSample()
+        counted.processes = visible + [proc(.lmStudio, 8_700 << 20, 4)]
+        XCTAssertEqual(counted.primaryKind, .lmStudio)
+    }
+
+    /// The same miss also understated the model budget: the resident model is the single biggest
+    /// thing that could be freed, and it was not in the figure the budget calls reclaimable.
+    func testTheResidentModelCountsTowardTheRuntimeFootprint() {
+        var s = AIRuntimeSample()
+        s.processes = [
+            .init(pid: 1, kind: .lmStudio, displayName: "LM Studio", cpuPercent: 0, memoryBytes: 329 << 20, embeddedPort: nil),
+            .init(pid: 2, kind: .lmStudio, displayName: "LM Studio", cpuPercent: 0, memoryBytes: 8_460 << 20, embeddedPort: nil),
+        ]
+        XCTAssertEqual(s.primaryMemoryBytes, (329 + 8_460) << 20)
     }
 }
