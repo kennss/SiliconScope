@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -16,12 +16,18 @@ import AppKit
 import UniformTypeIdentifiers
 import SiliconScopeCore
 
-/// Reports the hosting window's on-screen visibility (occlusion + miniaturize) so the dashboard
-/// can pause its expensive live re-render when it isn't actually visible. Measured cost split:
-/// the data layer (IOReport/SMC/per-process sampling) is ~0.6% CPU, while the live SwiftUI chart
-/// rendering is essentially the entire footprint — so when the window is hidden, re-rendering it
-/// is pure waste. The sampler and menu-bar items keep running (they need fresh data); only the
-/// chart rendering is gated. Also fixes the "high CPU while minimized" half of issue #13.
+/// Reports the hosting window's on-screen visibility (occlusion + miniaturize). Two things hang
+/// off this, and they were added in that order:
+///
+/// 1. The dashboard stops re-rendering its live charts when it is not on screen.
+/// 2. The monitor stops SAMPLING what the hidden window was the only consumer of.
+///
+/// ⚠️ The comment here used to say the data layer was ~0.6% CPU and the chart rendering
+/// "essentially the entire footprint". Re-measured on macOS 27.0 with a release build, that is no
+/// longer true: window open 7.1%, minimised 4.5%, closed 4.2% — the gating works, and what is
+/// left is almost entirely the samplers. Dropping the tick rate confirmed it (1.0 s → 4.2%,
+/// 4.0 s → 1.9%, so ~31 ms of CPU per full tick). Hence (2), which is the half of #13 that the
+/// first pass promised and did not deliver.
 private struct WindowVisibilityObserver: NSViewRepresentable {
     let onChange: (Bool) -> Void
     func makeNSView(context: Context) -> NSView { NSView() }
@@ -83,9 +89,13 @@ struct DashboardContainer: View {
     var body: some View {
         content
             .background(WindowVisibilityObserver { visible in
-                // Capture the last live frame as we go off-screen so the frozen branch has it.
+                // Capture the last live frame as we go off-screen so the frozen branch has it —
+                // BEFORE telling the monitor, while the snapshot is still fully measured.
                 if !visible && dashVisible { frozen = DashboardState(live: monitor) }
                 dashVisible = visible
+                // The dashboard is the only consumer that reads every metric. Off screen, the
+                // monitor narrows what it samples to whatever is still being looked at (#13).
+                monitor.dashboardVisible = visible
             })
             .onReceive(NotificationCenter.default.publisher(for: .openSiliconScopeRecording)) { note in
                 if let url = note.userInfo?["url"] as? URL { open(url) }
@@ -891,8 +901,8 @@ private struct AcceleratorCard: View {
         } graph: {
             Sparkline([Trace(gpuHistory, gpuColor),
                        Trace(gpuMemHistory, memColor),
-                       Trace(aneHistory.map { min(1, $0 / max(anePeak, 0.1)) }, aneColor),
-                       Trace(mediaHistory.map { min(1, $0 / max(mediaPeak, 0.5)) }, mediaColor)],
+                       Trace(aneHistory.map { $0.scaledToCeiling(max(anePeak, 0.1)) }, aneColor),
+                       Trace(mediaHistory.map { $0.scaledToCeiling(max(mediaPeak, 0.5)) }, mediaColor)],
                       role: .trend)
         }
     }
@@ -1184,7 +1194,7 @@ private struct SensorsCard: View {
             // sensor group each one is, and the row's swatch says so.
             Sparkline(temperature.groups.compactMap { group in
                 guard let series = groupHistory[group.category], series.count > 1 else { return nil }
-                return Trace(series.map { min(1, $0 / Theme.hotCelsius) }, group.category.color)
+                return Trace(series.map { $0.scaledToCeiling(Theme.hotCelsius) }, group.category.color)
             }, role: .trend)
         }
     }

@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-05
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -99,6 +99,50 @@ final class SiliconScopeMonitor {
     private var lastNotified: [String: Date] = [:]
     private static let notifyCooldown: TimeInterval = 300   // 5 min per condition
 
+    /// The loop's sleep, held so an event that widens demand can cut it short.
+    private var tickSleep: Task<Void, Never>?
+
+    /// Wakes the sampling loop immediately.
+    ///
+    /// ⚠️ Demand is computed once per tick, so a surface that appears BETWEEN ticks renders its
+    /// first frame from whatever the loop last measured — and for a group demand had switched
+    /// off, "last measured" can be minutes ago. A menu-bar dropdown is exactly that surface: it
+    /// is a full panel, it reads far more than the glyph that opened it, and it appears on a
+    /// click. Cutting the sleep short costs one early tick and means the panel opens on a
+    /// reading. Sampling stays serial — this only shortens a sleep, it never starts a second
+    /// sample, which `SystemSampler` explicitly forbids.
+    func wakeSamplingLoop() { tickSleep?.cancel() }
+
+    /// Whether the dashboard window is on screen. Set by the window's own visibility observer
+    /// (DashboardContainer) — the dashboard reads every metric, so this is the single biggest
+    /// term in `currentDemand()`.
+    var dashboardVisible = true
+
+    /// The groups this tick must measure — the union of everything currently reading a snapshot.
+    ///
+    /// ⚠️ Anything that consumes `snapshot` has to be represented here. A consumer left out gets
+    /// a value carried forward from the last tick that measured it, which looks exactly like a
+    /// live reading that stopped changing. See MetricDemand.swift.
+    private func currentDemand() -> MetricGroup {
+        // Whole-snapshot consumers. Recording and share mode both republish the snapshot as a
+        // record of the machine, so neither may contain a group we chose not to look at.
+        if dashboardVisible || isRecording || focusedPID != nil { return .all }
+        if MacAgentController.shared.isRunning { return .all }
+        if MetricBarController.shared.isShowingDropdown { return .all }
+
+        var demand = MetricGroup.essential
+        for item in MenuBarItemsModel.shared.items {
+            demand.formUnion(MenuBarItemRenderer.demand(for: item))
+        }
+        // The alert path runs whether or not anything is on screen: gpuThrottling reads the GPU
+        // clock against thermal pressure, memoryRisk reads the paging rates. A monitor that stops
+        // noticing a throttle because its window is shut has stopped being a monitor.
+        if UserDefaults.standard.bool(forKey: "notificationsEnabled") {
+            demand.formUnion([.gpu, .memory, .thermal])
+        }
+        return demand
+    }
+
     func start() {
         guard loopTask == nil else { return }
         // C5: clear rate state so the first tick after (re)start emits no spurious delta.
@@ -106,8 +150,11 @@ final class SiliconScopeMonitor {
         let sampler = sampler
         loopTask = Task { [weak self] in
             while !Task.isCancelled {
+                // Read on the main actor BEFORE detaching: demand depends on window, popover and
+                // settings state that only lives here.
+                guard let demand = self?.currentDemand() else { return }
                 let sampled = await Task.detached(priority: .utility) {
-                    sampler.sample(interval: 0.2)
+                    sampler.sample(interval: 0.2, demand: demand)
                 }.value
                 guard let self else { return }
                 // Opt-in runtime API: pull the key each tick and lazily start/stop polling.
@@ -116,14 +163,16 @@ final class SiliconScopeMonitor {
                 } else {
                     self.stopAPIPolling()
                 }
-                var snap = sampled
+                // Groups outside `demand` come back zero-initialised; keep the last real value
+                // for them so the frame the window reopens on is not a wall of zeros.
+                var snap = sampled.carryingForward(self.snapshot, measured: demand)
                 snap.runtimeAPI = self.effectiveRuntimeAPI()    // C4 staleness applied
                 // Advance the derivation engine first (folds peaks, rates, history), then publish
                 // the snapshot — so the Observation-triggered re-render reads fresh engine state.
                 let now = DispatchTime.now()
                 let dt = self.lastIngest.map { Double(now.uptimeNanoseconds - $0.uptimeNanoseconds) / 1_000_000_000 } ?? 0
                 self.lastIngest = now
-                self.engine.ingest(snap, dt: dt)
+                self.engine.ingest(snap, dt: dt, measured: demand)
                 self.snapshot = snap
                 if self.isRecording {
                     self.recorder.append(snap)                       // 1 Hz self-gated inside
@@ -141,7 +190,12 @@ final class SiliconScopeMonitor {
                 self.checkAlertsAndNotify()
                 MetricBarController.shared.sync(monitor: self)
                 let interval = UserDefaults.standard.object(forKey: "refreshInterval") as? Double ?? 1.0
-                try? await Task.sleep(for: .seconds(max(0.3, interval)))
+                // An unstructured Task does not inherit cancellation, so cancelling this one ends
+                // only the sleep — the loop itself carries on. See `wakeSamplingLoop`.
+                let sleep = Task { _ = try? await Task.sleep(for: .seconds(max(0.3, interval))) }
+                self.tickSleep = sleep
+                await sleep.value
+                self.tickSleep = nil
             }
         }
     }

@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-13
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Headless SiliconScope fleet agent for a Mac (launchd / CLI). Samples this Mac's live
 //             metrics via Core's SystemSampler once a second, maps them to MachineMetrics, and serves
@@ -148,6 +148,7 @@ sampleQueue.async {
             tsMillis: Int64(now.timeIntervalSince1970 * 1000), loadAvg1: loadAvg1(),
             anePeakWatts: engine.anePeakWatts, mediaPeakGBs: engine.mediaPeakGBs,
             bandwidthPeakGBs: engine.bandwidthPeakGBs,
+            gpuClockPeakMHz: engine.gpuClockPeakMHz,
             tokenRate: tokenRate.latest(llamaCppPort: snap.aiRuntime.llamaCppPort,
                                         lmStudioRunning: snap.aiRuntime.isLMStudioRunning)
         )

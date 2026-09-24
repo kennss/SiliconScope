@@ -1,7 +1,7 @@
 //
 //  File:      MacAgent.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-13
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  App-side "share this Mac to the Fleet" controller. Runs a FleetAgentServer (Core) that
 //             serves this Mac's MachineMetrics over TLS + mDNS, so another Mac's Fleet view discovers
@@ -130,7 +130,7 @@ extension SiliconScopeMonitor {
             hostname: hostname, machineId: machineId, osName: osName,
             agentVersion: agentVersion, tsMillis: Int64(Date().timeIntervalSince1970 * 1000),
             loadAvg1: Self.loadAvg1(), anePeakWatts: anePeakWatts, mediaPeakGBs: mediaPeakGBs,
-            bandwidthPeakGBs: bandwidthPeakGBs,
+            bandwidthPeakGBs: bandwidthPeakGBs, gpuClockPeakMHz: gpuClockPeakMHz,
             // "Connect to local AI runtimes" governs every way we touch a local runtime, reading
             // its log stream included — the Settings copy promises exactly that ("the loaded model,
             // processor split, and tokens/sec"). With it off we attach to nothing (#60).

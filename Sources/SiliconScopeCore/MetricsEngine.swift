@@ -1,7 +1,7 @@
 //
 //  File:      MetricsEngine.swift
 //  Created:   2026-06-25
-//  Updated:   2026-07-16
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The path-dependent derivation that turns a stream of SystemSnapshots into the
 //             values the dashboard reads beyond the raw snapshot: rolling sparkline History,
@@ -41,28 +41,50 @@ public final class MetricsEngine {
 
         public init() {}
 
-        public mutating func push(_ s: SystemSnapshot) {
-            roll(&soc, s.power.socWatts)
-            roll(&pCPU, s.cpu.pUsage)
-            roll(&eCPU, s.cpu.eUsage)
-            roll(&gpu, s.gpu.usage)
-            roll(&gpuMem, s.gpu.inUseMemoryFraction)
-            roll(&ane, s.power.aneWatts)
-            roll(&media, s.bandwidth.mediaGBs)
-            roll(&bandwidth, s.bandwidth.totalGBs)
-            roll(&dieTemp, s.temperature.cpuCelsius)
-            // The card lists one row per group; this gives each row a series to be drawn from.
-            for group in s.temperature.groups {
-                var series = sensorGroups[group.category] ?? []
-                roll(&series, group.maximum)
-                sensorGroups[group.category] = series
+        /// Appends one frame. A group absent from `measured` was NOT read this tick, and its
+        /// series takes a GAP rather than the snapshot's zero-initialised default.
+        ///
+        /// ⚠️ Every series advances by exactly one slot per tick, gap or not. That is the point:
+        /// these series carry no timestamps, so the only thing keeping two charts on a shared
+        /// time axis is that they are the same length and advance together. Skipping the append
+        /// for an unmeasured group would leave its last hour of samples sitting against the CPU
+        /// chart's last minute, drawn as if they were the same minute — a quieter lie than a
+        /// zero, and a harder one to see.
+        public mutating func push(_ s: SystemSnapshot, measured: MetricGroup = .all) {
+            func value(_ group: MetricGroup, _ v: @autoclosure () -> Double) -> Double {
+                measured.contains(group) ? v() : .nan
             }
-            roll(&memory, s.memory.usedGB)
-            roll(&memFraction, s.memory.usedFraction)
-            roll(&netDown, s.network.downloadBytesPerSec)
-            roll(&netUp, s.network.uploadBytesPerSec)
-            roll(&diskRead, s.disk.readBytesPerSec)
-            roll(&diskWrite, s.disk.writeBytesPerSec)
+            roll(&soc, value(.power, s.power.socWatts))
+            roll(&pCPU, value(.cpu, s.cpu.pUsage))
+            roll(&eCPU, value(.cpu, s.cpu.eUsage))
+            roll(&gpu, value(.gpu, s.gpu.usage))
+            roll(&gpuMem, value(.gpu, s.gpu.inUseMemoryFraction))
+            roll(&ane, value(.power, s.power.aneWatts))
+            roll(&media, value(.bandwidth, s.bandwidth.mediaGBs))
+            roll(&bandwidth, value(.bandwidth, s.bandwidth.totalGBs))
+            roll(&dieTemp, value(.temperature, s.temperature.cpuCelsius))
+            // The card lists one row per group; this gives each row a series to be drawn from.
+            // On a gap the machine reports no groups, so advance the ones already known instead
+            // of letting their series stall out of step with the rest.
+            if measured.contains(.temperature) {
+                for group in s.temperature.groups {
+                    var series = sensorGroups[group.category] ?? []
+                    roll(&series, group.maximum)
+                    sensorGroups[group.category] = series
+                }
+            } else {
+                for category in sensorGroups.keys {
+                    var series = sensorGroups[category] ?? []
+                    roll(&series, .nan)
+                    sensorGroups[category] = series
+                }
+            }
+            roll(&memory, value(.memory, s.memory.usedGB))
+            roll(&memFraction, value(.memory, s.memory.usedFraction))
+            roll(&netDown, value(.network, s.network.downloadBytesPerSec))
+            roll(&netUp, value(.network, s.network.uploadBytesPerSec))
+            roll(&diskRead, value(.disk, s.disk.readBytesPerSec))
+            roll(&diskWrite, value(.disk, s.disk.writeBytesPerSec))
         }
         private func roll(_ series: inout [Double], _ value: Double) {
             series.append(value)
@@ -100,15 +122,30 @@ public final class MetricsEngine {
     public init(topology: CPUTopology?) { self.topology = topology }
 
     /// Advances the engine by one frame. `dt` = seconds since the previous frame.
-    public func ingest(_ s: SystemSnapshot, dt: TimeInterval) {
+    /// Advances the engine by one frame. `dt` = seconds since the previous frame. `measured` is
+    /// the set of groups this frame actually read — anything else in `s` is a carried-forward
+    /// value, and must not move a peak, a rate or a history series.
+    ///
+    /// ⚠️ The peaks DECAY. Folding a carried-forward value back in every tick would pin a peak to
+    /// a number that stopped being observed, so an unmeasured group's peak is left entirely alone
+    /// — neither raised nor decayed — and resumes from where the last real reading left it.
+    public func ingest(_ s: SystemSnapshot, dt: TimeInterval, measured: MetricGroup = .all) {
         latest = s
-        bandwidthPeakGBs = max(s.bandwidth.totalGBs, max(40, bandwidthPeakGBs * Self.peakDecay))
-        mediaPeakGBs = max(s.bandwidth.mediaGBs, max(1, mediaPeakGBs * Self.peakDecay))
-        anePeakWatts = max(s.power.aneWatts, max(1, anePeakWatts * Self.peakDecay))
-        gpuClockPeakMHz = max(s.gpu.freqMHz, gpuClockPeakMHz * Self.gpuClockPeakDecay)
-        updateMemoryRates(s.memory, dt: dt)
-        history.push(s)
-        activity.update(s)
+        if measured.contains(.bandwidth) {
+            bandwidthPeakGBs = max(s.bandwidth.totalGBs, max(40, bandwidthPeakGBs * Self.peakDecay))
+            mediaPeakGBs = max(s.bandwidth.mediaGBs, max(1, mediaPeakGBs * Self.peakDecay))
+        }
+        if measured.contains(.power) {
+            anePeakWatts = max(s.power.aneWatts, max(1, anePeakWatts * Self.peakDecay))
+        }
+        if measured.contains(.gpu) {
+            gpuClockPeakMHz = max(s.gpu.freqMHz, gpuClockPeakMHz * Self.gpuClockPeakDecay)
+        }
+        // The rate is a delta between two readings of the same counters. Feeding it a repeat of
+        // the previous sample would report a real machine as having paged nothing.
+        if measured.contains(.memory) { updateMemoryRates(s.memory, dt: dt) }
+        history.push(s, measured: measured)
+        activity.update(s, measured: measured)
     }
 
     /// Clears rate state so the next frame emits no spurious delta (e.g. after a (re)start).
@@ -240,8 +277,11 @@ public final class MetricsEngine {
         return base
     }
 
+    /// Mean of the last `count` REAL samples. Gaps are dropped rather than averaged: one `.nan`
+    /// in the tail would otherwise make the whole average NaN, and every comparison against it
+    /// false — a bottleneck verdict that silently answers "no" to everything.
     private static func tailAverage(_ values: [Double], count: Int, fallback: Double) -> Double {
-        let tail = values.suffix(count)
+        let tail = values.suffix(count).withoutGaps
         return tail.isEmpty ? fallback : tail.reduce(0, +) / Double(tail.count)
     }
 

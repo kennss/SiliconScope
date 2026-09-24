@@ -1,7 +1,7 @@
 //
 //  File:      MetricBarController.swift
 //  Created:   2026-06-19
-//  Updated:   2026-09-04
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style per-metric menu-bar items via AppKit NSStatusItem. SwiftUI's
 //             MenuBarExtra can't do dynamic toggling here (a conditional scene won't compile
@@ -30,6 +30,10 @@ final class MetricBarController: NSObject {
 
     private var entries: [UUID: Entry] = [:]
     private weak var monitor: SiliconScopeMonitor?
+
+    /// True while any dropdown is open. A dropdown is a full panel — it reads far more than the
+    /// glyph that opened it — so the monitor widens demand to everything for as long as one is up.
+    var isShowingDropdown: Bool { entries.values.contains { $0.popover.isShown } }
 
     /// Called each monitor tick: reconcile items with the configured list, refresh glyphs.
     func sync(monitor: SiliconScopeMonitor) {
@@ -97,6 +101,10 @@ final class MetricBarController: NSObject {
            let config = MenuBarItemsModel.shared.items.first(where: { $0.id == id }) {
             entry.popover.contentViewController = NSHostingController(rootView: MenuBarItemRenderer.dropdown(config, m))
         }
+        // The panel reads more than the glyph did, so the monitor widens demand while it is open
+        // (`isShowingDropdown`). Demand is only re-read on the next tick, so wake the loop rather
+        // than let the first frame come from values sampling had switched off (#13).
+        monitor?.wakeSamplingLoop()
         // Only one menu-bar dropdown open at a time, like every other status item: close
         // any other per-metric popover before opening this one. (Each NSPopover is .transient
         // but transient dismissal doesn't fire reliably when the click lands on another of

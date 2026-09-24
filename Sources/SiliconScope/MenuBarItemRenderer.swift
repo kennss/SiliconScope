@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarItemRenderer.swift
 //  Created:   2026-07-27
-//  Updated:   2026-07-27
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Turns a `MenuBarItemConfig` into the three things a status item needs: its glyph
 //             image, the cheap signature that decides whether the glyph must be re-rasterized, and
@@ -71,6 +71,16 @@ enum MenuBarItemRenderer {
     /// Cheap signature of everything that changes the glyph's pixels. Re-rasterizing on every tick
     /// is what docs/energy-optimization.md FIX 3 removed, so this must cover every input `glyph`
     /// reads — appearance, scale, and each channel's quantized value.
+    /// What one configured menu-bar item reads each tick.
+    ///
+    /// The composite glyph ignores `config.channels` and draws a fixed set of bars, so it answers
+    /// for itself; every other mode is exactly its channels. This is half of the demand invariant
+    /// (MetricDemand.swift) — the other half is `SiliconScopeMonitor.currentDemand()`.
+    static func demand(for config: MenuBarItemConfig) -> MetricGroup {
+        if config.mode == .composite { return MenuBarIcon.demand }
+        return config.channels.reduce(into: MetricGroup()) { $0.formUnion($1.metricGroup) }
+    }
+
     static func signature(_ config: MenuBarItemConfig, _ m: SiliconScopeMonitor, dark: Bool) -> String {
         let scale = Double(UIScale.glyph)
         let id = signatureID(config)
@@ -232,13 +242,16 @@ enum MenuBarItemRenderer {
     /// other — the chart would say "both busy" no matter the traffic.
     private static func graphSeries(_ config: MenuBarItemConfig, _ m: SiliconScopeMonitor) -> [GraphSeries] {
         let raw = config.channels.map { (channel: $0, values: rawSeries($0, m)) }
-        let sharedPeak = raw.filter { scalesToWindow($0.channel) }.flatMap(\.values).max() ?? 0
+        // Gaps excluded: the peak these series are scaled against must come from real readings.
+        let sharedPeak = raw.filter { scalesToWindow($0.channel) }.flatMap(\.values).withoutGaps.max() ?? 0
         return raw.map { entry in
             guard scalesToWindow(entry.channel) else {
                 return GraphSeries(values: entry.values, color: color(entry.channel))
             }
-            let scaled = sharedPeak > 0 ? entry.values.map { min(1, max(0, $0) / sharedPeak) }
-                                        : entry.values.map { _ in 0.0 }
+            // `min`/`max` would turn a gap into 0 or 1 — a flat floor or a spike that never
+            // happened. Scale the real samples and let the gap stay a gap.
+            let scaled = sharedPeak > 0 ? entry.values.map { $0.isFinite ? min(1, max(0, $0) / sharedPeak) : .nan }
+                                        : entry.values.map { $0.isFinite ? 0.0 : .nan }
             return GraphSeries(values: scaled, color: color(entry.channel))
         }
     }
@@ -260,14 +273,14 @@ enum MenuBarItemRenderer {
         case .cpuPerformance:  return h.pCPU
         case .gpuUtilisation:  return h.gpu
         case .gpuMemory:       return h.gpuMem
-        case .mediaThroughput: return h.media.map { min(1, $0 / max(m.mediaPeakGBs, 0.5)) }
-        case .anePower:        return h.ane.map { min(1, $0 / max(m.anePeakWatts, 0.1)) }
+        case .mediaThroughput: return h.media.map { $0.scaledToCeiling(max(m.mediaPeakGBs, 0.5)) }
+        case .anePower:        return h.ane.map { $0.scaledToCeiling(max(m.anePeakWatts, 0.1)) }
         case .memoryUsed:      return h.memFraction
         case .memoryFree:      return h.memFraction.map { 1 - $0 }
         // `dieTemp` is fed from `temperature.cpuCelsius` — the CPU sensor, which is this channel.
         // Scaled against the app's own hot reference rather than the window, so the line means
         // thermal headroom and a machine idling at 45 °C does not look like one at its limit.
-        case .sensorPrimaryTemp: return h.dieTemp.map { min(1, $0 / Theme.hotCelsius) }
+        case .sensorPrimaryTemp: return h.dieTemp.map { $0.scaledToCeiling(Theme.hotCelsius) }
         // Raw — no ceiling exists. `graphSeries` scales these against the window.
         case .networkDown:     return h.netDown
         case .networkUp:       return h.netUp

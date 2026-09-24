@@ -1,7 +1,7 @@
 //
 //  File:      Theme.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-16
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline,
 //             PopoverButtonStyle), plus the Layout dimension tokens.
@@ -991,7 +991,9 @@ enum ChartAxis {
         case .fraction:          return (0, 1)
         case .ceiling(let top):  return (0, max(top, .ulpOfOne))
         case .auto:
-            let all = traces.flatMap(\.values)
+            // Gaps are excluded before min/max: NaN compares false against everything, so a
+            // single gap can walk out of `min`/`max` as the bound and collapse the whole axis.
+            let all = traces.flatMap(\.values).withoutGaps
             return (all.min() ?? 0, all.max() ?? 1)
         }
     }
@@ -1066,20 +1068,35 @@ struct Sparkline: View {
                     let norm = flat ? 0.5 : (trace.values[i] - lo) / span
                     return CGPoint(x: CGFloat(i) * stepX, y: (1 - CGFloat(norm)) * size.height)
                 }
-                var line = Path()
-                line.move(to: point(0))
-                for i in 1..<trace.values.count { line.addLine(to: point(i)) }
-                // Area = the line closed down to the baseline, filled with a top→bottom gradient.
-                var area = line
-                area.addLine(to: CGPoint(x: size.width, y: size.height))
-                area.addLine(to: CGPoint(x: 0, y: size.height))
-                area.closeSubpath()
-                // Area quiet, line full: the fill is the large surface, the stroke is the mark.
-                ctx.fill(area, with: .linearGradient(
-                    Gradient(colors: [Ink(trace.color).fill.color.opacity(0.26), .clear]),
-                    startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
-                ctx.stroke(line, with: .color(trace.color),
-                           style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+                // A gap (`.nan`) is a tick we did not measure, not a tick that read zero — see
+                // MetricDemand.swift. It breaks the trace into runs: each run is stroked and
+                // filled on its own, so the chart shows blank where there is no reading rather
+                // than drawing a straight line across the hole as though the value held.
+                var runs: [[Int]] = []
+                var run: [Int] = []
+                for i in trace.values.indices {
+                    if trace.values[i].isFinite { run.append(i) }
+                    else if !run.isEmpty { runs.append(run); run = [] }
+                }
+                if !run.isEmpty { runs.append(run) }
+
+                for run in runs where run.count > 1 {
+                    var line = Path()
+                    line.move(to: point(run[0]))
+                    for i in run.dropFirst() { line.addLine(to: point(i)) }
+                    // Area = the line closed down to the baseline, filled with a top→bottom
+                    // gradient. Closed under the run's own span, so a gap leaves no fill either.
+                    var area = line
+                    area.addLine(to: CGPoint(x: CGFloat(run[run.count - 1]) * stepX, y: size.height))
+                    area.addLine(to: CGPoint(x: CGFloat(run[0]) * stepX, y: size.height))
+                    area.closeSubpath()
+                    // Area quiet, line full: the fill is the large surface, the stroke is the mark.
+                    ctx.fill(area, with: .linearGradient(
+                        Gradient(colors: [Ink(trace.color).fill.color.opacity(0.26), .clear]),
+                        startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
+                    ctx.stroke(line, with: .color(trace.color),
+                               style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+                }
             }
         }
         .modifier(SparkSize(role: role))

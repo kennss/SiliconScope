@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics.swift
 //  Created:   2026-07-21
-//  Updated:   2026-09-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The source-agnostic fleet metric schema — the boundary the Mac aggregator consumes
 //             for every remote machine, regardless of how the data arrives. Mirrors the Go Linux
@@ -33,13 +33,19 @@ public struct MachineMetrics: Codable, Sendable, Identifiable, Equatable {
     // Local-filesystem capacity. OPTIONAL: a pre-disks agent omits the key and still decodes
     // (arrives nil), and the UI renders nothing rather than an empty card.
     public let disks: [FleetDisk]?
+    // Thermal pressure and temperatures. On the COMMON block, like `cpu.model`: every Mac has a
+    // thermal pressure level, whatever its architecture. OPTIONAL: nil from an agent that predates
+    // it, which the viewer renders as "unknown" rather than as a calm "nominal" it never read.
+    public let thermal: FleetThermal?
 
     public init(machineId: String, hostname: String, os: String, kind: String, agentVersion: String,
                 ts: Int64, cpu: FleetCPU, memory: FleetMemory, gpus: [FleetGPU],
-                llm: FleetLLM? = nil, apple: FleetApple? = nil, disks: [FleetDisk]? = nil) {
+                llm: FleetLLM? = nil, apple: FleetApple? = nil, disks: [FleetDisk]? = nil,
+                thermal: FleetThermal? = nil) {
         self.machineId = machineId; self.hostname = hostname; self.os = os; self.kind = kind
         self.agentVersion = agentVersion; self.ts = ts; self.cpu = cpu; self.memory = memory
         self.gpus = gpus; self.llm = llm; self.apple = apple; self.disks = disks
+        self.thermal = thermal
     }
 }
 
@@ -57,6 +63,54 @@ public struct FleetDisk: Codable, Sendable, Equatable {
     public var usedBytes: Int64 { max(0, totalBytes - freeBytes) }
     public var usedFraction: Double {
         totalBytes > 0 ? Double(min(usedBytes, totalBytes)) / Double(totalBytes) : 0
+    }
+}
+
+/// Thermal state of a machine: the kernel's pressure level plus the temperatures the agent read.
+///
+/// Scalars and groups both travel, and the scalars are NOT recomputed from the groups on arrival.
+/// `cpuCelsius` is the product of the agent's own rules — which sensors count as die points, the
+/// plausibility floor that throws out a stuck key (#57) — and a viewer re-deriving it would apply
+/// its own version of those rules to someone else's machine.
+public struct FleetThermal: Codable, Sendable, Equatable {
+    /// `ThermalSample.Pressure` raw value: nominal | fair | serious | critical.
+    ///
+    /// ⚠️ A String on the wire, parsed tolerantly on arrival. A Swift String enum THROWS on a value
+    /// it does not know, and a throw here would take the whole machine offline in the viewer — one
+    /// newer macOS pressure level away from the #33 failure.
+    public let pressure: String?
+    public let cpuCelsius: Double?
+    public let cpuMaxCelsius: Double?
+    public let gpuCelsius: Double?
+    public let batteryCelsius: Double?
+    @DefaultEmpty public var sensors: [FleetSensorGroup]
+
+    public init(pressure: String?, cpuCelsius: Double? = nil, cpuMaxCelsius: Double? = nil,
+                gpuCelsius: Double? = nil, batteryCelsius: Double? = nil,
+                sensors: [FleetSensorGroup] = []) {
+        self.pressure = pressure; self.cpuCelsius = cpuCelsius; self.cpuMaxCelsius = cpuMaxCelsius
+        self.gpuCelsius = gpuCelsius; self.batteryCelsius = batteryCelsius; self.sensors = sensors
+    }
+}
+
+/// One sensor category as the machine reports it. `category` is `SensorCategory`'s raw value,
+/// kept a String for the same reason `FleetThermal.pressure` is.
+public struct FleetSensorGroup: Codable, Sendable, Equatable {
+    public let category: String
+    @DefaultEmpty public var sensors: [FleetSensor]
+
+    public init(category: String, sensors: [FleetSensor]) {
+        self.category = category; self.sensors = sensors
+    }
+}
+
+public struct FleetSensor: Codable, Sendable, Equatable {
+    public let rawName: String      // the SMC key or HID product name, e.g. "Tp01" / "PMU tdie3"
+    public let name: String         // display name
+    public let celsius: Double
+
+    public init(rawName: String, name: String, celsius: Double) {
+        self.rawName = rawName; self.name = name; self.celsius = celsius
     }
 }
 
@@ -78,15 +132,31 @@ public struct FleetCPU: Codable, Sendable, Equatable {
     /// nowhere left to say its own name and the viewer fell back to printing "Apple Silicon" at it
     /// (#56). A name is not an Apple-Silicon-only fact.
     public let model: String?
+    /// The cluster's DVFS steps (MHz, ascending) — the chip's clock CEILING, which is what a
+    /// throttle is measured against.
+    ///
+    /// ⚠️ Before these were sent, the viewer built a remote topology whose "DVFS table" was the
+    /// single CURRENT clock. The ceiling was therefore always the present reading, a clock can
+    /// never sit below itself, and CPU throttling on a remote Mac was structurally unreportable.
+    public let eFreqsMHz: [Double]?
+    public let pFreqsMHz: [Double]?
+    /// What the chip calls its clusters. Not always "E"/"P": an M5 Max reports "Super" for its top
+    /// tier, and a remote page that relabelled it would disagree with the machine's own.
+    public let eLevelName: String?
+    public let pLevelName: String?
 
     public init(cores: Int, usagePercent: Double, loadAvg1: Double,
                 eUsagePercent: Double? = nil, pUsagePercent: Double? = nil,
                 eFreqMHz: Double? = nil, pFreqMHz: Double? = nil,
-                eCores: Int? = nil, pCores: Int? = nil, model: String? = nil) {
+                eCores: Int? = nil, pCores: Int? = nil, model: String? = nil,
+                eFreqsMHz: [Double]? = nil, pFreqsMHz: [Double]? = nil,
+                eLevelName: String? = nil, pLevelName: String? = nil) {
         self.cores = cores; self.usagePercent = usagePercent; self.loadAvg1 = loadAvg1
         self.eUsagePercent = eUsagePercent; self.pUsagePercent = pUsagePercent
         self.eFreqMHz = eFreqMHz; self.pFreqMHz = pFreqMHz
         self.eCores = eCores; self.pCores = pCores; self.model = model
+        self.eFreqsMHz = eFreqsMHz; self.pFreqsMHz = pFreqsMHz
+        self.eLevelName = eLevelName; self.pLevelName = pLevelName
     }
 }
 
@@ -236,13 +306,20 @@ public struct FleetApple: Codable, Sendable, Equatable {
     public let power: FleetPower
     public let bandwidth: FleetBandwidth
     @DefaultEmpty public var fanRPMs: [Double]   // empty on fanless Macs (MacBook Air)
+    public let gpuFreqsMHz: [Double]?  // GPU DVFS steps (MHz, ascending)
+    /// The agent's decaying observed GPU-clock peak — the GPU throttle's reference. Sent for the
+    /// same reason `anePeakWatts` is: it is state accumulated over the agent's own history, which
+    /// a viewer polling once a second never sees. nil from an agent that predates it.
+    public let gpuClockPeakMHz: Double?
 
     public init(chip: String, aneWatts: Double, anePeakWatts: Double, mediaGBs: Double,
                 mediaPeakGBs: Double, socWatts: Double, power: FleetPower,
-                bandwidth: FleetBandwidth, fanRPMs: [Double]) {
+                bandwidth: FleetBandwidth, fanRPMs: [Double],
+                gpuFreqsMHz: [Double]? = nil, gpuClockPeakMHz: Double? = nil) {
         self.chip = chip; self.aneWatts = aneWatts; self.anePeakWatts = anePeakWatts
         self.mediaGBs = mediaGBs; self.mediaPeakGBs = mediaPeakGBs; self.socWatts = socWatts
         self.power = power; self.bandwidth = bandwidth; self.fanRPMs = fanRPMs
+        self.gpuFreqsMHz = gpuFreqsMHz; self.gpuClockPeakMHz = gpuClockPeakMHz
     }
 
     public var hasFans: Bool { !fanRPMs.isEmpty }

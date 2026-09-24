@@ -53,6 +53,12 @@ struct MenuBarIcon: View {
 
     /// The 6 bar fractions + alert/blink state that determine the glyph's pixels — shared by
     /// glyph() and signature() so the two can never drift apart.
+    /// Exactly what `barState` below reads, declared beside it so the two cannot drift: six bars
+    /// (P-CPU, GPU, ANE, Media, MEM, Mem-BW) plus the alert state, which needs thermal pressure
+    /// and the memory rates. A group missing here is a group the monitor would stop sampling
+    /// while this glyph kept drawing it — see MetricDemand.swift.
+    static let demand: MetricGroup = [.cpu, .gpu, .power, .bandwidth, .memory, .thermal]
+
     static func barState(for monitor: SiliconScopeMonitor) -> (values: [Double], alert: Bool, blinkDim: Bool) {
         let s = monitor.snapshot
         let values: [Double] = [

@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics+Snapshot.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reverse mapping: synthesize a local-style SystemSnapshot (+ CPUTopology) from a remote
 //             MachineMetrics, so the SAME DashboardView renders a remote Mac exactly like This Mac.
@@ -72,7 +72,23 @@ public extension MachineMetrics {
             s.thermal.fanRPMs = ap.fanRPMs
         }
         s.temperature.gpuCelsius = gpus.first?.temperatureC ?? 0
-        s.temperature.cpuCelsius = 0   // not sent remotely; die-temp history stays flat
+        if let t = thermal {
+            // Unknown levels map to `.unknown` rather than failing — see FleetThermal.pressure.
+            s.thermal.pressure = t.pressure.flatMap(ThermalSample.Pressure.init(rawValue:)) ?? .unknown
+            if let c = t.cpuCelsius     { s.temperature.cpuCelsius = c }
+            if let c = t.cpuMaxCelsius  { s.temperature.cpuMaxCelsius = c }
+            if let c = t.gpuCelsius     { s.temperature.gpuCelsius = c }
+            if let c = t.batteryCelsius { s.temperature.batteryCelsius = c }
+            s.temperature.groups = t.sensors.map { g in
+                SensorGroup(category: SensorCategory(rawValue: g.category) ?? .other,
+                            sensors: g.sensors.map { TempSensor(rawName: $0.rawName, name: $0.name, celsius: $0.celsius) })
+            }
+        } else {
+            // ⚠️ An agent that predates the thermal block told us nothing about pressure, and
+            // ThermalSample's default is `.nominal` — which the Sensors card printed, in its calm
+            // colour, for every remote Mac. "Unknown" is what we actually know.
+            s.thermal.pressure = .unknown
+        }
 
         let topo = CPUTopology(
             // ⚠️ No "Apple Silicon" fallback. A remote machine that did not tell us its name is
@@ -84,9 +100,16 @@ public extension MachineMetrics {
             chipName: apple?.chip ?? cpu.model ?? gpus.first?.name ?? "",
             eCoreCount: cpu.eCores ?? 0,
             pCoreCount: cpu.pCores ?? cpu.cores,
-            eFreqsMHz: [],
-            pFreqsMHz: cpu.pFreqMHz.map { [$0] } ?? [],
-            gpuFreqsMHz: []
+            // ⚠️ The real DVFS tables, or none. This used to put the CURRENT P clock in the table,
+            // which made the "ceiling" whatever the clock read right now — a clock cannot sit below
+            // itself, so a remote CPU throttle could never be reported, and the P-ceiling line
+            // would have drawn a full bar at any speed. An old agent leaves the table empty, and
+            // every consumer already treats an empty table as "ceiling unknown".
+            eFreqsMHz: cpu.eFreqsMHz ?? [],
+            pFreqsMHz: cpu.pFreqsMHz ?? [],
+            gpuFreqsMHz: apple?.gpuFreqsMHz ?? [],
+            pLevelName: cpu.pLevelName,
+            eLevelName: cpu.eLevelName
         )
         return (s, topo)
     }

@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarMetric.swift
 //  Created:   2026-06-19
-//  Updated:   2026-07-27
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style menu-bar glyph renderers and the per-metric dropdown panels. Glyphs are
 //             drawn to NSImage (the only reliable way to render a live status-item label) and adapt
@@ -589,8 +589,8 @@ struct GPUMenuDropdown: View {
             // All four normalized to 0...1 (each against its tracked peak) so one axis serves them.
             Sparkline([Trace(monitor.history.gpu, MetricPalette.gpuC),
                        Trace(monitor.history.gpuMem, MetricPalette.gpuMemC),
-                       Trace(monitor.history.ane.map { min(1, $0 / max(monitor.anePeakWatts, 0.1)) }, MetricPalette.aneC),
-                       Trace(monitor.history.media.map { min(1, $0 / max(monitor.mediaPeakGBs, 0.5)) }, MetricPalette.mediaC)],
+                       Trace(monitor.history.ane.map { $0.scaledToCeiling(max(monitor.anePeakWatts, 0.1)) }, MetricPalette.aneC),
+                       Trace(monitor.history.media.map { $0.scaledToCeiling(max(monitor.mediaPeakGBs, 0.5)) }, MetricPalette.mediaC)],
                       role: .inline(height: Layout.Meter.sparklineDropdown, axis: .fraction))
             Divider()
             MenuActionsFooter()
@@ -718,10 +718,10 @@ struct NETMenuDropdown: View {
             MenuKV(label: "↑ Upload", value: formatRate(n.uploadBytesPerSec), color: MetricPalette.upC)
             Sparkline(monitor.history.netUp, color: MetricPalette.upC, role: .inline(height: Layout.Meter.sparklinePair))
             HStack {
-                Text("Peak ↓ \(formatRate(monitor.history.netDown.max() ?? 0))")
+                Text("Peak ↓ \(formatRate(monitor.history.netDown.withoutGaps.max() ?? 0))")
                     .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                 Spacer()
-                Text("Peak ↑ \(formatRate(monitor.history.netUp.max() ?? 0))")
+                Text("Peak ↑ \(formatRate(monitor.history.netUp.withoutGaps.max() ?? 0))")
                     .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
             }
             if !notConnected.isEmpty {

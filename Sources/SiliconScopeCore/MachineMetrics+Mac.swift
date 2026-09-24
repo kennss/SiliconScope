@@ -1,14 +1,14 @@
 //
 //  File:      MachineMetrics+Mac.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Maps a local Apple-Silicon live snapshot (SystemSnapshot + CPUTopology) into the
 //             source-agnostic MachineMetrics wire schema, so a Mac can serve itself to the fleet the
 //             same way the Linux agent does. Fills the Apple-only block (E/P split, ANE/Media,
 //             per-requestor bandwidth, power breakdown, fans) that has no counterpart on Linux.
 //  Notes:     Pure — no I/O. Values outside SystemSnapshot (1-min load average, ANE/Media peaks for
-//             bar-scaling) are passed in by the caller (app share-mode reads them off the monitor's
+//             bar-scaling, the GPU-clock peak the throttle verdict reads) are passed in by the caller (app share-mode reads them off the monitor's
 //             engine-derived vars; the CLI agent computes them). Usage fractions in the snapshot are
 //             0…1, so they're ×100 here; a single blended CPU% is core-count-weighted across E/P.
 //             Unified memory means "VRAM" is in-use GPU bytes against total physical RAM.
@@ -27,6 +27,7 @@ public extension MachineMetrics {
                     anePeakWatts: Double,
                     mediaPeakGBs: Double,
                     bandwidthPeakGBs: Double,
+                    gpuClockPeakMHz: Double,
                     tokenRate: FleetTokenRate? = nil) -> MachineMetrics {
         let eCores = topology?.eCoreCount ?? 0
         let pCores = topology?.pCoreCount ?? 0
@@ -44,7 +45,13 @@ public extension MachineMetrics {
             pFreqMHz: s.cpu.pFreqMHz,
             eCores: eCores, pCores: pCores,
             // Sent on both architectures: sysctl knows the name whether or not IOReport does.
-            model: topology?.chipName
+            model: topology?.chipName,
+            // The chip's clock ceilings and cluster names. An empty table is sent as ABSENT: an
+            // empty array would say "this chip has no DVFS steps", which is a claim, not a gap.
+            eFreqsMHz: nonEmpty(topology?.eFreqsMHz),
+            pFreqsMHz: nonEmpty(topology?.pFreqsMHz),
+            eLevelName: topology?.eLevelName,
+            pLevelName: topology?.pLevelName
         )
 
         let memory = FleetMemory(
@@ -108,7 +115,32 @@ public extension MachineMetrics {
                 isEstimated: s.bandwidth.isEstimated,
                 totalPeakGBs: bandwidthPeakGBs
             ),
-            fanRPMs: s.thermal.fanRPMs
+            fanRPMs: s.thermal.fanRPMs,
+            gpuFreqsMHz: nonEmpty(topology?.gpuFreqsMHz),
+            gpuClockPeakMHz: gpuClockPeakMHz > 0 ? gpuClockPeakMHz : nil
+        )
+        #endif
+
+        #if arch(x86_64)
+        // Pressure is the kernel's own verdict and is equally true on Intel. Temperatures are not
+        // sent here: the sensor map is Apple Silicon's, and an Intel Mac's SMC is a different key
+        // space that #59 deliberately left out because nobody could verify it without the hardware.
+        let thermal = FleetThermal(pressure: s.thermal.pressure.rawValue)
+        #else
+        let t = s.temperature
+        // 0 °C is how the sampler says "no such sensor on this machine" (`hasCPU` etc.), so it is
+        // sent as absent — a fanless Air with no battery reading must not arrive as a 0 °C battery.
+        func present(_ c: Double) -> Double? { c > 0 ? c : nil }
+        let thermal = FleetThermal(
+            pressure: s.thermal.pressure.rawValue,
+            cpuCelsius: present(t.cpuCelsius),
+            cpuMaxCelsius: present(t.cpuMaxCelsius),
+            gpuCelsius: present(t.gpuCelsius),
+            batteryCelsius: present(t.batteryCelsius),
+            sensors: t.groups.map { g in
+                FleetSensorGroup(category: g.category.rawValue,
+                                 sensors: g.sensors.map { FleetSensor(rawName: $0.rawName, name: $0.name, celsius: $0.celsius) })
+            }
         )
         #endif
 
@@ -117,7 +149,13 @@ public extension MachineMetrics {
             agentVersion: agentVersion, ts: tsMillis, cpu: cpu, memory: memory,
             // A Mac serving models reports its decode rate the same way the Linux agent does, so
             // the fleet describes both in one vocabulary. nil when no runtime publishes one.
-            gpus: gpus, llm: tokenRate.map { FleetLLM(ollama: nil, rate: $0) }, apple: apple
+            gpus: gpus, llm: tokenRate.map { FleetLLM(ollama: nil, rate: $0) }, apple: apple,
+            thermal: thermal
         )
+    }
+
+    private static func nonEmpty(_ values: [Double]?) -> [Double]? {
+        guard let values, !values.isEmpty else { return nil }
+        return values
     }
 }

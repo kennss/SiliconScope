@@ -1,7 +1,7 @@
 //
 //  File:      EngineActivity.swift
 //  Created:   2026-07-27
-//  Updated:   2026-07-27
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Latched "is this engine doing work" flags for the AI Workload card's CPU / GPU / ANE
 //             / Media rows. A bare threshold on a live sample flaps: a GPU hovering around the
@@ -85,19 +85,31 @@ public struct EngineActivity: Sendable, Equatable {
     }
 
     /// Feeds one sample. Call once per tick, in order.
-    public mutating func update(_ s: SystemSnapshot) {
-        cpuLatch.update(cpu
-            ? (s.cpu.pUsage > Threshold.cpuPerfOff || s.cpu.eUsage > Threshold.cpuEffOff)
-            : (s.cpu.pUsage > Threshold.cpuPerfOn  || s.cpu.eUsage > Threshold.cpuEffOn))
-
-        gpuLatch.update(gpu
-            ? (s.gpu.usage > Threshold.gpuUsageOff || s.power.gpuWatts > Threshold.gpuWattsOff)
-            : (s.gpu.usage > Threshold.gpuUsageOn  || s.power.gpuWatts > Threshold.gpuWattsOn))
-
-        aneLatch.update(ane ? s.power.aneWatts > Threshold.aneWattsOff
-                            : s.power.aneWatts > Threshold.aneWattsOn)
-
-        mediaLatch.update(media ? s.bandwidth.mediaGBs > Threshold.mediaGBsOff
-                                : s.bandwidth.mediaGBs > Threshold.mediaGBsOn)
+    ///
+    /// ⚠️ A latch is only advanced when the groups it reads were actually measured this tick.
+    /// These are DWELL latches: they flip after N consecutive agreeing samples, so re-feeding a
+    /// carried-forward value would count as fresh agreement and could walk a latch across on the
+    /// strength of one old reading repeated. Left alone, a latch simply holds its last verdict
+    /// until real samples resume — which is what "we stopped looking" should mean.
+    public mutating func update(_ s: SystemSnapshot, measured: MetricGroup = .all) {
+        if measured.contains(.cpu) {
+            cpuLatch.update(cpu
+                ? (s.cpu.pUsage > Threshold.cpuPerfOff || s.cpu.eUsage > Threshold.cpuEffOff)
+                : (s.cpu.pUsage > Threshold.cpuPerfOn  || s.cpu.eUsage > Threshold.cpuEffOn))
+        }
+        // The GPU verdict reads utilisation AND GPU watts, so it needs both groups to be honest.
+        if measured.contains(.gpu), measured.contains(.power) {
+            gpuLatch.update(gpu
+                ? (s.gpu.usage > Threshold.gpuUsageOff || s.power.gpuWatts > Threshold.gpuWattsOff)
+                : (s.gpu.usage > Threshold.gpuUsageOn  || s.power.gpuWatts > Threshold.gpuWattsOn))
+        }
+        if measured.contains(.power) {
+            aneLatch.update(ane ? s.power.aneWatts > Threshold.aneWattsOff
+                                : s.power.aneWatts > Threshold.aneWattsOn)
+        }
+        if measured.contains(.bandwidth) {
+            mediaLatch.update(media ? s.bandwidth.mediaGBs > Threshold.mediaGBsOff
+                                    : s.bandwidth.mediaGBs > Threshold.mediaGBsOn)
+        }
     }
 }

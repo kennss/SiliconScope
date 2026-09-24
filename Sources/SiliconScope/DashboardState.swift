@@ -1,7 +1,7 @@
 //
 //  File:      DashboardState.swift
 //  Created:   2026-06-25
-//  Updated:   2026-08-10
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The exact set of values DashboardView renders — built either from the live monitor
 //             or from a replayed recording frame. Making it one value struct (rather than a
@@ -105,11 +105,18 @@ struct DashboardState {
         mediaPeakGBs = m.apple?.mediaPeakGBs ?? 0
         // Prefer the agent's decaying observed peak; fall back to the current total on version skew.
         bandwidthPeakGBs = m.apple?.bandwidth.totalPeakGBs ?? m.apple?.bandwidth.totalGBs ?? 0
-        let throttling = MetricsEngine.gpuThrottling(latest: s, gpuClockPeakMHz: 0)
+        // The same verdict functions the local and replay paths use, fed the agent's own
+        // references: its observed GPU-clock peak and the chip's real DVFS ceiling. Computed HERE
+        // rather than sent as booleans so that a fix to the verdict reaches every remote machine
+        // with the viewer's next update — agents in the field do not update themselves. An agent
+        // that predates these fields sends no peak and no table, and both verdicts stay false,
+        // exactly as before.
+        let gpuPeak = m.apple?.gpuClockPeakMHz ?? 0
+        let throttling = MetricsEngine.gpuThrottling(latest: s, gpuClockPeakMHz: gpuPeak)
         gpuThrottling = throttling
-        gpuClockDropFraction = 0
-        cpuThrottling = false
-        cpuClockDropFraction = 0
+        gpuClockDropFraction = MetricsEngine.gpuClockDropFraction(latest: s, gpuClockPeakMHz: gpuPeak)
+        cpuThrottling = MetricsEngine.cpuThrottling(latest: s, topology: topo)
+        cpuClockDropFraction = MetricsEngine.cpuClockDropFraction(latest: s, topology: topo)
         bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: topo, bandwidthPeakGBs: bandwidthPeakGBs)
         bottleneck = MetricsEngine.bottleneck(latest: s, history: history, bandwidthPeakGBs: bandwidthPeakGBs, throttling: throttling)
         memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: 0, compressionRate: 0)
