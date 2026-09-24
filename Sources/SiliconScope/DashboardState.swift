@@ -97,10 +97,15 @@ struct DashboardState {
     /// Whether a remote agent reported disk + network throughput. Gates the remote Network & Disk
     /// card: without it the card would be a column of zeros describing a machine as idle.
     private(set) var remoteHasIO = false
+    /// The agent sent every block the full dashboard needs (throughput, runtimes, processes), so a
+    /// remote page can use This Mac's layout, read-only. An older agent keeps the reduced layout —
+    /// cards it never filled must not appear as empty readings.
+    private(set) var remoteReportsEverything = false
 
     init(remote m: MachineMetrics) {
         remoteTokenRate = m.llm?.rate
         remoteHasIO = m.io != nil
+        remoteReportsEverything = m.io != nil && m.aiRuntime != nil && m.processes != nil
         let (s, topo) = m.toDashboardSnapshot()
         snapshot = s
         topology = topo

@@ -97,6 +97,42 @@ public extension MachineMetrics {
             s.disk.freeBytes = UInt64(max(d.freeBytes, 0))
         }
 
+        if let rt = aiRuntime {
+            s.aiRuntime.processes = rt.processes.map {
+                let kind = AIRuntimeKind(rawValue: $0.kind) ?? .other
+                return AIRuntimeProcess(pid: $0.pid, kind: kind, displayName: kind.displayName,
+                                        cpuPercent: $0.cpuPercent, memoryBytes: UInt64(max($0.memoryBytes, 0)),
+                                        embeddedPort: nil)
+            }
+            if let api = rt.api {
+                s.runtimeAPI.status = RuntimeAPISample.Status(rawValue: api.status) ?? .unreachable
+                s.runtimeAPI.source = api.source.flatMap(RuntimeAPISample.Source.init(rawValue:))
+                s.runtimeAPI.loadedModels = api.models.map {
+                    RuntimeModelInfo(name: $0.name, sizeBytes: UInt64(max($0.sizeBytes, 0)),
+                                     sizeVRAMBytes: UInt64(max($0.sizeVRAMBytes, 0)),
+                                     parameterSize: $0.parameterSize, quantization: $0.quantization,
+                                     contextLength: $0.contextLength)
+                }
+                s.runtimeAPI.tokensPerSec = api.tokensPerSec
+            }
+            // The budget is arithmetic over memory and the runtime's footprint — the same function
+            // the machine itself would run, applied to the numbers it sent.
+            s.memoryBudget = MemoryBudget.estimate(memory: s.memory,
+                                                   activeRuntimeRSS: s.aiRuntime.primaryMemoryBytes)
+        }
+        if let rows = processes {
+            s.processes = rows.map {
+                ProcessRow(pid: $0.pid, name: $0.name, cpuPercent: $0.cpuPercent,
+                           memoryBytes: UInt64(max($0.memoryBytes, 0)))
+            }
+        }
+        if let b = battery {
+            s.battery.hasBattery = true
+            s.battery.percent = b.percent
+            s.battery.isCharging = b.isCharging
+            s.battery.isPluggedIn = b.isPluggedIn
+        }
+
         let topo = CPUTopology(
             // ⚠️ No "Apple Silicon" fallback. A remote machine that did not tell us its name is
             // not thereby an Apple Silicon machine — that assumption printed "Apple Silicon" on an

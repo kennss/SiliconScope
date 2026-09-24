@@ -41,15 +41,24 @@ public struct MachineMetrics: Codable, Sendable, Identifiable, Equatable {
     // OPTIONAL, and its absence is what hides the Network & Disk card on a remote page — a card of
     // zeros would read as an idle machine rather than as one that did not say.
     public let io: FleetIO?
+    // The last three things This Mac shows and a remote page did not (#56): which AI runtimes are
+    // running and what they have loaded, the busiest processes, and the battery. Each OPTIONAL and
+    // each independent — an absent block is "not reported", which the viewer must never render as
+    // "none" (no runtime, no processes, no battery).
+    public let aiRuntime: FleetAIRuntime?
+    public let processes: [FleetProcess]?
+    public let battery: FleetBattery?
 
     public init(machineId: String, hostname: String, os: String, kind: String, agentVersion: String,
                 ts: Int64, cpu: FleetCPU, memory: FleetMemory, gpus: [FleetGPU],
                 llm: FleetLLM? = nil, apple: FleetApple? = nil, disks: [FleetDisk]? = nil,
-                thermal: FleetThermal? = nil, io: FleetIO? = nil) {
+                thermal: FleetThermal? = nil, io: FleetIO? = nil, aiRuntime: FleetAIRuntime? = nil,
+                processes: [FleetProcess]? = nil, battery: FleetBattery? = nil) {
         self.machineId = machineId; self.hostname = hostname; self.os = os; self.kind = kind
         self.agentVersion = agentVersion; self.ts = ts; self.cpu = cpu; self.memory = memory
         self.gpus = gpus; self.llm = llm; self.apple = apple; self.disks = disks
-        self.thermal = thermal; self.io = io
+        self.thermal = thermal; self.io = io; self.aiRuntime = aiRuntime
+        self.processes = processes; self.battery = battery
     }
 }
 
@@ -67,6 +76,87 @@ public struct FleetDisk: Codable, Sendable, Equatable {
     public var usedBytes: Int64 { max(0, totalBytes - freeBytes) }
     public var usedFraction: Double {
         totalBytes > 0 ? Double(min(usedBytes, totalBytes)) / Double(totalBytes) : 0
+    }
+}
+
+/// The AI runtimes running on a machine, and what their local API reports having loaded.
+///
+/// Enum-like fields travel as Strings and are parsed tolerantly on arrival, for the reason given on
+/// `FleetThermal.pressure`: a Swift String enum throws on a value it does not know, and one new
+/// runtime kind would otherwise take the whole machine offline in the viewer.
+public struct FleetAIRuntime: Codable, Sendable, Equatable {
+    @DefaultEmpty public var processes: [FleetRuntimeProcess]
+    /// The runtime API's answer, when the machine asked. nil when it did not — the viewer says
+    /// "not reported", never "no model loaded".
+    public let api: FleetRuntimeAPI?
+
+    public init(processes: [FleetRuntimeProcess], api: FleetRuntimeAPI?) {
+        self.processes = processes; self.api = api
+    }
+}
+
+public struct FleetRuntimeProcess: Codable, Sendable, Equatable {
+    public let pid: Int32
+    public let kind: String            // AIRuntimeKind raw value
+    public let cpuPercent: Double
+    public let memoryBytes: Int64
+
+    public init(pid: Int32, kind: String, cpuPercent: Double, memoryBytes: Int64) {
+        self.pid = pid; self.kind = kind; self.cpuPercent = cpuPercent; self.memoryBytes = memoryBytes
+    }
+}
+
+public struct FleetRuntimeAPI: Codable, Sendable, Equatable {
+    public let status: String          // RuntimeAPISample.Status raw value
+    public let source: String?         // RuntimeAPISample.Source raw value
+    @DefaultEmpty public var models: [FleetRuntimeModel]
+    public let tokensPerSec: Double?
+
+    public init(status: String, source: String?, models: [FleetRuntimeModel], tokensPerSec: Double?) {
+        self.status = status; self.source = source; self.models = models; self.tokensPerSec = tokensPerSec
+    }
+}
+
+public struct FleetRuntimeModel: Codable, Sendable, Equatable {
+    public let name: String
+    public let sizeBytes: Int64
+    public let sizeVRAMBytes: Int64
+    public let parameterSize: String?
+    public let quantization: String?
+    public let contextLength: Int?
+
+    public init(name: String, sizeBytes: Int64, sizeVRAMBytes: Int64, parameterSize: String?,
+                quantization: String?, contextLength: Int?) {
+        self.name = name; self.sizeBytes = sizeBytes; self.sizeVRAMBytes = sizeVRAMBytes
+        self.parameterSize = parameterSize; self.quantization = quantization; self.contextLength = contextLength
+    }
+}
+
+/// One process, as the Processes card lists it.
+///
+/// ⚠️ The NAME only — never the executable path or argv. A command line is where people put
+/// tokens and passwords (`--api-key …`), and a fleet payload is read by another machine; the local
+/// card has both because it is this machine's own business.
+public struct FleetProcess: Codable, Sendable, Equatable {
+    public let pid: Int32
+    public let name: String
+    public let cpuPercent: Double
+    public let memoryBytes: Int64
+
+    public init(pid: Int32, name: String, cpuPercent: Double, memoryBytes: Int64) {
+        self.pid = pid; self.name = name; self.cpuPercent = cpuPercent; self.memoryBytes = memoryBytes
+    }
+}
+
+/// Battery state. Sent only by a machine that has one, so its absence reads as "no battery" only
+/// for an agent recent enough to have sent `aiRuntime` too; older agents simply did not say.
+public struct FleetBattery: Codable, Sendable, Equatable {
+    public let percent: Double
+    public let isCharging: Bool
+    public let isPluggedIn: Bool
+
+    public init(percent: Double, isCharging: Bool, isPluggedIn: Bool) {
+        self.percent = percent; self.isCharging = isCharging; self.isPluggedIn = isPluggedIn
     }
 }
 

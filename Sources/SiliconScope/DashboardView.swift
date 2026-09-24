@@ -183,9 +183,10 @@ struct DashboardView: View {
             VStack(spacing: Space.tight) {
                 HeaderView(topology: s.topology, power: snapshot.power, battery: snapshot.battery)
 
-                if mode == .remote {
-                    // Remote Mac: only the hardware cards a Mac agent sends. Same look as local, minus
-                    // process/AI-runtime (no data over the wire). Re-paired into 3 rows.
+                if mode == .remote && !s.remoteReportsEverything {
+                    // Remote Mac on an agent that predates runtime/process reporting: only the cards
+                    // it can fill, re-paired into 3 rows. A current agent reports everything and takes
+                    // the full layout below, read-only (#56).
                     //
                     // The one runtime fact that DOES cross the wire is the decode rate, when a local
                     // runtime there reports one. It gets its own strip rather than a card: this Mac's
@@ -228,6 +229,10 @@ struct DashboardView: View {
                     .frame(minHeight: Layout.Row.sensorsNarrow)
                 } else {
 
+                // A remote machine's decode rate is its agent's last finished prediction — a
+                // different claim from the AI Runtime card's live poll, so it keeps its own strip.
+                if mode == .remote, let r = s.remoteTokenRate { RemoteGenerationStrip(rate: r) }
+
                 // AI cockpit pair, side by side (matches the rest of the 2-column grid and
                 // saves a stacked row of vertical space).
                 HStack(alignment: .top, spacing: Space.row) {
@@ -252,7 +257,8 @@ struct DashboardView: View {
                                   benchmark: s.benchmark,
                                   benchmarkError: s.benchmarkError,
                                   onBenchmark: onBenchmark ?? {},
-                                  allowBenchmark: onBenchmark != nil)
+                                  allowBenchmark: onBenchmark != nil,
+                                  isRemote: mode == .remote)
                 }
                 .frame(minHeight: Layout.Row.aiCockpit)
 
@@ -287,7 +293,8 @@ struct DashboardView: View {
                 HStack(spacing: Space.row) {
                     SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
                                 groupHistory: s.history.sensorGroups)
-                    ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect)
+                    ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect,
+                                note: mode == .remote ? "top processes on that machine" : nil)
                 }
                 // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
                 // needs a bounded height — minHeight lets the whole list expand and balloons the window.
@@ -653,6 +660,9 @@ private struct AIRuntimeCard: View {
     let benchmarkError: String?
     let onBenchmark: () -> Void
     var allowBenchmark = true        // false during replay — no live runtime to benchmark
+    /// The card describes another machine. Its hints are about THIS Mac's settings, so on a remote
+    /// page the one that would send the reader to their own Settings says what is true instead.
+    var isRemote = false
 
     private static let gb = 1_073_741_824.0
 
@@ -792,7 +802,8 @@ private struct AIRuntimeCard: View {
             case .runningNoServer:  runtimeNote("runtime running — start its local server for model + tok/s")
             case .apiNotApplicable: runtimeNote("CLI runtime — no local API")
             case .unreachable:      runtimeNote("runtime API unreachable")
-            case .disabled:         runtimeNote("Enable “Connect to local AI runtimes” in Settings for model + tok/s")
+            case .disabled:         runtimeNote(isRemote ? "loaded model not reported by this machine"
+                                                         : "Enable “Connect to local AI runtimes” in Settings for model + tok/s")
             }
         }
     }
@@ -1270,6 +1281,10 @@ private struct ProcessCard: View {
     let processes: [ProcessRow]
     var allowKill = true            // false during replay — recorded PIDs are stale (would kill live)
     var onInspect: ((ProcessRow) -> Void)? = nil   // tap / "Inspect" → focus this process
+    /// Says what the list is when it is not the whole table — a remote machine sends only its
+    /// busiest and largest processes (#56), and a filter that finds nothing there has not proven the
+    /// process is absent.
+    var note: String? = nil
 
     enum SortKey { case cpu, memory, name }
     @State private var sortKey: SortKey = .cpu
@@ -1306,6 +1321,9 @@ private struct ProcessCard: View {
                             .buttonStyle(.plain).foregroundStyle(Theme.faint)
                     } else if onInspect != nil {
                         Text("tap to inspect")
+                            .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+                    } else if let note {
+                        Text(note)
                             .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                     }
                 }

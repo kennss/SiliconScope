@@ -157,14 +157,53 @@ public extension MachineMetrics {
             ? [FleetDisk(mount: "/", totalBytes: Int64(s.disk.totalBytes), freeBytes: Int64(s.disk.freeBytes))]
             : nil
 
+        // Runtime identity comes from the process scan and is always known; what a runtime has
+        // loaded comes from its API, which is only asked when the source chose to ask. A `.disabled`
+        // sample means nobody asked, and that travels as ABSENT rather than as an empty answer.
+        let api = s.runtimeAPI
+        let aiRuntime = FleetAIRuntime(
+            processes: s.aiRuntime.processes.map {
+                FleetRuntimeProcess(pid: $0.pid, kind: $0.kind.rawValue,
+                                    cpuPercent: $0.cpuPercent, memoryBytes: Int64($0.memoryBytes))
+            },
+            api: api.status == .disabled ? nil : FleetRuntimeAPI(
+                status: api.status.rawValue, source: api.source?.rawValue,
+                models: api.loadedModels.map {
+                    FleetRuntimeModel(name: $0.name, sizeBytes: Int64($0.sizeBytes),
+                                      sizeVRAMBytes: Int64($0.sizeVRAMBytes), parameterSize: $0.parameterSize,
+                                      quantization: $0.quantization, contextLength: $0.contextLength)
+                },
+                tokensPerSec: api.tokensPerSec)
+        )
+        let battery: FleetBattery? = s.battery.hasBattery
+            ? FleetBattery(percent: s.battery.percent, isCharging: s.battery.isCharging,
+                           isPluggedIn: s.battery.isPluggedIn)
+            : nil
+
         return MachineMetrics(
             machineId: machineId, hostname: hostname, os: osName, kind: "mac",
             agentVersion: agentVersion, ts: tsMillis, cpu: cpu, memory: memory,
             // A Mac serving models reports its decode rate the same way the Linux agent does, so
             // the fleet describes both in one vocabulary. nil when no runtime publishes one.
             gpus: gpus, llm: tokenRate.map { FleetLLM(ollama: nil, rate: $0) }, apple: apple,
-            disks: disks, thermal: thermal, io: io
+            disks: disks, thermal: thermal, io: io,
+            aiRuntime: aiRuntime, processes: Self.reportedProcesses(s.processes), battery: battery
         )
+    }
+
+    /// How many processes travel per ranking. The busiest by CPU and the largest by memory are
+    /// sent — the union of both top lists, so either sort on the remote card starts from its real
+    /// leaders — rather than the whole table, which runs to hundreds of rows every second.
+    static let reportedProcessCount = 25
+
+    static func reportedProcesses(_ rows: [ProcessRow]) -> [FleetProcess] {
+        let byCPU = rows.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(reportedProcessCount)
+        let byMemory = rows.sorted { $0.memoryBytes > $1.memoryBytes }.prefix(reportedProcessCount)
+        var seen = Set<Int32>()
+        return (byCPU + byMemory).compactMap { r in
+            guard seen.insert(r.pid).inserted else { return nil }
+            return FleetProcess(pid: r.pid, name: r.name, cpuPercent: r.cpuPercent, memoryBytes: Int64(r.memoryBytes))
+        }
     }
 
     private static func nonEmpty(_ values: [Double]?) -> [Double]? {

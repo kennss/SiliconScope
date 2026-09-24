@@ -12,14 +12,42 @@
 //             Sampling blocks ~interval, and FleetAgentServer's SecPKCS12Import blocks on a secd XPC
 //             round trip, so both run off the main thread. Flags: --version, --print-token,
 //             --pair-url (one-line pairing handoff for the viewer),
-//             --serve :PORT (default 7799).
+//             --serve :PORT (default 7799). A running AI runtime's local API is asked what it has
+//             loaded (localhost only, only while one is observed), so remote pages show the model.
 //
 import Foundation
 import IOKit
 import SiliconScopeCore
 
-private let agentVersion = "1.1.0"
+// 1.2.0: thermal state, DVFS ceilings, disk + network throughput, AI runtimes and loaded model,
+// processes, battery, and the power basis for macOS 27 (#56, #65). A viewer shows a reduced remote
+// page for anything older, so this is the number to look for when a remote page looks thin.
+private let agentVersion = "1.2.0"
 private let defaultPort: UInt16 = 7799
+
+/// What the local AI runtime's API last said, and which runtimes the sample loop last saw — shared
+/// between that loop and the probe task (#56). The same rules as the app's monitor: ask only a
+/// runtime that is running, every `cadence` seconds, and treat an answer older than three cadences
+/// as unreachable rather than as current.
+final class RuntimeAPIState: @unchecked Sendable {
+    static let cadence: TimeInterval = 2.5
+    private let lock = NSLock()
+    private var answer = RuntimeAPISample()
+    private var seen = AIRuntimeSample()
+
+    func publish(_ s: RuntimeAPISample) { lock.lock(); answer = s; lock.unlock() }
+    func observe(_ r: AIRuntimeSample) { lock.lock(); seen = r; lock.unlock() }
+    func runtimes() -> AIRuntimeSample { lock.lock(); defer { lock.unlock() }; return seen }
+
+    func latest() -> RuntimeAPISample {
+        lock.lock(); var s = answer; lock.unlock()
+        if s.status == .ok, let updated = s.lastUpdated,
+           Date().timeIntervalSince(updated) > 3 * Self.cadence {
+            s.status = .unreachable
+        }
+        return s
+    }
+}
 
 /// Thread-safe holder for the latest encoded MachineMetrics JSON (written by the sample loop, read
 /// on the server's connection queue).
@@ -132,12 +160,36 @@ let sampler = SystemSampler()
 let topology = sampler.topology
 let engine = MetricsEngine(topology: topology)
 
+// What the running runtime has loaded, so a remote page shows the model the way This Mac does (#56).
+// Only a runtime the process scan has SEEN is asked, and only over localhost — no runtime, no
+// request. Ports are the runtimes' defaults: the app's per-runtime port settings have no headless
+// equivalent, and a runtime on another port reads as "no server", which is what it is to us.
+let runtimeAPI = RuntimeAPIState()
+Task.detached {
+    let client = RuntimeAPIClient()
+    while true {
+        let seen = runtimeAPI.runtimes()
+        if let kind = seen.primaryKind, kind.servesAPI {
+            runtimeAPI.publish(await client.probe(primaryKind: kind,
+                                                  llamaCppPort: seen.llamaCppPort,
+                                                  mlxDSparkEmbeddedPort: seen.mlxDSparkEmbeddedPort,
+                                                  ollamaPort: 11434, lmStudioPort: 1234,
+                                                  omlxPort: 8000, omlxApiKey: ""))
+        } else {
+            runtimeAPI.publish(RuntimeAPISample())          // nothing asked → nothing reported
+        }
+        try? await Task.sleep(for: .seconds(RuntimeAPIState.cadence))
+    }
+}
+
 // Sampling blocks ~interval; run it on a dedicated background queue.
 let sampleQueue = DispatchQueue(label: "ai.calidalab.sscope-agent.sample")
 sampleQueue.async {
     var lastTick = Date()
     while true {
-        let snap = sampler.sample(interval: 0.2)
+        var snap = sampler.sample(interval: 0.2)
+        runtimeAPI.observe(snap.aiRuntime)
+        snap.runtimeAPI = runtimeAPI.latest()
         let now = Date()
         let dt = now.timeIntervalSince(lastTick)
         lastTick = now
