@@ -4,7 +4,7 @@ interface Props { lang: Lang }
 const { lang } = Astro.props;
 const t = STRINGS[lang];
 const stars = '900+';            // GitHub stargazers (rounded so it stays accurate as it grows)
-const v = 305;                   // asset cache-bust version (Cloudflare serves images immutable for 1y)
+const v = 306;                   // asset cache-bust version (Cloudflare serves images immutable for 1y)
 const alt = lang === 'ko' ? { href: '/', label: 'EN' } : { href: '/ko/', label: '한국어' };
 const self = lang === 'ko' ? 'KO' : 'EN';
 ---
