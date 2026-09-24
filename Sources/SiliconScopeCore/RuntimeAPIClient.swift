@@ -1,17 +1,19 @@
 //
 //  File:      RuntimeAPIClient.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-19
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Opt-in probes of local AI runtime HTTP APIs, keyed by the detected runtime.
 //             Ollama /api/ps gives the authoritative model size + GPU/CPU split (size_vram
 //             / size); llama.cpp /metrics gives real tokens/sec; LM Studio reports the
-//             loaded model id + quant + context; exo/Rapid-MLX/mlx-dspark expose an
+//             loaded model id + quant + context; exo/Rapid-MLX/mlx-dspark/MTPLX/DS4 expose an
 //             OpenAI-compatible /v1/models, while oMLX reports per-model loaded state on
 //             /v1/models/status. All sudoless, localhost-only (LocalHTTP).
 //  Notes:     Every JSON field is optional (version drift tolerant). A non-answer maps to
 //             runningNoServer / apiNotApplicable / unreachable — never a crash. tokens/sec
 //             is left nil unless the runtime actually reports it.
+//             The port is resolved by the caller through `AIRuntimeSample.apiPort(for:configured:)`
+//             — this file only knows what to ask, never where.
 //
 import Foundation
 
@@ -19,31 +21,28 @@ public struct RuntimeAPIClient: Sendable {
     private let http = LocalHTTP()
     public init() {}
 
-    /// Probes the runtime that feature ① identified as primary.
-    public func probe(primaryKind: AIRuntimeKind?, llamaCppPort: Int?, mlxDSparkEmbeddedPort: Int?,
-                      ollamaPort: Int, lmStudioPort: Int, omlxPort: Int, omlxApiKey: String) async -> RuntimeAPISample {
-        switch primaryKind {
-        case .ollama:   return await probeOllama(port: ollamaPort)
-        case .lmStudio: return await probeLMStudio(port: lmStudioPort)
-        // Only the port a llama.cpp process was observed on. The old `?? 8080` fallback is what
-        // made a Homebrew Ollama — whose runner has no /Ollama.app/ or /.ollama/ in its path, so
-        // it classifies as llama.cpp by basename — probe :8080 while its server sat on the port
-        // in its own argv, and knock on whoever really owned :8080 (#52/#53).
-        case .llamaCpp:
-            guard let port = llamaCppPort else { var s = RuntimeAPISample(); s.status = .runningNoServer; return s }
-            return await probeLlamaCpp(port: port)
-        case .rapidMLX: return await probeOpenAI(port: 8000, apiKey: nil, source: .rapidMLX)   // OpenAI-compatible
-        case .exo:      return await probeOpenAI(port: 52415, apiKey: nil, source: .exo)       // OpenAI-compatible cluster
+    /// Probes the runtime that feature ① identified as primary, at `port` — pass
+    /// `AIRuntimeSample.apiPort(for:configured:)`. A nil port means there is nothing to ask: a
+    /// llama.cpp seen without a server (#53), or a runtime with no API of its own.
+    public func probe(kind: AIRuntimeKind?, port: Int?, omlxApiKey: String = "") async -> RuntimeAPISample {
+        guard let kind else { var s = RuntimeAPISample(); s.status = .unreachable; return s }
+        guard let port else { var s = RuntimeAPISample(); s.status = .runningNoServer; return s }
+        switch kind {
+        case .ollama:    return await probeOllama(port: port)
+        case .lmStudio:  return await probeLMStudio(port: port)
+        case .llamaCpp:  return await probeLlamaCpp(port: port)
+        case .rapidMLX:  return await probeOpenAI(port: port, apiKey: nil, source: .rapidMLX)
+        case .exo:       return await probeOpenAI(port: port, apiKey: nil, source: .exo)       // cluster
         // oMLX gets its own probe: its /v1/models is the installed catalog (unloaded models
         // included, in id order), so the generic OpenAI path both over-reports and picks a
         // model by alphabet instead of by what is actually resident.
-        case .omlx:     return await probeOMLX(port: omlxPort, apiKey: omlxApiKey)
-        case .mlxDSpark:                              // OpenAI-compatible; its own argv --port wins
-            return await probeOpenAI(port: mlxDSparkEmbeddedPort ?? 8080, apiKey: nil, source: .mlxDSpark)
-        case .some:                                   // mlx / jan / gpt4all / vllm
+        case .omlx:      return await probeOMLX(port: port, apiKey: omlxApiKey)
+        case .mlxDSpark: return await probeOpenAI(port: port, apiKey: nil, source: .mlxDSpark)
+        // Both serve one model per process, so /v1/models lists exactly what is resident.
+        case .mtplx:     return await probeOpenAI(port: port, apiKey: nil, source: .mtplx)
+        case .ds4:       return await probeOpenAI(port: port, apiKey: nil, source: .ds4)
+        case .mlx, .jan, .gpt4all, .vllm, .spectalo, .spectaling, .other:
             var s = RuntimeAPISample(); s.status = .runningNoServer; return s
-        case .none:
-            var s = RuntimeAPISample(); s.status = .unreachable; return s
         }
     }
 

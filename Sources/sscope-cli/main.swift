@@ -102,9 +102,7 @@ if let kind = ai.primaryKind {
 // Opt-in runtime API probe (one shot). Run: sscope-cli --ai
 if CommandLine.arguments.contains("--ai") {
     let result = await RuntimeAPIClient().probe(
-        primaryKind: ai.primaryKind, llamaCppPort: ai.llamaCppPort,
-        mlxDSparkEmbeddedPort: ai.mlxDSparkEmbeddedPort,
-        ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
+        kind: ai.primaryKind, port: ai.primaryKind.flatMap { ai.apiPort(for: $0) })
     let src = result.source.map { " · \($0.rawValue)" } ?? ""
     print("\nruntime API: \(result.status.rawValue)\(src)")
     for m in result.loadedModels {
@@ -122,12 +120,9 @@ if CommandLine.arguments.contains("--ai") {
 // On-demand benchmark (one short generation). Run: sscope-cli --bench
 if CommandLine.arguments.contains("--bench") {
     let kind = ai.primaryKind
-    let api = await RuntimeAPIClient().probe(
-        primaryKind: kind, llamaCppPort: ai.llamaCppPort,
-        mlxDSparkEmbeddedPort: ai.mlxDSparkEmbeddedPort,
-        ollamaPort: 11434, lmStudioPort: 1234, omlxPort: 8000, omlxApiKey: "")
-    if let kind, let model = api.loadedModels.first?.name {
-        let port = switch kind { case .lmStudio: 1234; case .rapidMLX: 8000; case .exo: 52415; case .omlx: 8000; case .mlxDSpark: ai.mlxDSparkEmbeddedPort ?? 8080; default: 11434 }
+    let port = kind.flatMap { ai.apiPort(for: $0) }
+    let api = await RuntimeAPIClient().probe(kind: kind, port: port)
+    if let kind, let port, let model = api.loadedModels.first?.name {
         print("\nbenchmark: \(kind.displayName) · \(model) — generating…")
         if let r = await BenchmarkClient().run(kind: kind, port: port, model: model, apiKey: nil) {
             print(String(format: "  decode: %.1f tok/s  (%d tokens)", r.tokensPerSec, r.tokenCount))

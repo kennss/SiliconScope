@@ -274,24 +274,24 @@ final class SiliconScopeMonitor {
 
     private struct ProbeInputs {
         let kind: AIRuntimeKind?
-        let llamaCppPort: Int?
-        let mlxDSparkEmbedded: Int?
-        let ollamaPort: Int
-        let lmStudioPort: Int
-        let omlxPort: Int
+        let port: Int?
         let omlxApiKey: String
+    }
+
+    /// The three runtime ports a user can change in Settings.
+    private static func configuredRuntimePorts() -> RuntimePorts {
+        RuntimePorts(ollama: port(forKey: "aiRuntimeOllamaPort", default: 11434),
+                     lmStudio: port(forKey: "aiRuntimeLMStudioPort", default: 1234),
+                     omlx: port(forKey: "aiRuntimeOmlxPort", default: 8000))
     }
 
     /// Captured under a brief main-actor hold, so the poll task doesn't retain the monitor
     /// across the network call (avoids a retain cycle and a frozen monitor).
     private func currentProbeInputs() -> ProbeInputs {
-        ProbeInputs(kind: snapshot.aiRuntime.primaryKind,
-                    llamaCppPort: snapshot.aiRuntime.llamaCppPort,
-                    mlxDSparkEmbedded: snapshot.aiRuntime.mlxDSparkEmbeddedPort,
-                    ollamaPort: Self.port(forKey: "aiRuntimeOllamaPort", default: 11434),
-                    lmStudioPort: Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234),
-                    omlxPort: Self.port(forKey: "aiRuntimeOmlxPort", default: 8000),
-                    omlxApiKey: UserDefaults.standard.string(forKey: "aiRuntimeOmlxApiKey") ?? "")
+        let ai = snapshot.aiRuntime
+        return ProbeInputs(kind: ai.primaryKind,
+                           port: ai.primaryKind.flatMap { ai.apiPort(for: $0, configured: Self.configuredRuntimePorts()) },
+                           omlxApiKey: UserDefaults.standard.string(forKey: "aiRuntimeOmlxApiKey") ?? "")
     }
 
     private func startAPIPollingIfNeeded() {
@@ -300,12 +300,7 @@ final class SiliconScopeMonitor {
         apiPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let inputs = self?.currentProbeInputs() else { return }
-                let result = await client.probe(primaryKind: inputs.kind,
-                                                llamaCppPort: inputs.llamaCppPort,
-                                                mlxDSparkEmbeddedPort: inputs.mlxDSparkEmbedded,
-                                                ollamaPort: inputs.ollamaPort,
-                                                lmStudioPort: inputs.lmStudioPort,
-                                                omlxPort: inputs.omlxPort,
+                let result = await client.probe(kind: inputs.kind, port: inputs.port,
                                                 omlxApiKey: inputs.omlxApiKey)
                 self?.runtimeAPI = result
                 try? await Task.sleep(for: .seconds(Self.apiCadenceSeconds))
@@ -338,7 +333,10 @@ final class SiliconScopeMonitor {
         guard let model = snapshot.runtimeAPI.primaryModel?.name, !model.isEmpty else {
             benchmarkError = "Enable “Connect to local AI runtimes” and load a model first"; return
         }
-        let port = benchmarkPort(for: kind)
+        // The same port the model probe just answered on — one resolver for both (#52/#53).
+        guard let port = snapshot.aiRuntime.apiPort(for: kind, configured: Self.configuredRuntimePorts()) else {
+            benchmarkError = "\(kind.displayName) has no local API to benchmark"; return
+        }
         let chip = topology?.chipName ?? "Apple Silicon"
         isBenchmarking = true
         benchmarkError = nil
@@ -391,21 +389,6 @@ final class SiliconScopeMonitor {
         guard let kind = snapshot.aiRuntime.primaryKind,
               let model = snapshot.runtimeAPI.primaryModel?.name else { return nil }
         return benchmarks.first { $0.runtime == kind.displayName && $0.model == model }
-    }
-
-    private func benchmarkPort(for kind: AIRuntimeKind) -> Int {
-        switch kind {
-        case .lmStudio: return Self.port(forKey: "aiRuntimeLMStudioPort", default: 1234)
-        case .rapidMLX: return 8000
-        case .exo:      return 52415
-        case .omlx:     return Self.port(forKey: "aiRuntimeOmlxPort", default: 8000)
-        // Same rule as the API probe: the port a llama.cpp process was observed on, never a
-        // conventional one. `?? 8080` here read an *Ollama*-kind port for a *llama.cpp* runtime,
-        // so it was nil whenever it mattered and the benchmark went to :8080 (#52/#53).
-        case .llamaCpp: return snapshot.aiRuntime.llamaCppPort ?? 8080
-        case .mlxDSpark: return snapshot.aiRuntime.mlxDSparkEmbeddedPort ?? 8080
-        default:        return Self.port(forKey: "aiRuntimeOllamaPort", default: 11434)
-        }
     }
 
     private static func loadBenchmarks() -> [BenchmarkRecord] {

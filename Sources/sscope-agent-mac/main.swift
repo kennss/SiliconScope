@@ -170,11 +170,7 @@ Task.detached {
     while true {
         let seen = runtimeAPI.runtimes()
         if let kind = seen.primaryKind, kind.servesAPI {
-            runtimeAPI.publish(await client.probe(primaryKind: kind,
-                                                  llamaCppPort: seen.llamaCppPort,
-                                                  mlxDSparkEmbeddedPort: seen.mlxDSparkEmbeddedPort,
-                                                  ollamaPort: 11434, lmStudioPort: 1234,
-                                                  omlxPort: 8000, omlxApiKey: ""))
+            runtimeAPI.publish(await client.probe(kind: kind, port: seen.apiPort(for: kind)))
         } else {
             runtimeAPI.publish(RuntimeAPISample())          // nothing asked → nothing reported
         }

@@ -1,7 +1,7 @@
 //
 //  File:      ProcessSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Builds the process table sudolessly via libproc. Stateful: each
 //             sample() diffs cumulative CPU time against the previous call to derive
@@ -39,7 +39,9 @@ public final class ProcessSampler {
     /// Path basenames worth reading argv for (AI-runtime candidates only). Keeps the
     /// gated KERN_PROCARGS2 read off the hot path for the ~1k unrelated processes.
     private static let argvCandidateBasenames: Set<String> = [
-        "llama-server", "llama-cli", "python", "python3", "lms", "ollama"
+        "llama-server", "llama-cli", "python", "python3", "lms", "ollama",
+        "ds4-server",   // its `--port N` is where the API answers
+        "mtplx",        // a launcher run directly: `serve`/`start` is what makes it a server
     ]
 
     public init() {}

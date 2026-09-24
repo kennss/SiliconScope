@@ -4,7 +4,7 @@
 //  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
-//             MLX, Rapid-MLX, mlx-dspark, Jan, GPT4All, vLLM, exo). Pure logic — no
+//             MLX, Rapid-MLX, mlx-dspark, MTPLX, DS4, Jan, GPT4All, vLLM, exo). Pure logic — no
 //             syscalls; consumes the path/args that ProcessSampler already resolved.
 //  Notes:     proc_name truncates to 15 chars, so the executable PATH is the primary
 //             signal and BUNDLE identity overrides basename — the Ollama runner is a
@@ -16,6 +16,13 @@ import Foundation
 
 public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
     case ollama, llamaCpp, lmStudio, mlx, rapidMLX, mlxDSpark, jan, gpt4all, vllm, exo, omlx
+    /// MTPLX (youssofal/MTPLX): MLX-native, runs a model's own MTP heads as its speculative drafter.
+    /// `mtplx serve` / `mtplx start`, or the MTPLX.app — OpenAI-compatible on 127.0.0.1:8000.
+    case mtplx
+    /// DS4 / DwarfStar (antirez/ds4): a C engine specialised for DeepSeek V4 Flash and kin.
+    /// `ds4-server` is OpenAI-compatible on 127.0.0.1:8000 (`--port N`, ds4_server.c); the other
+    /// binaries (`ds4`, `ds4-agent`, `ds4-bench`, `ds4-eval`) load a model but serve nothing.
+    case ds4
     /// On-device AI **apps** rather than model servers: they run Core ML / WhisperKit inference on
     /// the ANE and never open a port. Detected because the question this card answers is "what is
     /// driving the silicon", and an ASR app driving the Neural Engine is exactly that — indeed the
@@ -39,6 +46,8 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         case .vllm:     return "vLLM"
         case .exo:      return "exo"
         case .omlx:     return "oMLX"
+        case .mtplx:    return "MTPLX"
+        case .ds4:      return "DS4"
         case .spectalo:   return "Spectalo"
         case .spectaling: return "SpectaLing"
         case .other:      return "AI runtime"
@@ -69,6 +78,9 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
     /// Classifies a process. Bundle/path identity wins over basename (basenames collide —
     /// e.g. Ollama's `llama-server` runner child). `args` is optional (populated only for
     /// AI-candidate basenames). Returns nil for non-AI processes and empty/denied paths.
+    /// DS4's executables (antirez/ds4 Makefile targets). Only `ds4-server` opens a port.
+    static let ds4Binaries: Set<String> = ["ds4", "ds4-server", "ds4-agent", "ds4-bench", "ds4-eval"]
+
     public static func match(path: String, name: String, args: String?) -> AIRuntimeKind? {
         let p = path
         let a = args ?? ""
@@ -90,6 +102,7 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if p.contains("/Jan.app/") { return .jan }
         if p.contains("/GPT4All.app/") { return .gpt4all }
         if p.contains("/oMLX.app/") || p.contains("/omlx.app/") { return .omlx }
+        if p.contains("/MTPLX.app/") { return .mtplx }
         // Calida Lab's own on-device AI apps. Bundle identity only — their executables are plain
         // names ("Spectalo", "SpectaLing") that a basename rule could collide with, and both ship
         // debug builds from DerivedData whose paths still carry the bundle.
@@ -119,6 +132,17 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         // the same precision as `lms` / `omlx`, so it cannot false-positive the way a bare
         // substring would, and it gives a Homebrew install parity with the bundle rule above.
         if base == "ollama" { return .ollama }
+        // MTPLX runs as Python: the `mtplx` console script (pip or Homebrew) or `python -m mtplx`,
+        // so the interpreter is the executable and the signal is in argv. Bounded on both sides like
+        // mlx-dspark's, so an `mtplx` checkout folder or a `--cache-dir …/mtplx-models` path in some
+        // unrelated process's argv cannot match. Checked before the generic MLX arm: MTPLX is built on
+        // MLX, and it is its own runtime with its own server.
+        if base == "mtplx"
+            || a.contains("/bin/mtplx ") || a.hasSuffix("/bin/mtplx")
+            || a.contains("-m mtplx ") || a.hasSuffix("-m mtplx") { return .mtplx }
+        // DS4 ships native binaries with exact names. Exact basenames only — "ds4" alone is short,
+        // and a substring would catch "ds4drv" (a DualShock 4 driver) and anything else so named.
+        if Self.ds4Binaries.contains(base) { return .ds4 }
         if ["llama-server", "llama-cli", "llama-bench"].contains(base) { return .llamaCpp }
         if a.contains("mlx_lm.server") || a.contains("mlx_lm.generate") || a.contains("mlx_lm") { return .mlx }
         if base == "lms" || p.contains("LM Studio") || a.contains("LM Studio") { return .lmStudio }
@@ -140,6 +164,39 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         if base == "omlx" || base == "oMLX" || base == "omlx-server" || base == "oMLX-server" { return .omlx }
 
         return nil
+    }
+
+    /// The port a runtime process serves its API on, or nil when it serves nothing.
+    ///
+    /// For most runtimes this is just the argv `--port`. MTPLX and DS4 are different: each has one
+    /// server entry point beside CLIs that load the same model and open no port at all (`ds4`,
+    /// `ds4-agent`, `mtplx chat` …). Their default port is 8000 — oMLX's and Rapid-MLX's too — so
+    /// "DS4 is running, ask :8000" would, with only the CLI up, knock on whichever other server owns
+    /// 8000 and report ITS model as DS4's. That is #53 again. So the default applies only to a
+    /// process SEEN to be the server; anything else gets its explicit `--port` or nothing.
+    public static func servingPort(kind: AIRuntimeKind, path: String, args: String?) -> Int? {
+        let explicit = embeddedPort(args: args)
+        switch kind {
+        case .ds4:
+            // ds4_server.c: `.port = 8000`. The other binaries take no --port.
+            return (path as NSString).lastPathComponent == "ds4-server" ? (explicit ?? 8000) : nil
+        case .mtplx:
+            return isMTPLXServer(args: args) ? (explicit ?? 8000) : nil
+        default:
+            return explicit
+        }
+    }
+
+    /// `mtplx serve` / `mtplx start`, however launched: the console script (`…/bin/mtplx serve`)
+    /// or the module (`python -m mtplx serve`). The subcommand must directly follow the `mtplx`
+    /// token, so a `serve` elsewhere in an unrelated argv does not count.
+    static func isMTPLXServer(args: String?) -> Bool {
+        guard let args else { return false }
+        let t = args.split(separator: " ").map(String.init)
+        for i in t.indices.dropLast() where t[i] == "mtplx" || t[i].hasSuffix("/bin/mtplx") {
+            if t[i + 1] == "serve" || t[i + 1] == "start" { return true }
+        }
+        return false
     }
 
     /// Parses an embedded HTTP port from argv (e.g. the Ollama runner's `--port N` /

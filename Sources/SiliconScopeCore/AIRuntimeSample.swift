@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-13
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-snapshot result of AI-runtime detection: the matched processes plus
 //             grouped roll-ups (RAM / CPU% per kind, primary kind, embedded port).
@@ -73,11 +73,38 @@ public struct AIRuntimeSample: Sendable, Equatable, Codable {
         processes.first { $0.kind == .ollama && $0.embeddedPort != nil }?.embeddedPort
     }
 
-    /// mlx-dspark's console script runs under a python interpreter, so ProcessSampler's argv
-    /// gate admits it and a non-default `--port N` surfaces here for the canonical installs
-    /// (uv tool / pipx / venv) — no settings field needed. nil falls back to the default :8080.
-    public var mlxDSparkEmbeddedPort: Int? {
-        processes.first { $0.kind == .mlxDSpark && $0.embeddedPort != nil }?.embeddedPort
+    /// The `--port` a running process of `kind` was started with, if any was seen in its argv.
+    public func observedPort(of kind: AIRuntimeKind) -> Int? {
+        processes.first { $0.kind == kind && $0.embeddedPort != nil }?.embeddedPort
+    }
+
+    /// Where `kind`'s local API answers — the one answer to that question, shared by the model
+    /// probe and the benchmark (and the CLI).
+    ///
+    /// ⚠️ This used to be three switch statements in three files. They drifted: the benchmark
+    /// once read an Ollama-kind port for a llama.cpp runtime and knocked on :8080 while the probe
+    /// asked the right port (#52/#53). Every runtime added since would have needed three edits
+    /// that had to agree.
+    ///
+    /// Order of trust: what the process was SEEN serving on (its argv `--port`), then the user's
+    /// setting for the three runtimes that have one, then the runtime's documented default.
+    /// llama.cpp is the exception: with no observed server there is nothing to ask, and nil says so
+    /// — a conventional port is exactly the neighbourhood polling #53 removed.
+    public func apiPort(for kind: AIRuntimeKind, configured: RuntimePorts = RuntimePorts()) -> Int? {
+        switch kind {
+        case .ollama:    return configured.ollama
+        case .lmStudio:  return configured.lmStudio
+        case .omlx:      return configured.omlx
+        case .llamaCpp:  return llamaCppPort
+        case .rapidMLX:  return 8000
+        case .exo:       return 52415
+        case .mlxDSpark: return observedPort(of: .mlxDSpark) ?? 8080   // `mlx-dspark serve` default
+        // Only a process seen to be the server has a port (`AIRuntimeKind.servingPort`): their
+        // CLIs serve nothing, and 8000 is shared with oMLX and Rapid-MLX.
+        case .mtplx:     return observedPort(of: .mtplx)
+        case .ds4:       return observedPort(of: .ds4)
+        case .mlx, .jan, .gpt4all, .vllm, .spectalo, .spectaling, .other: return nil
+        }
     }
 
     /// Where a llama.cpp server that is ACTUALLY RUNNING listens: its own `--port` when it was
@@ -101,3 +128,15 @@ public struct AIRuntimeSample: Sendable, Equatable, Codable {
         return servers.first { $0.embeddedPort != nil }?.embeddedPort ?? 8080
     }
 }
+
+/// The API ports a user can change in Settings. Everything else is observed or documented.
+public struct RuntimePorts: Sendable, Equatable {
+    public var ollama: Int
+    public var lmStudio: Int
+    public var omlx: Int
+
+    public init(ollama: Int = 11434, lmStudio: Int = 1234, omlx: Int = 8000) {
+        self.ollama = ollama; self.lmStudio = lmStudio; self.omlx = omlx
+    }
+}
+

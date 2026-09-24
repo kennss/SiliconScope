@@ -669,6 +669,8 @@ extension AIRuntimeKind {
         case .mlx:      return "cpu.fill"
         case .rapidMLX: return "hare.fill"
         case .mlxDSpark: return "sparkles"   // speculative decoding — the drafter's "spark"
+        case .mtplx:    return "forward.fill"   // several tokens drafted ahead by the model's own MTP heads
+        case .ds4:      return "fish.fill"      // DeepSeek's whale — DS4 is built around its models
         case .exo:      return "point.3.connected.trianglepath.dotted"   // distributed cluster
         // On-device apps, not servers: a waveform reads as "audio in, text out", which is what
         // both of these do on the Neural Engine.

@@ -1,7 +1,7 @@
 //
 //  File:      RuntimeAPISample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-08-16
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Result of an OPT-IN poll of a local AI runtime's HTTP API (Ollama,
 //             llama.cpp server, LM Studio, exo). Carries the loaded model(s), the authoritative
@@ -46,7 +46,7 @@ public struct RuntimeModelInfo: Sendable, Equatable, Identifiable, Codable {
 }
 
 public struct RuntimeAPISample: Sendable, Equatable, Codable {
-    public enum Source: String, Sendable, Equatable, Codable { case ollama, llamaCpp, lmStudio, rapidMLX, mlxDSpark, exo, omlx }
+    public enum Source: String, Sendable, Equatable, Codable { case ollama, llamaCpp, lmStudio, rapidMLX, mlxDSpark, exo, omlx, mtplx, ds4 }
     public enum Status: String, Sendable, Equatable, Codable {
         case disabled            // feature off
         case unreachable         // no runtime / port closed / decode failure / stale (C4)
@@ -62,6 +62,21 @@ public struct RuntimeAPISample: Sendable, Equatable, Codable {
     public var lastUpdated: Date?
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey { case status, source, loadedModels, tokensPerSec, lastUpdated }
+
+    /// Tolerant decoding. Recordings carry this sample inside every frame's snapshot, and both
+    /// enums grow whenever a runtime is added — a synthesized decoder throws on a value it does not
+    /// know, and one unknown `source` would make a whole recording unreadable. An unknown source
+    /// reads as unattributed; an unknown status as unreachable.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = (try? c.decodeIfPresent(String.self, forKey: .status)).flatMap { $0.flatMap(Status.init(rawValue:)) } ?? .unreachable
+        source = (try? c.decodeIfPresent(String.self, forKey: .source)).flatMap { $0.flatMap(Source.init(rawValue:)) }
+        loadedModels = try c.decodeIfPresent([RuntimeModelInfo].self, forKey: .loadedModels) ?? []
+        tokensPerSec = try c.decodeIfPresent(Double.self, forKey: .tokensPerSec)
+        lastUpdated = try c.decodeIfPresent(Date.self, forKey: .lastUpdated)
+    }
 
     public var isReachable: Bool { status == .ok }
     public var primaryModel: RuntimeModelInfo? { loadedModels.first }

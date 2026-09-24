@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSampler.swift
 //  Created:   2026-06-14
-//  Updated:   2026-07-15
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Turns the already-built process table into an AIRuntimeSample. Caches the
 //             per-pid match verdict (a process's path/args are immutable for its lifetime),
@@ -39,7 +39,7 @@ public final class AIRuntimeSampler {
                 let kind = AIRuntimeKind.match(path: row.path, name: row.name, args: row.args)
                 verdict = Verdict(path: row.path,
                                   kind: kind,
-                                  embeddedPort: kind != nil ? AIRuntimeKind.embeddedPort(args: row.args) : nil)
+                                  embeddedPort: kind.flatMap { AIRuntimeKind.servingPort(kind: $0, path: row.path, args: row.args) })
                 verdicts[row.pid] = verdict
             }
             guard let kind = verdict.kind else { continue }
