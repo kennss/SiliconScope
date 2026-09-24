@@ -1,7 +1,7 @@
 //
 //  File:      SMCDecodeTests.swift
 //  Created:   2026-08-08
-//  Updated:   2026-08-08
+//  Updated:   2026-09-24
 //  Developer: Yurii Chukhlib
 //  Overview:  Unit tests for SMCReader.decode(type:bytes:) — the pure scalar decode extracted
 //             from the hardware-coupled reader. Pins the fpe2 fixed-point value at FULL precision
@@ -85,5 +85,30 @@ final class SMCDecodeTests: XCTestCase {
     /// An unknown type falls through to nil (the default arm), never a crash.
     func testUnknownTypeReturnsNil() {
         XCTAssertNil(SMCReader.decode(type: "ch8*", bytes: [0x41, 0x42]))
+    }
+
+    // MARK: - ioft (#57)
+
+    /// Bytes read from an M1 Max, checked against independent readers at the same moment.
+    private func ioft(_ b: [UInt8]) -> Double? {
+        SMCReader.decode(type: "ioft", bytes: b + Array(repeating: 0, count: 32 - b.count))
+    }
+
+    func testIoftMatchesTheBatteryReadingOfAnotherKey() {
+        XCTAssertEqual(ioft([0x33, 0x33, 0x22, 0x00])!, 34.2, accuracy: 0.001)   // TG0B vs TB0T 34.2
+    }
+
+    func testIoftMatchesHIDsCalibrationPoint() {
+        XCTAssertEqual(ioft([0x9a, 0xd9, 0x33, 0x00])!, 51.85, accuracy: 0.01)   // TR0Z vs tcal 51.9
+    }
+
+    /// Little-endian: the same bytes read big-endian would be a nonsense number, not a temperature.
+    func testIoftIsLittleEndian() {
+        XCTAssertEqual(ioft([0x00, 0x00, 0x22, 0x00])!, 34.0, accuracy: 1e-9)
+    }
+
+    func testIoftZeroAndShortInput() {
+        XCTAssertEqual(ioft([]), 0)
+        XCTAssertNil(SMCReader.decode(type: "ioft", bytes: [0x33, 0x33]))
     }
 }

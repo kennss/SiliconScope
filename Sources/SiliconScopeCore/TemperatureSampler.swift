@@ -1,7 +1,7 @@
 //
 //  File:      TemperatureSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads categorized temperatures sudolessly. Prefers the rich Apple Silicon
 //             HID sensor set (IOHIDEventSystem, via HIDSensorReader) — the source iStat
@@ -30,6 +30,40 @@ public final class TemperatureSampler {
             }
         }
         self.keysByCategory = map.mapValues { $0.sorted() }
+        self.batteryKeys = Self.batteryCellKeys(map[.battery] ?? [])
+    }
+
+    /// The battery's SMC temperature keys ("TB0T", "TB1T", "TB2T" — one per cell pack), as found
+    /// on THIS Mac by the scan above. Empty on a desktop, which has no battery.
+    private let batteryKeys: [String]
+
+    /// Keeps the per-pack keys and drops anything else that happens to start with "TB".
+    static func batteryCellKeys(_ keys: [String]) -> [String] {
+        keys.filter { $0.range(of: #"^TB[0-9]T$"#, options: .regularExpression) != nil }.sorted()
+    }
+
+    /// Adds the battery group when the sample has none.
+    ///
+    /// ⚠️ The curated per-generation tables (M1–M5) carry no battery keys, so on every Mac read
+    /// through them the battery temperature was 0 — a MacBook's Sensors card had no Battery row and
+    /// the diagnostic printed "batt 0 °C" while the SMC's TB0T–TB2T and HID's gas gauge both read
+    /// ~34 °C on an M1 Max (#57 reported it on an M2 Max). Read from the keys the scan FOUND, not
+    /// added to the tables: a table entry a desktop cannot read counts as "missing" there and would
+    /// send every tick to the 68 ms HID fallback, undoing #28 for a sensor the machine does not have.
+    static func addingBattery(to sample: TemperatureSample, keys: [String],
+                              read: (String) -> Double?) -> TemperatureSample {
+        guard !keys.isEmpty, !sample.groups.contains(where: { $0.category == .battery }) else { return sample }
+        let floor = SensorCategory.battery.plausibleFloorCelsius
+        let sensors = keys.enumerated().compactMap { i, key -> TempSensor? in
+            guard let c = read(key), c > floor, c < 130 else { return nil }
+            return TempSensor(rawName: key, name: keys.count > 1 ? "Battery \(i + 1)" : "Battery", celsius: c)
+        }
+        guard !sensors.isEmpty else { return sample }
+        var result = sample
+        let group = SensorGroup(category: .battery, sensors: sensors)
+        result.groups.append(group)
+        result.batteryCelsius = group.average
+        return result
     }
 
     public func sample() -> TemperatureSample {
@@ -45,11 +79,12 @@ public final class TemperatureSampler {
                 // M1) skip the HID read entirely, so there's no added cost or behavior change.
                 let defined = Set(SensorCatalog.curated(for: gen).map(\.category))
                 let missing = defined.subtracting(curated.groups.map(\.category))
+                var result = curated
                 if !missing.isEmpty {
                     let hid = HIDSensorReader.read().filter { $0.celsius > 5 && $0.celsius < 130 }
-                    if !hid.isEmpty { return Self.supplement(curated, withHID: hid, categories: missing) }
+                    if !hid.isEmpty { result = Self.supplement(curated, withHID: hid, categories: missing) }
                 }
-                return curated
+                return Self.addingBattery(to: result, keys: batteryKeys) { smc.readDouble($0) }
             }
         }
 
@@ -141,7 +176,7 @@ public final class TemperatureSampler {
     /// Full dump of EVERY SMC key (not just temperatures) — power/current/voltage included — for
     /// discovering a chip's SMC power layout (e.g. system power `PSTR` on the A18). Surfaced by
     /// `sscope-cli --smc-all`.
-    public func allSMCKeysFull() -> [(key: String, type: String, value: Double?)] {
+    public func allSMCKeysFull() -> [(key: String, type: String, value: Double?, raw: [UInt8])] {
         smc?.allKeys() ?? []
     }
 

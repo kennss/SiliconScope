@@ -1,7 +1,7 @@
 //
 //  File:      SensorFloorTests.swift
 //  Created:   2026-09-14
-//  Updated:   2026-09-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Locks in the per-category plausibility floor that keeps a non-temperature from being
 //             published as a die temperature (#57).
@@ -95,3 +95,40 @@ final class HIDSubstitutionTests: XCTestCase {
         XCTAssertEqual(out.groups.first { $0.category == .cpu }?.sensors.count, 2)
     }
 }
+
+/// The battery temperature on Macs read through the curated per-generation tables (#57).
+final class BatteryTemperatureTests: XCTestCase {
+
+    /// ⚠️ The tables for M1–M5 carry no battery key, so every such MacBook reported 0 °C. The
+    /// keys the scan FOUND are read instead.
+    func testTheScannedBatteryKeysFillAMissingBatteryGroup() {
+        let values = ["TB0T": 34.2, "TB1T": 34.0, "TB2T": 34.2]
+        let out = TemperatureSampler.addingBattery(to: TemperatureSample(), keys: ["TB0T", "TB1T", "TB2T"]) { values[$0] }
+        XCTAssertEqual(out.batteryCelsius, (34.2 + 34.0 + 34.2) / 3, accuracy: 1e-9)
+        XCTAssertEqual(out.groups.first { $0.category == .battery }?.sensors.count, 3)
+    }
+
+    /// A desktop has no battery keys, and gets no battery group — nothing is read at all.
+    func testADesktopGetsNoBatteryAndNoReads() {
+        var reads = 0
+        let out = TemperatureSampler.addingBattery(to: TemperatureSample(), keys: []) { _ in reads += 1; return 30 }
+        XCTAssertEqual(reads, 0)
+        XCTAssertFalse(out.hasBattery)
+    }
+
+    /// Only the per-pack keys count; anything else starting with "TB" is not a battery temperature.
+    func testOnlyPerPackKeysAreBatteryKeys() {
+        XCTAssertEqual(TemperatureSampler.batteryCellKeys(["TB0T", "TB1T", "TBXT", "TB2T", "TBAT"]), ["TB0T", "TB1T", "TB2T"])
+    }
+
+    /// A battery group that already exists (the HID path) is left as it is.
+    func testAnExistingBatteryGroupIsNotDuplicated() {
+        var s = TemperatureSample()
+        s.groups = [SensorGroup(category: .battery, sensors: [TempSensor(rawName: "gas gauge battery", name: "Battery", celsius: 31)])]
+        s.batteryCelsius = 31
+        let out = TemperatureSampler.addingBattery(to: s, keys: ["TB0T"]) { _ in 40 }
+        XCTAssertEqual(out.groups.filter { $0.category == .battery }.count, 1)
+        XCTAssertEqual(out.batteryCelsius, 31)
+    }
+}
+

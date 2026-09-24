@@ -272,12 +272,18 @@ if CommandLine.arguments.contains("--smc-all") {
     print("\n=== SMC power / current / voltage keys (P* / I* / V*) — \(piv.count) ===")
     print("  Looking for: system power PSTR, adapter PDTR, battery power, and any CPU/GPU power rails.")
     for e in piv {
-        let v = e.value.map { String(format: "%.3f", $0) } ?? "—"
+        // Undecoded types print their raw bytes, so a key in a format we do not read yet (ioft, #57)
+        // arrives as data someone can decode rather than as a dash.
+        let v = e.value.map { String(format: "%.3f", $0) }
+            ?? ("— raw " + e.raw.map { String(format: "%02x", $0) }.joined(separator: " "))
         print(String(format: "  %-5@ [%-4@] %@", e.key as NSString, e.type as NSString, v as NSString))
     }
     print("\n=== all SMC keys (\(all.count)) ===")
     for e in all {
-        let v = e.value.map { String(format: "%.3f", $0) } ?? "—"
+        // Undecoded types print their raw bytes, so a key in a format we do not read yet (ioft, #57)
+        // arrives as data someone can decode rather than as a dash.
+        let v = e.value.map { String(format: "%.3f", $0) }
+            ?? ("— raw " + e.raw.map { String(format: "%02x", $0) }.joined(separator: " "))
         print(String(format: "  %-5@ [%-4@] %@", e.key as NSString, e.type as NSString, v as NSString))
     }
     print("\nMac model: run `sysctl hw.model machdep.cpu.brand_string` and include it.")

@@ -1,7 +1,7 @@
 //
 //  File:      SMCReader.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-08
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Minimal read-only Apple SMC client (sudoless) for fan speed and other
 //             scalar keys. Opens the AppleSMC IOService and reads keys via the fixed
@@ -83,6 +83,15 @@ final class SMCReader {
             guard bytes.count >= 2 else { return nil }
             let raw = (UInt16(bytes[0]) << 8) | UInt16(bytes[1])
             return Double(raw) / 4.0
+        case "ioft":
+            // 64-bit LITTLE-endian fixed point with 16 fractional bits: value = Int64 / 65536.
+            // Decoded from raw bytes on an M1 Max and checked against two independent readers at
+            // the same moment — TG0B `33 33 22 00 …` = 34.20 against the battery's flt TB0T 34.2,
+            // TR0Z `9a d9 33 00 …` = 51.85 against HID's tcal 51.9. Before this the type read as
+            // nothing, which #57's dumps showed as nine unexplained dashes.
+            guard bytes.count >= 8 else { return nil }
+            let raw = bytes[0..<8].enumerated().reduce(UInt64(0)) { $0 | UInt64($1.element) << (8 * UInt64($1.offset)) }
+            return Double(Int64(bitPattern: raw)) / 65536.0
         default: return nil
         }
     }
@@ -132,9 +141,11 @@ final class SMCReader {
     /// (nil if the type isn't a scalar we decode). The SMC analog of the IOReport --power-debug
     /// dump — for discovering power/current/voltage keys (P*/I*/V*) on chips we don't map yet
     /// (e.g. whether the A18 exposes system power `PSTR` or CPU/GPU power rails via SMC).
-    func allKeys() -> [(key: String, type: String, value: Double?)] {
+    /// Every key with its type, decoded value, and raw bytes. The bytes are what makes an
+    /// undecoded type (`ioft`, #57) diagnosable from someone else's machine instead of a bare "—".
+    func allKeys() -> [(key: String, type: String, value: Double?, raw: [UInt8])] {
         guard let count = readDouble("#KEY"), count > 0 else { return [] }
-        var out: [(String, String, Double?)] = []
+        var out: [(String, String, Double?, [UInt8])] = []
         for index in 0..<Int(count) {
             var input = SMCKeyData()
             input.data8 = cmdReadIndex
@@ -142,8 +153,8 @@ final class SMCReader {
             var output = SMCKeyData()
             guard call(&input, &output) else { continue }
             let key = string(from: output.key)
-            guard let (type, _) = readKey(key) else { continue }
-            out.append((key, type.trimmingCharacters(in: .whitespaces), readDouble(key)))
+            guard let (type, bytes) = readKey(key) else { continue }
+            out.append((key, type.trimmingCharacters(in: .whitespaces), Self.decode(type: type, bytes: bytes), bytes))
         }
         return out.sorted { $0.0 < $1.0 }
     }
