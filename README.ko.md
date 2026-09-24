@@ -106,6 +106,12 @@ Mac 에이전트는 **sudo가 필요 없어서** `ssh`로 돌려도 멈추지 �
 통합 메모리 대역폭과 도메인별 전력은 Apple Silicon만 공개하는 인터페이스에서 나옵니다.
 앱 본체는 계속 Apple Silicon 전용입니다.
 
+**Windows 기계에서는** 에이전트가 CPU와 메모리를 보고하고, NVIDIA 카드는 Linux와 같은 `nvidia-smi`
+경로로 보고합니다 — 사용률·VRAM·온도·전력·프로세스별 VRAM. Windows에는 load average가 없어서
+그 필드는 숫자를 지어내지 않고 비워 둡니다. 드라이브 용량은 아직 수집하지 않습니다. 이 기계는
+Linux GPU 박스와 같은 방식으로 함대에 합류합니다. 아직 한 줄 설치 스크립트는 없습니다:
+`GOOS=windows go build ./agent` 로 에이전트를 빌드해 예약 작업으로 실행하세요.
+
 > **헤드리스 Mac인가요?** 먼저 **시스템 설정 → 일반 → 공유 → 원격 로그인**을 켜세요 — 켜지 않으면
 > 아무것도 설치할 수 없습니다. **LAN 밖**(Tailscale·VPN·클라우드)이라면 mDNS가 닿지 않으므로
 > **Add machine…**에서 주소로 추가하세요. 포트를 공개 인터넷에 노출하기보다 Tailscale이나 SSH

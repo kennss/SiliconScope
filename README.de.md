@@ -116,6 +116,13 @@ Chip-Metriken fehlen, weil die Hardware fehlt: keine Neural Engine, keine Media 
 Unified-Memory-Bandbreite oder Leistung pro Domäne, die aus einer Schnittstelle stammen, die nur
 Apple Silicon veröffentlicht. Die App selbst bleibt Apple Silicon vorbehalten.
 
+**Auf einem Windows-Rechner** meldet der Agent CPU und Speicher sowie eine NVIDIA-Karte über
+denselben `nvidia-smi`-Pfad wie unter Linux — Auslastung, VRAM, Temperatur, Leistung und VRAM pro
+Prozess. Windows hat keinen Load Average, daher bleibt dieses Feld leer statt eine Zahl zu
+erfinden, und die Laufwerkskapazität wird dort noch nicht erfasst. Einen Ein-Zeilen-Installer gibt
+es dafür noch nicht: den Agent mit `GOOS=windows go build ./agent` bauen und als geplante Aufgabe
+ausführen.
+
 > **Mac ohne Bildschirm?** Aktiviere zuerst **Systemeinstellungen → Allgemein → Freigabe →
 > Entfernte Anmeldung** — sonst lässt sich dort nichts installieren. **Außerhalb deines LAN**
 > (Tailscale, VPN, Cloud)? Dorthin kommt mDNS nicht, also per Adresse unter **Add machine…**

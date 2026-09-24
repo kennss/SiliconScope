@@ -109,6 +109,13 @@ chip-level metrics are absent because the hardware is: no Neural Engine, no Medi
 unified-memory bandwidth or per-domain power, which come from an interface only Apple Silicon
 publishes. The app itself remains Apple Silicon only.
 
+**On a Windows machine** the agent reports CPU and memory, and an NVIDIA card through the same
+`nvidia-smi` path Linux uses — utilisation, VRAM, temperature, power and per-process VRAM. Windows
+has no load average, so that field carries nothing rather than an invented number, and drive
+capacity is not collected there yet. The machine joins the fleet the way a Linux GPU box does.
+There is no one-line installer for it yet: build the agent with `GOOS=windows go build ./agent`
+and run it as a scheduled task.
+
 > **Headless Mac?** Enable **System Settings → General → Sharing → Remote Login** first — you can't
 > install anything on it otherwise. **Off your LAN** (Tailscale, VPN, cloud)? mDNS can't reach it, so
 > add it by address in **Add machine…**; prefer Tailscale or an SSH tunnel over exposing the port

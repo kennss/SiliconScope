@@ -103,6 +103,11 @@ Mac 端的 agent **不需要 sudo**，所以透過 `ssh` 執行也能一路跑�
 沒有神經網路引擎、沒有媒體引擎，也沒有統一記憶體頻寬或分域功耗，它們來自只有 Apple Silicon 才公開的介面。
 應用程式本身仍然只支援 Apple Silicon。
 
+**在 Windows 機器上**，agent 會回報 CPU 與記憶體，並透過與 Linux 相同的 `nvidia-smi` 路徑回報 NVIDIA 顯示卡——
+使用率、顯示記憶體、溫度、功耗與每行程顯示記憶體。Windows 沒有 load average，因此該欄位留空而非捏造數字，
+磁碟容量目前也尚未採集。這台機器會像 Linux GPU 機器一樣加入艦隊。目前還沒有一行式安裝指令碼：
+用 `GOOS=windows go build ./agent` 建置 agent，並以排程工作執行。
+
 > **無頭 Mac？** 請先開啟**系統設定 → 一般 → 共享 → 遠端登入**，否則你無法在上面安裝任何東西。
 > **不在同一個區域網路**（Tailscale、VPN、雲端）？mDNS 到不了，請在 **Add machine…** 裡以位址新增；
 > 比起把連接埠曝露到公開網際網路，更建議走 Tailscale 或 SSH 通道。
