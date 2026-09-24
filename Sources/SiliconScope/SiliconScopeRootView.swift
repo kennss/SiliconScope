@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeRootView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-05
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The single-window shell: a NavigationSplitView with a "Devices" sidebar (This Mac +
 //             every discovered fleet agent) and a detail pane that shows the selected device's
@@ -140,6 +140,11 @@ struct SiliconScopeRootView: View {
                 FleetMachineDetailView(fleet: fleet, machineID: id)
             }
         }
+        // The monitor samples on demand, and the biggest term in its demand is whether this
+        // window is on screen (#13). Observed HERE, at the window root, because the panes below
+        // come and go with the sidebar selection — an observer inside one of them stops reporting
+        // the moment another is selected. See WindowVisibilityObserver.
+        .background(WindowVisibilityObserver { visible in monitor.windowVisible = visible })
     }
 }
 

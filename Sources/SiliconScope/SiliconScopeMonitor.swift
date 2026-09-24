@@ -113,10 +113,11 @@ final class SiliconScopeMonitor {
     /// sample, which `SystemSampler` explicitly forbids.
     func wakeSamplingLoop() { tickSleep?.cancel() }
 
-    /// Whether the dashboard window is on screen. Set by the window's own visibility observer
-    /// (DashboardContainer) — the dashboard reads every metric, so this is the single biggest
-    /// term in `currentDemand()`.
-    var dashboardVisible = true
+    /// Whether the main window is on screen, whichever pane it shows. Set by the observer at the
+    /// window root (SiliconScopeRootView) — every pane either reads every metric (This Mac) or
+    /// shows this Mac beside the fleet (the overview's local tile), so a visible window demands
+    /// everything and a hidden one demands only what the menu bar and alerts still read.
+    var windowVisible = true
 
     /// The groups this tick must measure — the union of everything currently reading a snapshot.
     ///
@@ -126,7 +127,7 @@ final class SiliconScopeMonitor {
     private func currentDemand() -> MetricGroup {
         // Whole-snapshot consumers. Recording and share mode both republish the snapshot as a
         // record of the machine, so neither may contain a group we chose not to look at.
-        if dashboardVisible || isRecording || focusedPID != nil { return .all }
+        if windowVisible || isRecording || focusedPID != nil { return .all }
         if MacAgentController.shared.isRunning { return .all }
         if MetricBarController.shared.isShowingDropdown { return .all }
 

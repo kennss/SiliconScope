@@ -22,13 +22,20 @@ import SiliconScopeCore
 /// 1. The dashboard stops re-rendering its live charts when it is not on screen.
 /// 2. The monitor stops SAMPLING what the hidden window was the only consumer of.
 ///
+/// ⚠️ (2) is attached at the WINDOW root (SiliconScopeRootView), not here. The first version
+/// hung it off this dashboard, which the sidebar unmounts whenever Fleet or a remote machine is
+/// selected — and the selection survives the window closing. The monitor's flag then froze at
+/// whatever it last held: closing the window from the Fleet pane kept sampling everything, and a
+/// window hidden on This Mac and reopened on Fleet would have shown the Fleet overview's This Mac
+/// tile values carried forward from before it was hidden. Visibility is a property of the window.
+///
 /// ⚠️ The comment here used to say the data layer was ~0.6% CPU and the chart rendering
 /// "essentially the entire footprint". Re-measured on macOS 27.0 with a release build, that is no
 /// longer true: window open 7.1%, minimised 4.5%, closed 4.2% — the gating works, and what is
 /// left is almost entirely the samplers. Dropping the tick rate confirmed it (1.0 s → 4.2%,
 /// 4.0 s → 1.9%, so ~31 ms of CPU per full tick). Hence (2), which is the half of #13 that the
 /// first pass promised and did not deliver.
-private struct WindowVisibilityObserver: NSViewRepresentable {
+struct WindowVisibilityObserver: NSViewRepresentable {
     let onChange: (Bool) -> Void
     func makeNSView(context: Context) -> NSView { NSView() }
     func updateNSView(_ nsView: NSView, context: Context) {
@@ -89,13 +96,9 @@ struct DashboardContainer: View {
     var body: some View {
         content
             .background(WindowVisibilityObserver { visible in
-                // Capture the last live frame as we go off-screen so the frozen branch has it —
-                // BEFORE telling the monitor, while the snapshot is still fully measured.
+                // Capture the last live frame as we go off-screen so the frozen branch has it.
                 if !visible && dashVisible { frozen = DashboardState(live: monitor) }
                 dashVisible = visible
-                // The dashboard is the only consumer that reads every metric. Off screen, the
-                // monitor narrows what it samples to whatever is still being looked at (#13).
-                monitor.dashboardVisible = visible
             })
             .onReceive(NotificationCenter.default.publisher(for: .openSiliconScopeRecording)) { note in
                 if let url = note.userInfo?["url"] as? URL { open(url) }
