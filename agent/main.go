@@ -1,7 +1,7 @@
 //
 //  File:      main.go
 //  Created:   2026-07-21
-//  Updated:   2026-07-22
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  SiliconScope fleet agent (v0.1, Linux). Samples CPU / memory / NVIDIA GPU /
 //             Ollama and prints ONE MachineMetrics JSON to stdout. This is the source-agnostic
@@ -32,7 +32,7 @@ import (
 	"github.com/grandcat/zeroconf"
 )
 
-const agentVersion = "1.1.0"
+const agentVersion = "1.2.0"
 
 // MachineMetrics is the wire schema (source-agnostic): Linux-NVML and Mac-headless both fill it.
 type MachineMetrics struct {

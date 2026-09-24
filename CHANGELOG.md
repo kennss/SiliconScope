@@ -1,5 +1,76 @@
 # Changelog
 
+## v4.4.0 — 2026-09-24
+
+**macOS 27 changed how Apple Silicon reports energy, and SiliconScope read it as
+0 W.** The per-domain energy counters no longer move on every read. How often they
+do depends on the chip: an M5 Max publishes them in batches about 2 s apart; an M1
+Max only at power-management events — roughly every 30 minutes, and whenever the
+display turns on or off. A fixed one-second delta turned the first into 0 W
+alternating with double values and the second into 0 W almost always.
+
+SiliconScope now works out which of these it is looking at from the counters
+themselves, and says what it knows: live watts where they are live, an average
+over the span it covers — marked "~" — where they are not, and "—" until it has a
+span, never a zero. GPU power is still live on macOS 27 (`GPU Energy` moves on
+every read, and matches the old rails to within 3 %), so it stays live.
+([#65](https://github.com/kennss/SiliconScope/issues/65), reported by @Borda)
+
+**🧠 The Neural Engine gauge is live again.** With ANE watts reduced to a
+half-hour average on some Macs, the gauge sat at nothing while Whisper ran on the
+ANE. Its activity is measured somewhere else too — IOReport's per-cluster
+ACT/INACT residency, which is independent of the energy counters — and that is
+what the ANE gauge, the menu-bar ANE item and Fleet show now. The ANE also has its
+own memory-traffic lane (it was folded into "other"), so the line reads
+"100% · 7.3 GB/s": what it is doing and how much data it moves, both live.
+
+**The header shows the whole Mac's power** when the SoC figure is not live — the
+SMC's system reading, labelled "system", never passed off as SoC power.
+
+**A closed window stops measuring.** Closing or minimising the dashboard used to
+stop the drawing but not the sampling. Now only what is on screen — the menu-bar
+items you have, alerts, a recording — is sampled: with the window hidden and no
+menu-bar items, CPU use dropped from 5.2 % to 1.0 % here.
+([#13](https://github.com/kennss/SiliconScope/issues/13), reported by @shirok1)
+
+### Fleet
+
+- **Remote Macs report much more**: thermal state, disk capacity and throughput,
+  network throughput, battery, the running AI runtimes with their loaded model,
+  and the top processes. ([#56](https://github.com/kennss/SiliconScope/issues/56),
+  requested by @parkamonster)
+- **Windows agent** — CPU, memory and NVIDIA GPUs through the same `nvidia-smi`
+  path as Linux. There is no prebuilt binary or installer yet; see the README to
+  build it. ([#61](https://github.com/kennss/SiliconScope/pull/61), @mimen)
+- **Linux disk capacity**, with the container bind-mount and NAS edge cases
+  handled. ([#62](https://github.com/kennss/SiliconScope/pull/62), @mimen)
+- Both agents are now **1.2.0**. Update them to get the new fields; an older agent
+  keeps working and simply sends less.
+
+### Local AI runtimes
+
+- **MTPLX and DS4 are detected**, and their loaded model is read. Only a process
+  seen to be their server is asked — both default to port 8000, shared with oMLX
+  and Rapid-MLX, and both have CLIs that serve nothing, so assuming the port would
+  report another server's model under their name. (asked by @kruzif-x in #57)
+- **LM Studio's loaded model shows again** — the process that actually holds the
+  model was not being seen, so the runtime looked empty.
+  ([#64](https://github.com/kennss/SiliconScope/issues/64), reported by @havard-vold)
+- **oMLX shows the model that is loaded**, not the first one it has installed.
+  ([#67](https://github.com/kennss/SiliconScope/pull/67), @TianjinAI)
+- Quitting SiliconScope no longer leaves an `lms` process behind.
+
+### Sensors ([#57](https://github.com/kennss/SiliconScope/issues/57), verified by @kruzif-x)
+
+- `tcal` is a fixed calibration point (51.9 °C on every machine we have data for),
+  not a reading; it no longer becomes the CPU maximum.
+- When the SMC's core keys fail, the substitute comes from the HID die sensors
+  nearest the cores rather than every rail.
+- The battery temperature is read on MacBooks that use the per-chip sensor tables
+  (it read 0 °C there), and the SMC's `ioft` type is decoded.
+- `sscope-cli --sensors` prints a rejected value as rejected, and the key dump
+  shows raw bytes for any type it cannot decode.
+
 ## v4.3.1 — 2026-09-14
 
 **An Intel Mac still read "Apple Silicon" — from our side this time.** 4.3.0
