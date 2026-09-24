@@ -144,13 +144,24 @@ public extension MachineMetrics {
         )
         #endif
 
+        // Disk and network come from IOKit block-storage counters, the volume's resource values and
+        // the interface counters — none of it IOReport, so it is sent on both architectures.
+        // Capacity is the boot volume, the same one this Mac's own Network & Disk card shows.
+        let io = FleetIO(diskReadBytesPerSec: s.disk.readBytesPerSec,
+                         diskWriteBytesPerSec: s.disk.writeBytesPerSec,
+                         netDownBytesPerSec: s.network.downloadBytesPerSec,
+                         netUpBytesPerSec: s.network.uploadBytesPerSec)
+        let disks: [FleetDisk]? = s.disk.totalBytes > 0
+            ? [FleetDisk(mount: "/", totalBytes: Int64(s.disk.totalBytes), freeBytes: Int64(s.disk.freeBytes))]
+            : nil
+
         return MachineMetrics(
             machineId: machineId, hostname: hostname, os: osName, kind: "mac",
             agentVersion: agentVersion, ts: tsMillis, cpu: cpu, memory: memory,
             // A Mac serving models reports its decode rate the same way the Linux agent does, so
             // the fleet describes both in one vocabulary. nil when no runtime publishes one.
             gpus: gpus, llm: tokenRate.map { FleetLLM(ollama: nil, rate: $0) }, apple: apple,
-            thermal: thermal
+            disks: disks, thermal: thermal, io: io
         )
     }
 

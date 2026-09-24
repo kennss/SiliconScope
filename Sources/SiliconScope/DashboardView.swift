@@ -185,7 +185,7 @@ struct DashboardView: View {
 
                 if mode == .remote {
                     // Remote Mac: only the hardware cards a Mac agent sends. Same look as local, minus
-                    // network/disk/process/AI-runtime (no data over the wire). Re-paired into 3 rows.
+                    // process/AI-runtime (no data over the wire). Re-paired into 3 rows.
                     //
                     // The one runtime fact that DOES cross the wire is the decode rate, when a local
                     // runtime there reports one. It gets its own strip rather than a card: this Mac's
@@ -214,9 +214,18 @@ struct DashboardView: View {
                                             memHistory: s.history.memory, bwHistory: s.history.bandwidth)
                     }
                     .frame(minHeight: Layout.Row.dense)
-                    SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
-                                groupHistory: s.history.sensorGroups)
-                        .frame(minHeight: Layout.Row.sensorsNarrow)
+                    // Network & Disk appears only when the agent sent throughput — an older agent
+                    // did not, and a card of zeros would say the machine was idle (#56).
+                    HStack(alignment: .top, spacing: Space.row) {
+                        SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
+                                    groupHistory: s.history.sensorGroups)
+                        if s.remoteHasIO {
+                            NetworkDiskCard(network: snapshot.network, disk: snapshot.disk,
+                                            downHistory: s.history.netDown, upHistory: s.history.netUp,
+                                            readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
+                        }
+                    }
+                    .frame(minHeight: Layout.Row.sensorsNarrow)
                 } else {
 
                 // AI cockpit pair, side by side (matches the rest of the 2-column grid and

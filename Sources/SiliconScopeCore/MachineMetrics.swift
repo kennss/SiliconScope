@@ -37,15 +37,19 @@ public struct MachineMetrics: Codable, Sendable, Identifiable, Equatable {
     // thermal pressure level, whatever its architecture. OPTIONAL: nil from an agent that predates
     // it, which the viewer renders as "unknown" rather than as a calm "nominal" it never read.
     public let thermal: FleetThermal?
+    // Disk and network throughput. Common block: the APIs behind it are not Apple-Silicon ones.
+    // OPTIONAL, and its absence is what hides the Network & Disk card on a remote page — a card of
+    // zeros would read as an idle machine rather than as one that did not say.
+    public let io: FleetIO?
 
     public init(machineId: String, hostname: String, os: String, kind: String, agentVersion: String,
                 ts: Int64, cpu: FleetCPU, memory: FleetMemory, gpus: [FleetGPU],
                 llm: FleetLLM? = nil, apple: FleetApple? = nil, disks: [FleetDisk]? = nil,
-                thermal: FleetThermal? = nil) {
+                thermal: FleetThermal? = nil, io: FleetIO? = nil) {
         self.machineId = machineId; self.hostname = hostname; self.os = os; self.kind = kind
         self.agentVersion = agentVersion; self.ts = ts; self.cpu = cpu; self.memory = memory
         self.gpus = gpus; self.llm = llm; self.apple = apple; self.disks = disks
-        self.thermal = thermal
+        self.thermal = thermal; self.io = io
     }
 }
 
@@ -63,6 +67,22 @@ public struct FleetDisk: Codable, Sendable, Equatable {
     public var usedBytes: Int64 { max(0, totalBytes - freeBytes) }
     public var usedFraction: Double {
         totalBytes > 0 ? Double(min(usedBytes, totalBytes)) / Double(totalBytes) : 0
+    }
+}
+
+/// Disk and network throughput in bytes per second, as rates the agent derived from its own
+/// counters over its own elapsed time. Each field is optional on its own, so an agent that can
+/// read one side and not the other says so instead of sending a zero for the side it cannot see.
+public struct FleetIO: Codable, Sendable, Equatable {
+    public let diskReadBytesPerSec: Double?
+    public let diskWriteBytesPerSec: Double?
+    public let netDownBytesPerSec: Double?
+    public let netUpBytesPerSec: Double?
+
+    public init(diskReadBytesPerSec: Double?, diskWriteBytesPerSec: Double?,
+                netDownBytesPerSec: Double?, netUpBytesPerSec: Double?) {
+        self.diskReadBytesPerSec = diskReadBytesPerSec; self.diskWriteBytesPerSec = diskWriteBytesPerSec
+        self.netDownBytesPerSec = netDownBytesPerSec; self.netUpBytesPerSec = netUpBytesPerSec
     }
 }
 

@@ -94,9 +94,13 @@ struct DashboardState {
     /// A remote runtime's measured decode rate, when the agent reports one. Local mode has its own
     /// live path (RuntimeAPISample / the benchmark button), so this is the remote-only carrier.
     private(set) var remoteTokenRate: FleetTokenRate?
+    /// Whether a remote agent reported disk + network throughput. Gates the remote Network & Disk
+    /// card: without it the card would be a column of zeros describing a machine as idle.
+    private(set) var remoteHasIO = false
 
     init(remote m: MachineMetrics) {
         remoteTokenRate = m.llm?.rate
+        remoteHasIO = m.io != nil
         let (s, topo) = m.toDashboardSnapshot()
         snapshot = s
         topology = topo

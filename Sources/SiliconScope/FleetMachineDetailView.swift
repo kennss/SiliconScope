@@ -1,12 +1,12 @@
 //
 //  File:      FleetMachineDetailView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-05
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail pane for one fleet machine. When metrics are in, it renders the SAME
 //             DashboardView the local "This Mac" uses — in remote mode, so a remote Mac looks
-//             exactly like This Mac (E/P · GPU/Media/ANE · memory+bandwidth · sensors), minus the
-//             cards a wire agent can't fill (network/disk/process/AI-runtime). Before metrics, it
+//             exactly like This Mac (E/P · GPU/Media/ANE · memory+bandwidth · sensors · network+
+//             disk), minus the cards a wire agent can't fill (process/AI-runtime). Before metrics, it
 //             shows pairing / error / connecting states.
 //  Notes:     Remote data is mapped to a synthetic SystemSnapshot via DashboardState(remote:), so
 //             all the dashboard's cards + verdict logic are reused with no duplication. Pairing is

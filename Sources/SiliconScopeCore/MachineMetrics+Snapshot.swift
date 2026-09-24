@@ -90,6 +90,19 @@ public extension MachineMetrics {
             s.thermal.pressure = .unknown
         }
 
+        if let io {
+            s.disk.readBytesPerSec = io.diskReadBytesPerSec ?? 0
+            s.disk.writeBytesPerSec = io.diskWriteBytesPerSec ?? 0
+            s.network.downloadBytesPerSec = io.netDownBytesPerSec ?? 0
+            s.network.uploadBytesPerSec = io.netUpBytesPerSec ?? 0
+        }
+        // The root volume when the agent names one (a Mac sends exactly that); otherwise the first,
+        // which is the largest — the Linux agent sends its volumes largest first.
+        if let d = disks?.first(where: { $0.mount == "/" }) ?? disks?.first {
+            s.disk.totalBytes = UInt64(max(d.totalBytes, 0))
+            s.disk.freeBytes = UInt64(max(d.freeBytes, 0))
+        }
+
         let topo = CPUTopology(
             // ⚠️ No "Apple Silicon" fallback. A remote machine that did not tell us its name is
             // not thereby an Apple Silicon machine — that assumption printed "Apple Silicon" on an
