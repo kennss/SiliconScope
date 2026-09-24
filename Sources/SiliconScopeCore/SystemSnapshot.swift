@@ -1,7 +1,7 @@
 //
 //  File:      SystemSnapshot.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-25
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  One unified reading of every SiliconScope metric, produced by SystemSampler
 //             and consumed by the UI. Pure value type (Sendable).
@@ -45,8 +45,10 @@ public struct SystemSnapshot: Sendable, Codable {
     public var likelyAIEngine: String {
         if runtimeAPI.isReachable, !runtimeAPI.loadedModels.isEmpty { return "LLM (GPU/Metal)" }
         if aiRuntime.primaryMemoryBytes > (2 << 30) { return "LLM (likely)" }
-        if power.aneWatts > 1.0 { return "ANE (CoreML)" }
-        let gpuBusy = gpu.usage > 0.25 || power.gpuWatts > 3.0 || bandwidth.gpuGBs > 20
+        // Present-tense claims rest on present-tense power only: on macOS 27 the rails can be a
+        // half-hour average (#65), and "ANE (CoreML)" from that would describe the past.
+        if power.railsLive && power.aneWatts > 1.0 { return "ANE (CoreML)" }
+        let gpuBusy = gpu.usage > 0.25 || (power.gpuLive && power.gpuWatts > 3.0) || bandwidth.gpuGBs > 20
         guard gpuBusy else { return "idle" }
         if bandwidth.mediaGBs > 0.5 { return "GPU active — incl. video" }
         return "GPU active — type unknown"
@@ -63,7 +65,7 @@ public struct SystemSnapshot: Sendable, Codable {
     /// GPU is doing genuine compute (not just light UI). Used to recognize an unmanaged /
     /// in-app AI workload (e.g. an MLX-Swift app like WhisPlay) when no managed runtime
     /// holds a model — we say so honestly instead of crediting an idle daemon.
-    public var gpuComputeBusy: Bool { gpu.usage > 0.40 || power.gpuWatts > 4.0 }
+    public var gpuComputeBusy: Bool { gpu.usage > 0.40 || (power.gpuLive && power.gpuWatts > 4.0) }
 
     /// Honest one-line AI-runtime status for compact UI (menu bar). A detected runtime is
     /// "active" only when it holds a model; a bare daemon reads "(idle)"; an unattributed

@@ -1,7 +1,7 @@
 //
 //  File:      InspectorView.swift
 //  Created:   2026-06-25
-//  Updated:   2026-07-03
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Single-process Inspector sheet: every per-process metric for the focused pid —
 //             CPU (+ P/E split), Compute (IPC / instructions / cycles), Energy (power + wakeups),
@@ -162,7 +162,7 @@ struct InspectorView: View {
         return Card(title: "Accelerators — system-wide") {
             VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "GPU", value: String(format: "%.0f%%", s.gpu.usage * 100))
-                KV(key: "ANE power", value: String(format: "%.1f W", s.power.aneWatts))
+                KV(key: "ANE power", value: s.power.text(s.power.aneWatts))
                 KV(key: "Media engine", value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs))
                 KV(key: "Memory bandwidth", value: String(format: "%.0f GB/s", s.bandwidth.totalGBs))
                 Text("System-wide — macOS doesn't attribute these to a single process (sudoless).")

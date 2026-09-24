@@ -375,8 +375,15 @@ private struct HeaderView: View {
                     .font(Theme.font(.body)).foregroundStyle(Theme.faint)
             }
             Spacer()
-            Text(String(format: "%.1f W", power.socWatts))
+            // On macOS 27 the SoC figure can be an average over minutes, or not known yet (#65).
+            // The header has the room to say which, so it does — the glyphs only get a "~".
+            if let note = power.basisNote {
+                Text(note).font(Theme.font(.detail)).foregroundStyle(Theme.faint).lineLimit(1)
+                    .help(power.basisExplanation ?? "")
+            }
+            Text(power.text(power.socWatts))
                 .font(Theme.font(.emphasis)).foregroundStyle(Theme.dim)
+                .help(power.basisExplanation ?? "")
             if battery.hasBattery {
                 HStack(spacing: Space.tight) {
                     if battery.isCharging {
@@ -471,7 +478,7 @@ private struct AIWorkloadCard: View {
     // gpuComputeBusy), NOT likelyAIEngine's loose 0.25 GPU hint — so it never contradicts the GPU row
     // below (light desktop GPU at ~idle watts must read Idle here, exactly as it does there).
     private var aiVerdict: (Color, String) {
-        if snapshot.power.aneWatts > 1.5 { return (aneColor, "ANE (CoreML)") }
+        if snapshot.power.railsLive && snapshot.power.aneWatts > 1.5 { return (aneColor, "ANE (CoreML)") }
         if snapshot.aiModelActive        { return (gpuActiveColor, "LLM (GPU/Metal)") }
         if activity.gpu {
             return (gpuActiveColor, snapshot.bandwidth.mediaGBs > 0.5 ? "GPU active — incl. video" : "GPU active")
@@ -499,7 +506,7 @@ private struct AIWorkloadCard: View {
     // and the numbers say so on sight. Instrument, not nanny: never assert a state without the
     // measurement that produced it.
     private var gpuEngine: (Color, String, String) {
-        let reading = String(format: "%.0f%% · %.1f W", snapshot.gpu.usagePercent, snapshot.power.gpuWatts)
+        let reading = String(format: "%.0f%% · ", snapshot.gpu.usagePercent) + snapshot.power.gpuText()
         if gpuThrottling {
             return (alertColor, "throttled",
                     String(format: "%.0f MHz · −%.0f%%", snapshot.gpu.freqMHz, gpuClockDrop * 100))
@@ -507,7 +514,7 @@ private struct AIWorkloadCard: View {
         return activity.gpu ? (gpuActiveColor, "active", reading) : (Theme.dim, "idle", reading)
     }
     private var aneEngine: (Color, String, String) {
-        let reading = String(format: "%.1f W", snapshot.power.aneWatts)
+        let reading = snapshot.power.text(snapshot.power.aneWatts)
         return activity.ane ? (aneColor, "active", reading) : (Theme.dim, "idle", reading)
     }
     private var mediaEngine: (Color, String, String) {
@@ -680,8 +687,12 @@ private struct AIRuntimeCard: View {
                     Image(systemName: "bolt.fill").font(.system(size: Icon.small)).foregroundStyle(Theme.heat(0.3))
                     Text(String(format: "%.1f tok/s", b.tokensPerSec))
                         .font(Theme.font(.detail, .strong)).foregroundStyle(Theme.text)
-                    Text(String(format: "· %.0f tok/Wh", b.tokensPerWattHour))
-                        .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
+                    // A run whose power could not be measured live (macOS 27, #65) has no
+                    // efficiency figure — "0 tok/Wh" would be a claim, not an absence.
+                    if b.avgWatts > 0 {
+                        Text(String(format: "· %.0f tok/Wh", b.tokensPerWattHour))
+                            .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
+                    }
                     Button("re-measure", action: onBenchmark)
                         .font(Theme.font(.detail)).buttonStyle(.plain)
                         .foregroundStyle(Theme.accent)
@@ -902,12 +913,13 @@ private struct AcceleratorCard: View {
         Card(title: "GPU / Media / Neural Engine", menuBarPin: menuBarItems.pin(.gpu),
              alert: throttling ? Palette.State.critical.color : nil) {
             Bar(label: "GPU", value: gpu.usage,
-                detail: String(format: "%.0f%%  %.1f W  %.0f MHz", gpu.usagePercent, power.gpuWatts, gpu.freqMHz),
+                detail: String(format: "%.0f%%  ", gpu.usagePercent) + power.gpuText()
+                    + String(format: "  %.0f MHz", gpu.freqMHz),
                 encoding: .identity(gpuColor))
             Bar(label: "GPU memory", value: gpu.inUseMemoryFraction,
                 detail: String(format: "%.1f GB in use", gpu.inUseMemoryGB), encoding: .identity(memColor))
             Bar(label: "ANE est.", value: min(1, power.aneWatts / max(anePeak, 0.1)),
-                detail: String(format: "%.1f W", power.aneWatts), encoding: .identity(aneColor))
+                detail: power.text(power.aneWatts), encoding: .identity(aneColor))
             Bar(label: "Media", value: min(1, bandwidth.mediaGBs / max(mediaPeak, 0.5)),
                 detail: String(format: "%.1f GB/s", bandwidth.mediaGBs), encoding: .identity(mediaColor))
         } graph: {

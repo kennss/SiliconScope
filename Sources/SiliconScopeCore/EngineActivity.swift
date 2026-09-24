@@ -97,13 +97,18 @@ public struct EngineActivity: Sendable, Equatable {
                 ? (s.cpu.pUsage > Threshold.cpuPerfOff || s.cpu.eUsage > Threshold.cpuEffOff)
                 : (s.cpu.pUsage > Threshold.cpuPerfOn  || s.cpu.eUsage > Threshold.cpuEffOn))
         }
-        // The GPU verdict reads utilisation AND GPU watts, so it needs both groups to be honest.
-        if measured.contains(.gpu), measured.contains(.power) {
+        // The GPU verdict reads utilisation, and GPU watts where they describe the present. On macOS
+        // 27 GPU power can be unknown or a long average (#65); utilisation alone still says
+        // truthfully whether the GPU is busy, and the watts term rejoins as soon as it is live.
+        if measured.contains(.gpu) {
+            let watts = measured.contains(.power) && s.power.gpuLive ? s.power.gpuWatts : 0
             gpuLatch.update(gpu
-                ? (s.gpu.usage > Threshold.gpuUsageOff || s.power.gpuWatts > Threshold.gpuWattsOff)
-                : (s.gpu.usage > Threshold.gpuUsageOn  || s.power.gpuWatts > Threshold.gpuWattsOn))
+                ? (s.gpu.usage > Threshold.gpuUsageOff || watts > Threshold.gpuWattsOff)
+                : (s.gpu.usage > Threshold.gpuUsageOn  || watts > Threshold.gpuWattsOn))
         }
-        if measured.contains(.power) {
+        // ANE has no utilisation counter at all — its power IS the evidence. A half-hour average
+        // cannot say the engine is working now, so the latch holds until live power returns.
+        if measured.contains(.power), s.power.railsLive {
             aneLatch.update(ane ? s.power.aneWatts > Threshold.aneWattsOff
                                 : s.power.aneWatts > Threshold.aneWattsOn)
         }

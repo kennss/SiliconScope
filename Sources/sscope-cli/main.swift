@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-14
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -42,10 +42,15 @@ for i in 1...3 {
         format: "E %3.0f%% @ %4.0f  P %3.0f%% @ %4.0f  GPU %3.0f%% @ %4.0f MHz",
         c.eUsagePercent, c.eFreqMHz, c.pUsagePercent, c.pFreqMHz, g.usagePercent, g.freqMHz
     )
-    let pwrLine = String(
-        format: "| E %4.1f P %4.1f GPU %4.1f ANE %4.1f DRAM %4.1f SoC %5.1f W",
-        p.eCPUWatts, p.pCPUWatts, p.gpuWatts, p.aneWatts, p.dramWatts, p.socWatts
-    )
+    // Unknown is printed as unknown: on macOS 27 the rails refresh every few minutes, so a short
+    // probe usually ends before the first complete window, and its zeros are not readings (#65).
+    // The GPU keeps its own clock on macOS 27, so it is printed on its own terms either way.
+    let gpuPart = p.gpuKnown ? String(format: "GPU %4.1f%@", p.gpuWatts, p.gpuAveraged ? "~" : "") : "GPU  —  "
+    let pwrLine = !p.railsKnown
+        ? "| \(gpuPart) W · other rails: waiting for the energy counters to refresh (slow on this OS)"
+        : String(format: "| E %4.1f P %4.1f ", p.eCPUWatts, p.pCPUWatts) + gpuPart
+            + String(format: " ANE %4.1f DRAM %4.1f SoC %5.1f W", p.aneWatts, p.dramWatts, p.socWatts)
+            + (p.railsAveraged ? String(format: " (rails avg over %.0f s)", p.railWindowSeconds ?? 0) : "")
     let memLine = String(
         format: "| MEM %.1f/%.0f GB (%.0f%%) wired %.1f swap %.1f",
         m.usedGB, m.totalGB, m.usedPercent, m.wiredGB, m.swapUsedGB

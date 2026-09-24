@@ -104,7 +104,9 @@ public extension MachineMetrics {
                 pCpuWatts: s.power.pCPUWatts,
                 gpuWatts: s.power.gpuWatts,
                 aneWatts: s.power.aneWatts,
-                dramWatts: s.power.dramWatts
+                dramWatts: s.power.dramWatts,
+                windowSeconds: s.power.railWindowSeconds,
+                gpuWindowSeconds: s.power.gpuWindowSeconds
             ),
             bandwidth: FleetBandwidth(
                 cpuGBs: s.bandwidth.cpuGBs,

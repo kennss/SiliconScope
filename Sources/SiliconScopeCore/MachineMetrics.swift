@@ -352,11 +352,38 @@ public struct FleetPower: Codable, Sendable, Equatable {
     public let gpuWatts: Double
     public let aneWatts: Double
     public let dramWatts: Double
+    /// How the watts above were measured — `PowerSample.railWindowSeconds`, carried as is: nil
+    /// live, > 0 an average over that many seconds, 0 not known yet (macOS 27's slow energy
+    /// counters, #65). nil from an agent that predates it, which is what its numbers were.
+    public let windowSeconds: Double?
+    /// `PowerSample.gpuWindowSeconds`: the GPU's own basis when it is read on a faster clock than
+    /// the rails (macOS 27). nil → the GPU shares `windowSeconds`.
+    public let gpuWindowSeconds: Double?
 
     public init(cpuWatts: Double, eCpuWatts: Double, pCpuWatts: Double,
-                gpuWatts: Double, aneWatts: Double, dramWatts: Double) {
+                gpuWatts: Double, aneWatts: Double, dramWatts: Double, windowSeconds: Double? = nil,
+                gpuWindowSeconds: Double? = nil) {
         self.cpuWatts = cpuWatts; self.eCpuWatts = eCpuWatts; self.pCpuWatts = pCpuWatts
         self.gpuWatts = gpuWatts; self.aneWatts = aneWatts; self.dramWatts = dramWatts
+        self.windowSeconds = windowSeconds; self.gpuWindowSeconds = gpuWindowSeconds
+    }
+}
+
+public extension FleetApple {
+    /// The remote machine's power as a PowerSample — the ONE place the wire becomes the local
+    /// type, so a remote page and a fleet tile cannot read the same payload two ways.
+    var powerSample: PowerSample {
+        var p = PowerSample()
+        p.cpuWatts = power.cpuWatts
+        p.eCPUWatts = power.eCpuWatts
+        p.pCPUWatts = power.pCpuWatts
+        p.gpuWatts = power.gpuWatts
+        p.aneWatts = power.aneWatts
+        p.dramWatts = power.dramWatts
+        p.measuredSocWatts = socWatts
+        p.railWindowSeconds = power.windowSeconds
+        p.gpuWindowSeconds = power.gpuWindowSeconds
+        return p
     }
 }
 

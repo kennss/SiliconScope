@@ -129,7 +129,12 @@ public final class MetricsEngine {
     /// ⚠️ The peaks DECAY. Folding a carried-forward value back in every tick would pin a peak to
     /// a number that stopped being observed, so an unmeasured group's peak is left entirely alone
     /// — neither raised nor decayed — and resumes from where the last real reading left it.
-    public func ingest(_ s: SystemSnapshot, dt: TimeInterval, measured: MetricGroup = .all) {
+    public func ingest(_ s: SystemSnapshot, dt: TimeInterval, measured demanded: MetricGroup = .all) {
+        // Power sampled but not KNOWN — macOS 27's slow energy counters before their first full
+        // window (#65) — is the same fact as power not sampled: the zeros in it are placeholders.
+        // Folding it here means the history gets a gap rather than a stretch of 0 W, and the ANE
+        // peak and activity latch are not pulled down by readings that were never taken.
+        let measured = s.power.railsKnown ? demanded : demanded.subtracting(.power)
         latest = s
         if measured.contains(.bandwidth) {
             bandwidthPeakGBs = max(s.bandwidth.totalGBs, max(40, bandwidthPeakGBs * Self.peakDecay))
@@ -145,7 +150,9 @@ public final class MetricsEngine {
         // the previous sample would report a real machine as having paged nothing.
         if measured.contains(.memory) { updateMemoryRates(s.memory, dt: dt) }
         history.push(s, measured: measured)
-        activity.update(s, measured: measured)
+        // The latches judge the present, so they are handed the demand and decide per domain
+        // whether its power is live — an average over half an hour cannot say what is active now.
+        activity.update(s, measured: demanded)
     }
 
     /// Clears rate state so the next frame emits no spurious delta (e.g. after a (re)start).

@@ -1,7 +1,7 @@
 //
 //  File:      FleetOverviewView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-05
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  At-a-glance view of every machine at once — an adaptive grid of compact tiles. THIS
 //             MAC is always the first tile (a laptop glyph, taps through to its full dashboard);
@@ -156,7 +156,7 @@ private struct FleetTile: View {
 
     private func aneCaption(_ a: FleetApple) -> some View {
         (tag("ANE", MetricPalette.aneC)
-         + dim(String(format: " %.1fW · ", a.aneWatts))
+         + dim(" " + a.powerSample.text(a.aneWatts, format: "%.1fW") + " · ")
          + tag("BW", MetricPalette.mediaC)
          + dim(String(format: " %.0f GB/s", a.bandwidth.totalGBs)))
             .font(Theme.font(.caption)).lineLimit(1)

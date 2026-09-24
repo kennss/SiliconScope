@@ -574,13 +574,14 @@ struct GPUMenuDropdown: View {
         VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("GPU / Media / Neural")
             MenuMeterRow(label: "GPU",
-                         value: String(format: "%.0f%%  %.1f W  %.0f MHz", s.gpu.usagePercent, s.power.gpuWatts, s.gpu.freqMHz),
+                         value: String(format: "%.0f%%  ", s.gpu.usagePercent) + s.power.gpuText()
+                             + String(format: "  %.0f MHz", s.gpu.freqMHz),
                          fraction: s.gpu.usage, color: MetricPalette.gpuC)
             MenuMeterRow(label: "GPU memory",
                          value: String(format: "%.1f GB in use", s.gpu.inUseMemoryGB),
                          fraction: s.gpu.inUseMemoryFraction, color: MetricPalette.gpuMemC)
             MenuMeterRow(label: "ANE est.",
-                         value: String(format: "%.1f W", s.power.aneWatts),
+                         value: s.power.text(s.power.aneWatts),
                          fraction: min(1, s.power.aneWatts / max(monitor.anePeakWatts, 0.1)), color: MetricPalette.aneC)
             MenuMeterRow(label: "Media",
                          value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs),
@@ -916,8 +917,6 @@ struct SensorFanRow: View {
 
 // MARK: - Battery dropdown (iStat "BATTERY" panel: charge + health + power)
 
-private func wattStr(_ w: Double) -> String { String(format: "%.2f W", w) }
-
 struct BatteryMenuDropdown: View {
     // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
     // Scene, or the window), so it must observe the scale keys itself — an environment
@@ -968,23 +967,27 @@ struct BatteryMenuDropdown: View {
 
             Divider()
             MenuSectionHeader("Power")
+            // Slow energy counters on macOS 27 (#65): say how these were measured, once, above them.
+            if let note = s.power.basisNote {
+                Text(note).font(Theme.font(.detail)).foregroundStyle(Theme.faint)
+            }
             let pmax = 50.0
-            MenuMeterRow(label: "CPU", value: wattStr(s.power.cpuWatts),
+            MenuMeterRow(label: "CPU", value: s.power.text(s.power.cpuWatts, format: "%.2f W"),
                          fraction: s.power.cpuWatts / pmax, color: Color(nsColor: MetricPalette.pCPU))
-            MenuMeterRow(label: "GPU", value: wattStr(s.power.gpuWatts),
+            MenuMeterRow(label: "GPU", value: s.power.gpuText(format: "%.2f W"),
                          fraction: s.power.gpuWatts / pmax, color: MetricPalette.gpuC)
             if s.power.aneWatts > 0.05 {
-                MenuMeterRow(label: "ANE", value: wattStr(s.power.aneWatts),
+                MenuMeterRow(label: "ANE", value: s.power.text(s.power.aneWatts, format: "%.2f W"),
                              fraction: s.power.aneWatts / pmax, color: MetricPalette.aneC)
             }
             if s.power.dramWatts > 0.05 {
-                MenuMeterRow(label: "DRAM", value: wattStr(s.power.dramWatts),
+                MenuMeterRow(label: "DRAM", value: s.power.text(s.power.dramWatts, format: "%.2f W"),
                              fraction: s.power.dramWatts / pmax, color: MetricPalette.downC)
             }
             HStack {
                 Text("Total (SoC)").font(Theme.font(.body)).foregroundStyle(Theme.dim)
                 Spacer()
-                Text(wattStr(s.power.socWatts))
+                Text(s.power.text(s.power.socWatts, format: "%.2f W"))
                     .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
             }
 

@@ -351,7 +351,12 @@ final class SiliconScopeMonitor {
             while !box.done && !Task.isCancelled {
                 // Only count samples while the GPU is actually decoding, so idle / ramp-up
                 // power doesn't deflate the average (which would inflate tokens-per-watt).
-                if let self, self.snapshot.gpu.usage > 0.4 {
+                // ⚠️ And only LIVE power. On macOS 27 the energy counters refresh every few minutes
+                // (#65), so the figure is either unknown or an average over a span that has nothing
+                // to do with these few seconds of decoding — either would make up the tokens-per-watt
+                // this record exists to report.
+                if let self, self.snapshot.gpu.usage > 0.4,
+                   self.snapshot.power.railsKnown, !self.snapshot.power.railsAveraged {
                     box.watts.append(self.snapshot.power.socWatts)
                 }
                 try? await Task.sleep(for: .milliseconds(250))
@@ -368,7 +373,11 @@ final class SiliconScopeMonitor {
             benchmarkError = "Benchmark failed — is \(kind.displayName)'s local server reachable?"
             return
         }
-        let avgW = box.watts.isEmpty ? snapshot.power.socWatts : box.watts.reduce(0, +) / Double(box.watts.count)
+        // No live sample means the run's power is unknown, recorded as 0 — which BenchmarkRecord
+        // already reads as "no efficiency figure" rather than as an infinitely efficient run.
+        let livePower = snapshot.power.railsKnown && !snapshot.power.railsAveraged
+        let avgW = box.watts.isEmpty ? (livePower ? snapshot.power.socWatts : 0)
+                                     : box.watts.reduce(0, +) / Double(box.watts.count)
         let record = BenchmarkRecord(model: model, runtime: kind.displayName, chip: chip,
                                      tokensPerSec: result.tokensPerSec, avgWatts: avgW, timestamp: Date())
         benchmarks.removeAll { $0.runtime == record.runtime && $0.model == record.model }   // keep latest per model

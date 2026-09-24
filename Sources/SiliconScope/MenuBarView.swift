@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-24
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Compact menu-bar popover content: the essentials at a glance (E/P, mem,
 //             GPU, bandwidth, power, die temp), trend sparklines, top processes, plus
@@ -71,7 +71,7 @@ struct MenuBarView: View {
                 .foregroundStyle(Theme.accent)
             compactValue(String(format: "%.0f%%", s.gpu.usagePercent), color: Theme.heat(s.gpu.usage))
             compactSeparator
-            compactValue(String(format: "%.1f W", s.power.gpuWatts))
+            compactValue(s.power.gpuText())
             compactSeparator
             compactValue(String(format: "%.0f GB/s", s.bandwidth.gpuGBs))
             compactSeparator
@@ -116,11 +116,11 @@ struct MenuBarView: View {
         KV(key: "Workload", value: workloadLabel(snapshot), valueColor: monitor.bottleneck.color)
 
         Divider()
-        KV(key: "GPU", value: String(format: "%.0f%% · %.1f W", snapshot.gpu.usagePercent, snapshot.power.gpuWatts))
-        KV(key: "ANE", value: String(format: "%.1f W", snapshot.power.aneWatts))
+        KV(key: "GPU", value: String(format: "%.0f%% · ", snapshot.gpu.usagePercent) + snapshot.power.gpuText())
+        KV(key: "ANE", value: snapshot.power.text(snapshot.power.aneWatts))
         KV(key: "Media", value: String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs))
         KV(key: "Mem BW", value: String(format: "%.0f GB/s", snapshot.bandwidth.totalGBs))
-        KV(key: "SoC power", value: String(format: "%.1f W", snapshot.power.socWatts))
+        KV(key: "SoC power", value: snapshot.power.text(snapshot.power.socWatts))
         KV(key: "CPU temp", value: formatTemperature(snapshot.temperature.cpuCelsius, fahrenheit: fahrenheit))
         if snapshot.temperature.hasBattery {
             KV(key: "Battery", value: formatTemperature(snapshot.temperature.batteryCelsius, fahrenheit: fahrenheit))
@@ -151,7 +151,7 @@ struct MenuBarView: View {
                  axis: .fraction)
         graphRow("GPU", c[1], monitor.history.gpu, String(format: "%.0f%%", s.gpu.usagePercent),
                  axis: .fraction)
-        graphRow("ANE", c[2], monitor.history.ane, String(format: "%.1f W", s.power.aneWatts),
+        graphRow("ANE", c[2], monitor.history.ane, s.power.text(s.power.aneWatts),
                  axis: .ceiling(max(monitor.anePeakWatts, 0.1)))
         graphRow("MED", c[3], monitor.history.media, String(format: "%.1f GB/s", s.bandwidth.mediaGBs),
                  axis: .ceiling(max(monitor.mediaPeakGBs, 0.5)))

@@ -177,13 +177,13 @@ enum MenuBarItemRenderer {
     private static func value(_ channel: DataChannel, _ m: SiliconScopeMonitor) -> String {
         let s = m.snapshot
         switch channel {
-        case .socPower:        return String(format: "%.1f W", s.power.socWatts)
+        case .socPower:        return s.power.text(s.power.socWatts)
         case .cpuEfficiency:   return percent(s.cpu.eUsage)
         case .cpuPerformance:  return percent(s.cpu.pUsage)
         case .gpuUtilisation:  return percent(s.gpu.usage)
         case .gpuMemory:       return iStatGB(s.gpu.inUseMemoryGB)
         case .mediaThroughput: return String(format: "%.0f GB/s", s.bandwidth.mediaGBs)
-        case .anePower:        return String(format: "%.1f W", s.power.aneWatts)
+        case .anePower:        return s.power.text(s.power.aneWatts)
         case .memoryUsed:      return iStatGB(s.memory.usedGB)
         case .memoryFree:      return iStatGB(s.memory.freeGB)
         case .memoryPressure:  return String(format: "%.0f%%", s.memory.pressurePercent)

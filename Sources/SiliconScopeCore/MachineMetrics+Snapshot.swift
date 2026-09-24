@@ -54,13 +54,7 @@ public extension MachineMetrics {
         }
 
         if let ap = apple {
-            s.power.cpuWatts = ap.power.cpuWatts
-            s.power.eCPUWatts = ap.power.eCpuWatts
-            s.power.pCPUWatts = ap.power.pCpuWatts
-            s.power.gpuWatts = ap.power.gpuWatts
-            s.power.aneWatts = ap.power.aneWatts
-            s.power.dramWatts = ap.power.dramWatts
-            s.power.measuredSocWatts = ap.socWatts
+            s.power = ap.powerSample
 
             s.bandwidth.cpuGBs = ap.bandwidth.cpuGBs
             s.bandwidth.gpuGBs = ap.bandwidth.gpuGBs

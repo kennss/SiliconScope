@@ -1,7 +1,7 @@
 //
 //  File:      FleetMonitor.swift
 //  Created:   2026-07-21
-//  Updated:   2026-09-05
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Mac-side fleet aggregator: owns mDNS discovery (FleetDiscovery), holds the set of
 //             discovered machines, and polls each on an interval for the latest MachineMetrics (or
@@ -238,7 +238,12 @@ final class FleetMonitor {
         let memFrac = m.memory.totalBytes > 0 ? Double(m.memory.usedBytes) / Double(m.memory.totalBytes) : 0
         // Apple-only extras (nil on Linux → 0): ANE and memory bandwidth, each scaled to the
         // engine's decaying observed peak so a flat-near-zero series isn't amplified to full height.
-        let aneFrac = m.apple.map { $0.anePeakWatts > 0 ? min(1, $0.aneWatts / $0.anePeakWatts) : 0 } ?? 0
+        // Unknown power (macOS 27's slow counters before their first window, #65) is a gap in the
+        // tile's trace, not a stretch of idle.
+        let aneFrac = m.apple.map {
+            guard $0.powerSample.railsKnown else { return Double.nan }
+            return $0.anePeakWatts > 0 ? min(1, $0.aneWatts / $0.anePeakWatts) : 0
+        } ?? 0
         let bwFrac: Double = m.apple.map {
             let peak = $0.bandwidth.totalPeakGBs ?? $0.bandwidth.totalGBs
             return peak > 0 ? min(1, $0.bandwidth.totalGBs / peak) : 0

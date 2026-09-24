@@ -1,7 +1,7 @@
 //
 //  File:      PowerSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-08-10
+//  Updated:   2026-09-24
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads per-domain SoC power (CPU E/P, GPU, ANE, DRAM) sudolessly via
 //             the private IOReport framework. Subscribes once, then each sample()
@@ -27,6 +27,11 @@ public final class PowerSampler {
     // SMC `PSTR` gives the true system/SoC total (direct watts). Read it when on an A18.
     private let smc = SMCReader()
     private let isA18 = SensorCatalog.detectGeneration() == .a18
+    /// Decides per call whether the rails are fresh or refresh slowly, and holds the refreshes (#65).
+    private var tracker = EnergyRefreshTracker()
+    /// The same judgement for "GPU Energy" alone, which runs on its own clock: every read on an
+    /// M1 Max under macOS 27 while the rails sit still, ~0.6 s batches on an M5 Max (all-smi #410).
+    private var gpuTracker = EnergyRefreshTracker()
 
     /// Returns nil only when NO energy channels can be subscribed at all (e.g. non-Apple-Silicon).
     ///
@@ -71,35 +76,164 @@ public final class PowerSampler {
     }
 
     /// Takes a power reading averaged over `interval` seconds.
+    /// Takes a power reading. Where the counters are fresh on every read this is the average over
+    /// `interval`; where they refresh slowly (macOS 27) it is the average between the last two
+    /// refreshes, and `railWindowSeconds` says how long that span was — see EnergyRefreshTracker.
     public func sample(interval: TimeInterval = 0.2) -> PowerSample {
+        let ta = ProcessInfo.processInfo.systemUptime
         let first = IOReportCreateSamples(subscription, subscribedChannels, nil)
         Thread.sleep(forTimeInterval: interval)
+        let tb = ProcessInfo.processInfo.systemUptime
         let second = IOReportCreateSamples(subscription, subscribedChannels, nil)
 
         guard let a = first?.takeRetainedValue(),
               let b = second?.takeRetainedValue(),
               let delta = IOReportCreateSamplesDelta(a, b, nil)?.takeRetainedValue()
         else {
-            return PowerSample()
+            // A failed read is not a reading. A bare PowerSample() would be "live, 0 W" — the very
+            // claim #65 was about — so it goes out as unknown instead.
+            var unknown = PowerSample()
+            unknown.railWindowSeconds = 0
+            return unknown
         }
 
-        var result = PowerSample()
-        let seconds = max(interval, 0.001)
-        // PMP "Energy Counters" accumulators — adopted only if Energy Model exposes no ANE (base M1).
-        var pmpECpu = 0.0, pmpPCpu = 0.0, pmpGpu = 0.0, pmpAne = 0.0, pmpDram = 0.0
-        var sawEnergyModelANE = false
+        var result: PowerSample
+        switch tracker.observe(Self.railCounters(a), at: ta, Self.railCounters(b), at: tb) {
+        case .live:
+            result = Self.classify(Self.rails(ofDelta: delta), seconds: max(interval, 0.001))
+        case .averaged(let energy, let seconds):
+            result = Self.classify(energy.map { Rail(key: $0.key, energy: $0.value) }, seconds: seconds)
+            result.railWindowSeconds = seconds
+        case .pending:
+            // Slow counters with no complete window yet. The rails are UNKNOWN; zero would be a
+            // reading, and it is exactly the reading #65 reported for a machine under load.
+            result = PowerSample()
+            result.railWindowSeconds = 0
+        }
 
-        IOReportIterate(delta) { channel in
+        // Where the rails are not live, the GPU can still be: "GPU Energy" keeps its own clock.
+        // #65's report was precisely "the GPU is busy and W reads 0", so this is the figure that
+        // matters most, and it is read whenever the rails cannot provide it.
+        if result.railWindowSeconds != nil {
+            if result.railsKnown { result.railsGPUWatts = result.gpuWatts }
+            switch gpuTracker.observe(Self.gpuEnergy(a), at: ta, Self.gpuEnergy(b), at: tb) {
+            case .live(let e, let s), .averaged(let e, let s):
+                result.gpuWatts = Self.nanojouleWatts(e[Self.gpuEnergyKey] ?? 0, seconds: s)
+                result.gpuWindowSeconds = s
+            case .pending:
+                result.gpuWatts = 0
+                result.gpuWindowSeconds = 0
+            }
+        }
+
+        // A18: Energy Model only exposes GPU, so cpu/ane/dram stay 0 and the derived sum is wrong.
+        // Read the real rails from SMC instead (confirmed by Dreaminko's load test, #12):
+        //   PSTR = system total (direct watts); PZC0 = CPU package power.
+        // PZC0 ≈ PZC1 (both ~0.8W idle, ~6.2W under load) — the same CPU reading, not two clusters,
+        // so use one (their sum would exceed PSTR). The E/P split isn't exposed on the A18.
+        if isA18 {
+            if let pstr = smc?.readDouble("PSTR") { result.measuredSocWatts = pstr }
+            if let cpu = smc?.readDouble("PZC0") { result.cpuWatts = cpu }
+        }
+
+        return result
+    }
+
+    /// One energy rail: where it lives and how much energy it accumulated (mJ).
+    struct Rail {
+        let group: String
+        let subgroup: String
+        let name: String
+        let energy: Int
+
+        init(group: String, subgroup: String, name: String, energy: Int) {
+            self.group = group; self.subgroup = subgroup; self.name = name; self.energy = energy
+        }
+
+        /// Rebuilds a rail from the tracker's key (see `railCounters`).
+        init(key: String, energy: Int) {
+            let parts = key.components(separatedBy: Self.separator)
+            group = parts.first ?? ""
+            subgroup = parts.count > 1 ? parts[1] : ""
+            name = parts.count > 2 ? parts[2] : ""
+            self.energy = energy
+        }
+
+        static let separator = "\u{1F}"
+        var key: String { [group, subgroup, name].joined(separator: Self.separator) }
+
+        /// The rails this sampler turns into watts, and nothing else.
+        ///
+        /// ⚠️ This set is also what EnergyRefreshTracker decides "live or slow" from, so anything
+        /// that moves on its own schedule must stay out. "GPU Energy" is the case in point: it is
+        /// in a different unit, it is excluded from the wattages below, and on macOS 27 it keeps
+        /// moving on every read while every rail here sits still — let in, it would make the slow
+        /// counters look live and bring #65 straight back.
+        var isEnergyRail: Bool {
+            if IOReportNaming.isUnit(group, "Energy Model") { return !IOReportNaming.isUnit(name, "GPU Energy") }
+            if IOReportNaming.isUnit(group, "PMP") { return IOReportNaming.isUnit(subgroup, "Energy Counters") }
+            return false
+        }
+    }
+
+    /// Every Simple channel in a sample or a delta, as rails.
+    private static func rails(of sample: CFDictionary) -> [Rail] {
+        var out: [Rail] = []
+        IOReportIterate(sample) { channel in
             guard IOReportChannelGetFormat(channel) == kKtopIOReportFormatSimple,
                   let groupRef = IOReportChannelGetGroup(channel)?.takeUnretainedValue(),
                   let nameRef = IOReportChannelGetChannelName(channel)?.takeUnretainedValue()
             else {
                 return Int32(kKtopIOReportIterOk)
             }
+            out.append(Rail(group: groupRef as String,
+                            subgroup: (IOReportChannelGetSubGroup(channel)?.takeUnretainedValue() as String?) ?? "",
+                            name: nameRef as String,
+                            energy: IOReportNaming.sanitizeSimpleValue(IOReportSimpleGetIntegerValue(channel, 0))))
+            return Int32(kKtopIOReportIterOk)
+        }
+        return out
+    }
 
-            let group = groupRef as String
-            let name = nameRef as String
-            let watts = Self.simpleWatts(raw: IOReportSimpleGetIntegerValue(channel, 0), seconds: seconds)
+    private static func rails(ofDelta delta: CFDictionary) -> [Rail] { rails(of: delta) }
+
+    static let gpuEnergyKey = "GPU Energy"
+
+    /// A sample's cumulative "GPU Energy" counter (nanojoules), keyed for its own tracker.
+    private static func gpuEnergy(_ sample: CFDictionary) -> [String: Int] {
+        for rail in rails(of: sample)
+        where IOReportNaming.isUnit(rail.group, "Energy Model") && IOReportNaming.isUnit(rail.name, gpuEnergyKey) {
+            return [gpuEnergyKey: rail.energy]
+        }
+        return [:]
+    }
+
+    /// Watts from a "GPU Energy" delta. That channel counts NANOjoules — the reason it was always
+    /// excluded from the millijoule rails, where it read as ~150,000 W.
+    static func nanojouleWatts(_ nanojoules: Int, seconds: TimeInterval) -> Double {
+        Double(max(nanojoules, 0)) / max(seconds, 0.001) / 1_000_000_000
+    }
+
+    /// A sample's cumulative counters for the energy rails, keyed for EnergyRefreshTracker.
+    private static func railCounters(_ sample: CFDictionary) -> [String: Int] {
+        var out: [String: Int] = [:]
+        for rail in rails(of: sample) where rail.isEnergyRail { out[rail.key] = rail.energy }
+        return out
+    }
+
+    /// Maps rails to domains. ONE definition of which channel is which domain, shared by the live
+    /// and the averaged path — two copies of these rules would drift, and then the same machine
+    /// would split its power differently depending on which OS it runs.
+    static func classify(_ rails: [Rail], seconds: TimeInterval) -> PowerSample {
+        var result = PowerSample()
+        // PMP "Energy Counters" accumulators — adopted only if Energy Model exposes no ANE (base M1).
+        var pmpECpu = 0.0, pmpPCpu = 0.0, pmpGpu = 0.0, pmpAne = 0.0, pmpDram = 0.0
+        var sawEnergyModelANE = false
+
+        for rail in rails {
+            let group = rail.group
+            let name = rail.name
+            let watts = Self.simpleWatts(raw: rail.energy, seconds: seconds)
 
             // Group and channel names are matched through IOReportNaming so a die/chip-id token
             // ("DIE0 Energy Model", "DIE0 GPU0") still resolves — the shape that broke the
@@ -144,10 +278,7 @@ public final class PowerSampler {
             } else if IOReportNaming.isUnit(group, "PMP") {
                 // Base-M1 fallback source. Only the "Energy Counters" subgroup carries the rails;
                 // match cluster totals (ECPU/PCPU), not per-core (ECORE*/PCORE*).
-                let subgroup = (IOReportChannelGetSubGroup(channel)?.takeUnretainedValue() as String?) ?? ""
-                guard IOReportNaming.isUnit(subgroup, "Energy Counters") else {
-                    return Int32(kKtopIOReportIterOk)
-                }
+                guard IOReportNaming.isUnit(rail.subgroup, "Energy Counters") else { continue }
                 // Whole-unit matches (not prefixes): these rails are cluster/engine TOTALS, and a
                 // prefix would also swallow the per-core siblings and double-count them.
                 if IOReportNaming.isUnit(name, "ANE") {
@@ -164,7 +295,6 @@ public final class PowerSampler {
                     pmpPCpu += watts                       // perflevel 0 (Performance, or Super)
                 }
             }
-            return Int32(kKtopIOReportIterOk)
         }
 
         // M5-shape cluster totals: exactly "PCPU"/"MCPU" plus an optional cluster number, and
@@ -190,16 +320,6 @@ public final class PowerSampler {
             result.eCPUWatts = pmpECpu
             result.pCPUWatts = pmpPCpu
             if result.cpuWatts == 0 { result.cpuWatts = pmpECpu + pmpPCpu }
-        }
-
-        // A18: Energy Model only exposes GPU, so cpu/ane/dram stay 0 and the derived sum is wrong.
-        // Read the real rails from SMC instead (confirmed by Dreaminko's load test, #12):
-        //   PSTR = system total (direct watts); PZC0 = CPU package power.
-        // PZC0 ≈ PZC1 (both ~0.8W idle, ~6.2W under load) — the same CPU reading, not two clusters,
-        // so use one (their sum would exceed PSTR). The E/P split isn't exposed on the A18.
-        if isA18 {
-            if let pstr = smc?.readDouble("PSTR") { result.measuredSocWatts = pstr }
-            if let cpu = smc?.readDouble("PZC0") { result.cpuWatts = cpu }
         }
 
         return result
