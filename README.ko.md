@@ -23,9 +23,9 @@ Engine)**, **Media Engine**, **메모리 대역폭**을 일급 지표로 추적�
 
 *[OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)(미국) · [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)(일본) · [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)(독일)에 소개되었습니다.*
 
-![로컬 LLM 부하 상태의 SiliconScope 대시보드](docs/img/dashboard.png)
+![온디바이스 AI 부하 상태의 SiliconScope 대시보드](docs/img/dashboard.png)
 
-*실제 부하 상태의 M1 Max 한 대 — LM Studio가 `gemma-4-12b`를 생성 중. 워크로드 분류기는 **ANE (CoreML)**, GPU는 97 %에 39 W, 메모리 대역폭은 칩의 400 GB/s 한계 대비 223 GB/s, 그리고 CPU 카드가 빨갛게 테두리 쳐진 이유는 P 클러스터가 **열 스로틀** 중이기 때문 — 3228 MHz 중 2272 MHz로, 경보가 아니라 사실로 서술합니다. 색은 주의가 필요한 곳에만 씁니다: 메모리 압박에 앰버, 스로틀에 빨강, 나머지는 중립. 하단 바가 **Replay**(3.0 신규)입니다: 모든 지표가 기록되므로 DVR처럼 되감아 볼 수 있습니다.**Replay**(3.0 신규): 모든 지표가 기록되므로 DVR처럼 세션을 되감아 스크럽할 수 있습니다.*
+*macOS 27의 M1 Max 한 대, 실제 온디바이스 AI 부하 — [Spectalo](https://spectalo.calidalab.ai/)가 Core ML 모델을 돌리는 중. 워크로드 분류기는 **ANE (CoreML)**, Neural Engine은 **100 % 활성에 16 GB/s** — 실측한 클러스터 residency라서, 이 칩의 에너지 카운터가 30분에 한 번꼴로만 갱신되는 macOS 27에서도 실시간입니다. GPU는 100 %에 36 W, 메모리 대역폭은 칩의 400 GB/s 한계 대비 306 GB/s(**대역폭 병목**), 헤더의 **system 105 W**는 Mac 전체의 소비 전력입니다. 색은 주의가 필요한 곳에만 씁니다 — 여기서는 90 °C를 넘은 CPU·GPU 온도에 빨강 — 나머지는 중립. 하단 바가 **Replay**(3.0 신규)입니다: 모든 지표가 기록되므로 DVR처럼 세션을 되감아 볼 수 있습니다.*
 
 ### 메뉴바 — 모든 지표를, iStat처럼
 
@@ -75,9 +75,9 @@ This Mac은 항상 첫 타일입니다.*
 
 ![VRAM 점유 프로세스와 Ollama 모델까지 보이는 Linux GPU 박스](docs/img/fleet-linux.png)
 
-*같은 앱, 다른 기계 종류. RTX 3090 박스: 카드 한계 대비 **35 / 390 W**, **18.7 / 24 GB VRAM**,
-그 VRAM을 누가 물고 있는지(Python venv가 **17.9 GB**), 그리고 디스크의 Ollama 모델. E코어도 ANE도
-없습니다 — 실제로 없으니까요.*
+*같은 앱, 다른 기계 종류. 쉬고 있는 RTX 3090 박스: 카드 한계 대비 **34 / 390 W**, **0.5 / 24 GB VRAM**과
+그걸 누가 물고 있는지(ComfyUI의 Python, **0.2 GB**), 두 드라이브의 용량(4.4 신규), 그리고 디스크의
+Ollama 모델 — 올라간 게 없어서 회색입니다. E코어도 ANE도 없습니다 — 실제로 없으니까요.*
 
 모든 연결은 **TLS 암호화 + 토큰 인증**이며, 뷰어는 최초 연결 때 에이전트 인증서를 고정(TOFU)합니다.
 그래서 키가 바뀌었거나 위장한 에이전트는 조용히 신뢰되지 않고 거부됩니다.
@@ -208,8 +208,8 @@ Apple Silicon** 필요. 이후로는 **스스로 업데이트**(Sparkle)하니, 
   발목 잡는가?"에 답합니다.
 - **E-코어 / P-코어 구분** — 클러스터별 사용률 + 실제 DVFS 주파수
 - **GPU** — 사용률, 전력, 주파수
-- **ANE & Media Engine** — Neural Engine 전력과 미디어 코덱 대역폭 (차별점)
-- **메모리 대역폭** — CPU / GPU / Media / 합계 GB/s (로컬 LLM 병목 신호)
+- **ANE & Media Engine** — Neural Engine 활동(실측 클러스터 residency)·전력·메모리 트래픽, 그리고 미디어 코덱 대역폭 (차별점)
+- **메모리 대역폭** — CPU / GPU / Media / ANE / 합계 GB/s (로컬 LLM 병목 신호)
 - **메모리** — Wired / Active / Compressed / Free 스택 막대 + macOS **메모리 압력** 경고
 - **네트워크** ↑/↓ 와 **디스크** 읽기/쓰기 + 여유 공간, 실시간 그래프
 - **유닛별 온도** — 세대별 큐레이션 SMC 키로 읽는 실제 **E-Core / P-Core / GPU / Memory**
@@ -242,7 +242,7 @@ Intelligence)을 갖춘 아름다운 비디오 플레이어. 같은 Calida Lab�
 프라이버시 우선·온디바이스 소프트웨어 (주로 Apple Silicon):
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — 온디바이스 전사 + 실시간 번역·동시 통역 (Mac/iPad). 프라이버시 우선 MacWhisper 대안.
-- **[SpectArk](https://spectark.calidalab.ai/)** — macOS용 버전 관리 증분 백업. 파일이 바뀌는 즉시 저장.
+- **[SpectArk](https://spectark.calidalab.ai/)** — 소중한 폴더만 골라 지키는 macOS 실시간 버전 백업. 변경은 몇 초 안에 저장, Time Machine 방식 복원 지점, 어느 디스크나 NAS로.
 - **[SnowChat](https://snowchat.calidalab.ai/)** — 자체 Signal 프로토콜 구현 기반 종단간 암호화 메신저.
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — 프라이버시 보존 에이전틱 AI 레퍼런스 아키텍처 (워킹 페이퍼).
 

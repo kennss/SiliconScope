@@ -23,9 +23,9 @@
 
 *已由 [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（美国）、[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）与 [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德国）报道。*
 
-![本地 LLM 负载下的 SiliconScope 仪表盘](docs/img/dashboard.png)
+![端侧 AI 负载下的 SiliconScope 仪表盘](docs/img/dashboard.png)
 
-*一台真实负载下的 M1 Max —— LM Studio 正在用 `gemma-4-12b` 生成。工作负载分类器判定为 **ANE (CoreML)**，GPU 处于 97 %、39 W，内存带宽为 223 GB/s（芯片上限 400 GB/s），而 CPU 卡片描红是因为 P 簇正在**热降频** —— 3228 MHz 中的 2272 MHz，作为事实陈述而非警报。颜色只用在需要注意的地方：内存压力用琥珀色，降频用红色，其余保持中性。底部的工具条就是 **Replay**（3.0 新增）：所有指标都会被记录，可像 DVR 一样回放。**Replay**（3.0 新增）：每一项指标都会被记录，因此你可以像 DVR 一样回放、拖动整段会话。*
+*一台运行 macOS 27 的 M1 Max，处于真实的端侧 AI 负载下 —— [Spectalo](https://spectalo.calidalab.ai/) 正在运行它的 Core ML 模型。工作负载分类器判定为 **ANE (CoreML)**，Neural Engine **100 % 活跃、搬运 16 GB/s** —— 这是实测的簇驻留率，所以即使在 macOS 27 上（这颗芯片的能耗计数器约半小时才更新一次）也是实时的。GPU 处于 100 %、36 W，内存带宽为 306 GB/s（芯片上限 400 GB/s，**带宽受限**），顶栏的 **system 105 W** 是整台 Mac 的功耗。颜色只用在需要注意的地方 —— 这里是超过 90 °C 的 CPU 与 GPU 温度用红色 —— 其余保持中性。底部的工具条就是 **Replay**（3.0 新增）：每一项指标都会被记录，因此你可以像 DVR 一样回放、拖动整段会话。*
 
 ### 菜单栏 —— 每项指标，iStat 风格
 
@@ -74,9 +74,9 @@
 
 ![显示显存占用进程与 Ollama 模型的 Linux GPU 主机](docs/img/fleet-linux.png)
 
-*同一个 App，另一类机器。一台 RTX 3090 主机：相对显卡上限的 **35 / 390 W**、**18.7 / 24 GB 显存**、
-是谁占着它（一个 Python venv 占 **17.9 GB**），以及磁盘上的 Ollama 模型。没有 E 核，也没有 ANE ——
-因为它本来就没有。*
+*同一个 App，另一类机器。一台空闲的 RTX 3090 主机：相对显卡上限的 **34 / 390 W**、**0.5 / 24 GB 显存**、
+是谁占着它（ComfyUI 的 Python，**0.2 GB**）、两块硬盘的容量（4.4 新增），以及磁盘上的 Ollama 模型 ——
+灰色表示都没有加载。没有 E 核，也没有 ANE —— 因为它本来就没有。*
 
 每条连接都经过 **TLS 加密并使用令牌认证**，而且查看端会在首次连接时固定 agent 的证书（TOFU），
 所以换过密钥或伪装的 agent 会被拒绝，而不是被悄悄信任。
@@ -195,8 +195,8 @@ Apple Silicon**。此后它会**自动更新**（Sparkle）—— 这是你最�
   *memory-pressured*），对照各芯片的内存带宽规格上限 —— 回答“此刻是什么在拖慢我的本地 LLM？”
 - **E 核 / P 核区分** —— 按簇使用率 + 真实 DVFS 频率
 - **GPU** —— 使用率、功耗、频率
-- **ANE & Media Engine** —— Neural Engine 功耗与媒体编解码带宽（差异化所在）
-- **内存带宽** —— CPU / GPU / Media / 合计 GB/s（本地 LLM 的瓶颈信号）
+- **ANE & Media Engine** —— Neural Engine 活跃度（实测簇驻留率）、功耗与内存流量，以及媒体编解码带宽（差异化所在）
+- **内存带宽** —— CPU / GPU / Media / ANE / 合计 GB/s（本地 LLM 的瓶颈信号）
 - **内存** —— Wired / Active / Compressed / Free 堆叠条 + macOS **内存压力**告警
 - **网络** ↑/↓ 与**磁盘**读写 + 剩余空间，附实时图表
 - **按单元温度** —— 通过按世代精选的 SMC 键读取的真实 **E-Core / P-Core / GPU / Memory**
@@ -229,7 +229,7 @@ TestFlight 免费公测 —— 秉持同样的理念：数据绝不离开你的�
 隐私优先、端侧运行的软件（主要面向 Apple Silicon）:
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — 端侧转录 + 实时翻译与同声传译（Mac/iPad）。注重隐私的 MacWhisper 替代品。
-- **[SpectArk](https://spectark.calidalab.ai/)** — macOS 版本化增量备份，文件一变更即刻保存。
+- **[SpectArk](https://spectark.calidalab.ai/)** — 只守护你在意的文件夹的 macOS 实时版本化备份：每次变更数秒内保存，Time Machine 式恢复点，可备份到任意磁盘或 NAS。
 - **[SnowChat](https://snowchat.calidalab.ai/)** — 基于自研 Signal 协议实现的端到端加密即时通讯。
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — 隐私保护型智能体 AI 的参考架构（工作论文）。
 

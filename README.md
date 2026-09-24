@@ -25,7 +25,7 @@ encrypted, paired connection. Remote Macs keep the full treatment, **Neural Engi
 
 ![SiliconScope dashboard with the Replay scrubber](docs/img/dashboard.png)
 
-*One M1 Max under a real load — LM Studio generating on `gemma-4-12b`. The workload classifier reads **ANE (CoreML)**, the GPU is at 97 % and 39 W, memory bandwidth is 223 GB/s against the chip's 400 GB/s ceiling, and the CPU card is outlined red because the P-cluster is **thermally throttled** — 2272 of 3228 MHz, stated as a fact rather than an alarm. Colour is spent only where something needs attention: amber on memory pressure, red on the throttle, neutral everywhere else. The bar along the bottom is **Replay** (new in 3.0): every metric is recorded, so you can scrub back through a session like a DVR.*
+*One M1 Max on macOS 27 under a real on-device AI load — [Spectalo](https://spectalo.calidalab.ai/) running its Core ML models. The workload classifier reads **ANE (CoreML)**, and the Neural Engine is **100 % active, moving 16 GB/s** — measured cluster residency, so it stays live even on macOS 27, where this chip's energy counters update only about every half hour. The GPU is at 100 % and 36 W, memory bandwidth is 306 GB/s against the chip's 400 GB/s ceiling (**bandwidth-bound**), and the header's **system 105 W** is the whole Mac's draw. Colour is spent only where something needs attention — here, red on CPU and GPU temperatures above 90 °C — and neutral everywhere else. The bar along the bottom is **Replay** (new in 3.0): every metric is recorded, so you can scrub back through a session like a DVR.*
 
 ### Menu bar — every metric, iStat-style
 
@@ -77,9 +77,10 @@ split (**wired 1.0 / active 2.7 / compressed 0.5 GB**, pressure 19%) — and Sen
 
 ![A Linux GPU box with VRAM holders and Ollama models](docs/img/fleet-linux.png)
 
-*The same app, a different machine class. An RTX 3090 box: **35 / 390 W** against the card's limit,
-**18.7 / 24 GB VRAM**, which processes are holding it (a Python venv at **17.9 GB**), and the Ollama
-models on disk. No E-cores, no ANE — because it has neither.*
+*The same app, a different machine class. An idle RTX 3090 box: **34 / 390 W** against the card's limit,
+**0.5 / 24 GB VRAM** and which process holds it (ComfyUI's Python, **0.2 GB**), both drives' capacity
+(new in 4.4), and the Ollama models on disk — grey because none is loaded. No E-cores, no ANE —
+because it has neither.*
 
 Every connection is **TLS-encrypted and token-authenticated**, and the viewer pins the agent's
 certificate the first time it connects, so a re-keyed or spoofed agent is refused rather than
@@ -217,8 +218,9 @@ Prefer to build it yourself? See [Build & run](#build--run).
   ceiling — answers "what's limiting my local LLM right now?"
 - **E-core / P-core split** — per-cluster utilization + real DVFS frequency
 - **GPU** — utilization, power, frequency
-- **ANE & Media Engine** — Neural-Engine power and media-codec bandwidth (the differentiators)
-- **Memory bandwidth** — CPU / GPU / Media / total GB/s (the local-LLM bottleneck signal)
+- **ANE & Media Engine** — Neural-Engine activity (measured cluster residency), power and memory
+  traffic, plus media-codec bandwidth (the differentiators)
+- **Memory bandwidth** — CPU / GPU / Media / ANE / total GB/s (the local-LLM bottleneck signal)
 - **Memory** — Wired / Active / Compressed / Free stacked bar + macOS **memory-pressure** alerts
 - **Network** ↑/↓ and **Disk** read/write + free space, with live graphs
 - **Per-unit temperatures** — real **E-Core / P-Core / GPU / Memory** sensors via curated
@@ -322,9 +324,14 @@ so the reported MHz is what the cluster actually ran at, not a nominal max.
 #### 4. ANE & memory bandwidth (with an honest caveat)
 
 The IOReport **Energy Model** group exposes per-domain power including the Neural Engine, and
-the bandwidth channels give CPU/GPU/Media/total GB/s. **ANE "usage" is a power-normalized
-estimate** — Apple doesn't expose ANE occupancy, so it's labeled as an estimate rather than
-faked as a percentage.
+the bandwidth channels give CPU/GPU/Media/ANE/total GB/s. **ANE activity is measured, not inferred
+from power**: `SoC Stats › Cluster Power States` reports how long each ANE cluster spent active, and
+the gauge is the busiest cluster's share. That is a share of time, not a count of operations —
+Apple still doesn't expose ANE occupancy — but it is a measurement, and it stays live on macOS 27,
+where some chips update the Energy Model counters only at power-management events (about every
+30 minutes on an M1 Max). There, ANE **watts** are an average over that span and are labelled as
+one. On a Mac without the residency channel the gauge falls back to power against its observed
+peak.
 
 #### 5. Dynamic per-metric menu-bar items (AppKit, not SwiftUI)
 
@@ -381,7 +388,7 @@ was born from building it. Free open beta on TestFlight — same ethos: nothing 
 Privacy-first, on-device software — mostly for Apple Silicon:
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — on-device transcription + live translation & interpretation (Mac/iPad). A privacy-first MacWhisper alternative.
-- **[SpectArk](https://spectark.calidalab.ai/)** — versioned incremental backup for macOS: snapshots the moment a file changes.
+- **[SpectArk](https://spectark.calidalab.ai/)** — realtime, versioned backup for the Mac folders you care about: every change saved within seconds, Time Machine–style restore points, to any disk or NAS.
 - **[SnowChat](https://snowchat.calidalab.ai/)** — end-to-end encrypted messenger on our own Signal-protocol library.
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — a reference architecture for privacy-preserving agentic AI (working paper).
 

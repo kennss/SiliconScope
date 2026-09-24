@@ -26,9 +26,9 @@ bei. Ferne Macs bekommen die volle Behandlung — **Neural Engine inklusive**.
 
 *Vorgestellt auf [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE), [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/) (US) und [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP).*
 
-![SiliconScope-Dashboard unter Last eines lokalen LLM](docs/img/dashboard.png)
+![SiliconScope-Dashboard unter On-Device-KI-Last](docs/img/dashboard.png)
 
-*Ein M1 Max unter echter Last — LM Studio generiert mit `gemma-4-12b`. Der Workload-Klassifikator meldet **ANE (CoreML)**, die GPU liegt bei 97 % und 39 W, die Speicherbandbreite bei 223 GB/s gegen die 400 GB/s des Chips — und die CPU-Karte ist rot umrandet, weil der P-Cluster **thermisch gedrosselt** wird: 2272 von 3228 MHz, als Tatsache formuliert, nicht als Alarm. Farbe wird nur dort ausgegeben, wo etwas Aufmerksamkeit braucht: Bernstein bei Speicherdruck, Rot bei der Drosselung, sonst neutral. Die Leiste unten ist **Replay** (neu in 3.0): jede Metrik wird aufgezeichnet, du kannst eine Sitzung wie mit einem DVR zurückspulen.**Replay** (neu in 3.0): jede Metrik wird aufgezeichnet, sodass du wie bei einem DVR durch eine Sitzung zurückspulen kannst.*
+*Ein M1 Max unter macOS 27 bei echter On-Device-KI-Last — [Spectalo](https://spectalo.calidalab.ai/) führt seine Core-ML-Modelle aus. Der Workload-Klassifikator meldet **ANE (CoreML)**, und die Neural Engine ist **zu 100 % aktiv und bewegt 16 GB/s** — gemessene Cluster-Residenz, daher live auch unter macOS 27, wo die Energiezähler dieses Chips nur etwa alle halbe Stunde aktualisiert werden. Die GPU liegt bei 100 % und 36 W, die Speicherbandbreite bei 306 GB/s gegen die 400 GB/s des Chips (**bandbreitenlimitiert**), und **system 105 W** in der Kopfzeile ist die Leistungsaufnahme des ganzen Mac. Farbe wird nur dort ausgegeben, wo etwas Aufmerksamkeit braucht — hier Rot bei CPU- und GPU-Temperaturen über 90 °C —, sonst neutral. Die Leiste unten ist **Replay** (neu in 3.0): jede Metrik wird aufgezeichnet, sodass du wie bei einem DVR durch eine Sitzung zurückspulen kannst.*
 
 ### Menüleiste — jede Metrik, im iStat-Stil
 
@@ -83,9 +83,10 @@ die ein Wire-Agent nicht füllen kann, werden weggelassen und nicht gefälscht.*
 
 ![Eine Linux-GPU-Kiste mit VRAM-Haltern und Ollama-Modellen](docs/img/fleet-linux.png)
 
-*Dieselbe App, eine andere Klasse von Rechner. Eine RTX-3090-Kiste: **35 / 390 W** gegen das Limit der
-Karte, **18,7 / 24 GB VRAM**, wer es hält (ein Python-venv mit **17,9 GB**) und die Ollama-Modelle auf
-der Platte. Keine E-Kerne, keine ANE — weil sie beides nicht hat.*
+*Dieselbe App, eine andere Klasse von Rechner. Eine RTX-3090-Kiste im Leerlauf: **34 / 390 W** gegen das
+Limit der Karte, **0,5 / 24 GB VRAM** und wer es hält (ComfyUIs Python, **0,2 GB**), die Kapazität beider
+Laufwerke (neu in 4.4) und die Ollama-Modelle auf der Platte — grau, weil keines geladen ist. Keine
+E-Kerne, keine ANE — weil sie beides nicht hat.*
 
 Jede Verbindung ist **TLS-verschlüsselt und token-authentifiziert**, und der Viewer pinnt beim ersten
 Verbinden das Zertifikat des Agents (TOFU) — ein neu geschlüsselter oder untergeschobener Agent wird
@@ -227,9 +228,9 @@ Wenn du selbst bauen willst, siehe [Build & run](README.md#build--run) im englis
   des jeweiligen Chips — beantwortet: „Was bremst mein lokales LLM gerade?"
 - **E-Kern- / P-Kern-Trennung** — Auslastung pro Cluster + echte DVFS-Frequenzen
 - **GPU** — Auslastung, Leistung, Frequenz
-- **ANE & Media Engine** — Neural-Engine-Leistung und Medien-Codec-Bandbreite (das
-  Alleinstellungsmerkmal)
-- **Speicherbandbreite** — CPU / GPU / Media / gesamt GB/s (das Engpass-Signal für lokale LLMs)
+- **ANE & Media Engine** — Neural-Engine-Aktivität (gemessene Cluster-Residenz), Leistung und
+  Speicherverkehr, dazu Medien-Codec-Bandbreite (das Alleinstellungsmerkmal)
+- **Speicherbandbreite** — CPU / GPU / Media / ANE / gesamt GB/s (das Engpass-Signal für lokale LLMs)
 - **Speicher** — gestapelte Balken aus Wired / Active / Compressed / Free + macOS-Warnung bei
   **Speicherdruck**
 - **Netzwerk** ↑/↓ und **Festplatte** Lesen/Schreiben + freier Speicher, mit Live-Graphen
@@ -265,7 +266,7 @@ Deep-Dives findest du im **[englischen README](README.md)**.
 Datenschutzorientierte, geräteinterne Software — hauptsächlich für Apple Silicon:
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — geräteinterne Transkription + Live-Übersetzung & Simultandolmetschen (Mac/iPad). Eine datenschutzfreundliche MacWhisper-Alternative.
-- **[SpectArk](https://spectark.calidalab.ai/)** — versionierte inkrementelle Backups für macOS: sichert in dem Moment, in dem sich eine Datei ändert.
+- **[SpectArk](https://spectark.calidalab.ai/)** — versionierte Echtzeit-Backups für die Mac-Ordner, auf die es ankommt: jede Änderung in Sekunden gesichert, Wiederherstellungspunkte wie bei Time Machine, auf jede Festplatte oder jedes NAS.
 - **[SnowChat](https://snowchat.calidalab.ai/)** — Ende-zu-Ende-verschlüsselter Messenger auf unserer eigenen Signal-Protokoll-Bibliothek.
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — eine Referenzarchitektur für datenschutzwahrende agentische KI (Arbeitspapier).
 

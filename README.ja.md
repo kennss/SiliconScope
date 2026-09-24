@@ -24,9 +24,9 @@ Linux GPU マシン、借りているクラウドインスタンス — そこ�
 
 *[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本語）、[OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（英語）と [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（ドイツ語）に掲載されました。*
 
-![ローカル LLM 負荷時の SiliconScope ダッシュボード](docs/img/dashboard.png)
+![オンデバイス AI 負荷時の SiliconScope ダッシュボード](docs/img/dashboard.png)
 
-*実負荷下の M1 Max 一台 — LM Studio が `gemma-4-12b` を生成中。ワークロード分類器は **ANE (CoreML)**、GPU は 97 % で 39 W、メモリ帯域はチップの 400 GB/s 上限に対して 223 GB/s、そして CPU カードが赤く縁取られているのは P クラスタが**サーマルスロットリング**中だからです — 3228 MHz のうち 2272 MHz、警報ではなく事実として記述します。色は注意が必要な箇所にだけ使います: メモリ圧迫にアンバー、スロットルに赤、それ以外はニュートラル。下部のバーが **Replay**（3.0 の新機能）です: すべての指標が記録されるため、DVR のように巻き戻せます。**Replay**（3.0 で新登場）: すべての指標が記録されるので、DVR のようにセッションを巻き戻してスクラブできます。*
+*macOS 27 の M1 Max 一台、実際のオンデバイス AI 負荷 — [Spectalo](https://spectalo.calidalab.ai/) が Core ML モデルを実行中。ワークロード分類器は **ANE (CoreML)**、Neural Engine は **100 % アクティブで 16 GB/s** — 実測したクラスタ residency なので、このチップのエネルギーカウンタが約 30 分に一度しか更新されない macOS 27 でもリアルタイムです。GPU は 100 % で 36 W、メモリ帯域はチップの 400 GB/s 上限に対して 306 GB/s（**帯域律速**）、ヘッダーの **system 105 W** は Mac 全体の消費電力です。色は注意が必要な箇所にだけ使います — ここでは 90 °C を超えた CPU・GPU 温度に赤 — それ以外はニュートラル。下部のバーが **Replay**（3.0 の新機能）です: すべての指標が記録されるので、DVR のようにセッションを巻き戻してスクラブできます。*
 
 ### メニューバー — すべての指標を、iStat 風に
 
@@ -79,9 +79,10 @@ This Mac は常に最初のタイルです。*
 
 ![VRAM を握るプロセスと Ollama モデルまで見える Linux GPU マシン](docs/img/fleet-linux.png)
 
-*同じアプリ、違う種類のマシン。RTX 3090 のマシン：カード上限に対して **35 / 390 W**、
-**18.7 / 24 GB VRAM**、それを握っているのは誰か（Python の venv が **17.9 GB**）、そしてディスク上の
-Ollama モデル。E コアも ANE もありません — 実際に無いからです。*
+*同じアプリ、違う種類のマシン。アイドル中の RTX 3090 のマシン：カード上限に対して **34 / 390 W**、
+**0.5 / 24 GB VRAM** とそれを握っているプロセス（ComfyUI の Python、**0.2 GB**）、2 つのドライブの容量
+（4.4 の新機能）、そしてディスク上の Ollama モデル — 何もロードされていないのでグレー。E コアも ANE も
+ありません — 実際に無いからです。*
 
 すべての接続は **TLS で暗号化され、トークンで認証** されます。ビューアは初回接続時にエージェントの
 証明書をピン留め（TOFU）するため、鍵が変わったり成りすましたエージェントは黙って信頼されるのでは
@@ -214,8 +215,8 @@ Apple Silicon** が必要。以降は **自動更新**（Sparkle）するため�
   「今、ローカル LLM の何が律速か？」に答えます。
 - **E コア / P コアの分離** — クラスタ別の使用率 + 実際の DVFS 周波数
 - **GPU** — 使用率・電力・周波数
-- **ANE & Media Engine** — Neural Engine の電力とメディアコーデック帯域（差別化点）
-- **メモリ帯域幅** — CPU / GPU / Media / 合計 GB/s（ローカル LLM のボトルネック信号）
+- **ANE & Media Engine** — Neural Engine のアクティビティ（実測クラスタ residency）・電力・メモリトラフィックと、メディアコーデック帯域（差別化点）
+- **メモリ帯域幅** — CPU / GPU / Media / ANE / 合計 GB/s（ローカル LLM のボトルネック信号）
 - **メモリ** — Wired / Active / Compressed / Free の積み上げバー + macOS の **メモリ圧迫** 警告
 - **ネットワーク** ↑/↓ と **ディスク** 読み書き + 空き容量、ライブグラフ付き
 - **ユニット別温度** — 世代別に厳選した SMC キーで読む実際の **E-Core / P-Core / GPU / Memory**
@@ -248,7 +249,7 @@ Intelligence）を備えた美しい動画プレーヤー。同じ Calida Lab �
 プライバシー優先・オンデバイスのソフトウェア（主に Apple Silicon 向け）:
 
 - **[SpectaLing](https://spectaling.calidalab.ai/)** — オンデバイスの文字起こし＋リアルタイム翻訳・同時通訳（Mac/iPad）。プライバシー重視の MacWhisper 代替。
-- **[SpectArk](https://spectark.calidalab.ai/)** — macOS 向けのバージョン管理型・増分バックアップ。ファイルが変わった瞬間に保存。
+- **[SpectArk](https://spectark.calidalab.ai/)** — 大切なフォルダだけを守る macOS 向けリアルタイム・バージョン管理バックアップ。変更は数秒以内に保存、Time Machine 方式の復元ポイント、任意のディスクや NAS へ。
 - **[SnowChat](https://snowchat.calidalab.ai/)** — 自社の Signal プロトコル実装によるエンドツーエンド暗号化メッセンジャー。
 - **[SnowClaw](https://snowclaw.calidalab.ai/)** — プライバシー保護型エージェント AI のリファレンスアーキテクチャ（ワーキングペーパー）。
 
