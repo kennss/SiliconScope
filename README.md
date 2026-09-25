@@ -122,6 +122,12 @@ and run it as a scheduled task.
 > add it by address in **Add machine…**; prefer Tailscale or an SSH tunnel over exposing the port
 > publicly.
 
+> **Lockdown Mode, or a firewall set to block all incoming connections,** keeps the viewer from reaching
+> the agent: the Mac never shows up, or shows a red dot with a TLS or hostname error. On that Mac, open
+> **System Settings → Network → Firewall → Options**, turn off **Block all incoming connections**, check
+> that SiliconScope (or `sscope-agent-mac`) is allowed, then restart SiliconScope. Worked out by
+> [@progenitor-amborella](https://github.com/progenitor-amborella) in [#63](https://github.com/kennss/SiliconScope/issues/63).
+
 **To remove an agent** — run the same installer with `--uninstall` on that machine:
 
 ```sh

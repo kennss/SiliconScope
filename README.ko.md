@@ -121,6 +121,12 @@ Apple Silicon 전용입니다.
 > 없으니 **Add machine…**에서 주소로 추가하세요. 포트를 인터넷에 그대로 열기보다는 Tailscale이나
 > SSH 터널을 쓰는 편이 안전합니다.
 
+> **차단 모드를 켰거나 방화벽이 들어오는 연결을 모두 막고 있으면** 뷰어가 에이전트에 닿지 못합니다.
+> 그 Mac이 목록에 아예 안 나오거나, 빨간 점과 함께 TLS 오류나 호스트 이름 오류가 납니다. 그 Mac에서
+> **시스템 설정 → 네트워크 → 방화벽 → 옵션**으로 가서 **들어오는 모든 연결 차단**을 끄고, SiliconScope(또는
+> `sscope-agent-mac`)가 허용돼 있는지 확인한 다음 SiliconScope를 다시 실행하세요.
+> [@progenitor-amborella](https://github.com/progenitor-amborella)가 [#63](https://github.com/kennss/SiliconScope/issues/63)에 정리해 준 내용입니다.
+
 **에이전트를 지우려면** 그 기계에서 같은 설치 스크립트를 `--uninstall`과 함께 실행합니다.
 
 ```sh

@@ -88,6 +88,8 @@ Mac 版 agent **不需要 sudo**，所以透過 `ssh` 執行也能自動裝完�
 > **不接螢幕的 Mac？** 請先開啟**系統設定 → 一般 → 共享 → 遠端登入**，否則沒辦法在上面安裝任何東西。
 > **不在同一個區域網路**（Tailscale、VPN、雲端）？mDNS 找不到它，請在 **Add machine…** 直接輸入位址新增。與其把連接埠開放到公開網路，建議改用 Tailscale 或 SSH 通道。
 
+> **開啟了封閉模式，或防火牆設為阻擋所有傳入連線的 Mac**，檢視端會連不上它的 agent：要不是根本不出現在清單裡，就是顯示紅點並出現 TLS 錯誤或無法解析主機名稱。請在那台 Mac 上打開**系統設定 → 網路 → 防火牆 → 選項**，關閉**阻斷所有傳入連線**，確認 SiliconScope（或 `sscope-agent-mac`）在允許清單中，再重新啟動 SiliconScope。這是 [@progenitor-amborella](https://github.com/progenitor-amborella) 在 [#63](https://github.com/kennss/SiliconScope/issues/63) 整理的方法。
+
 **移除 agent**：在那台機器上用 `--uninstall` 參數執行同一個安裝指令碼。
 
 ```sh

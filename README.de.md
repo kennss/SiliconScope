@@ -133,6 +133,13 @@ und führe ihn als geplante Aufgabe aus.
 > (Tailscale, VPN, Cloud) reicht mDNS nicht hin; füge den Rechner dann unter **Add machine…** per
 > Adresse hinzu. Tailscale oder ein SSH-Tunnel ist dabei besser, als den Port öffentlich freizugeben.
 
+> **Ist der Blockierungsmodus aktiv oder blockiert die Firewall alle eingehenden Verbindungen,** erreicht der
+> Viewer den Agent nicht: Der Mac taucht gar nicht erst auf oder zeigt einen roten Punkt mit einem TLS- oder
+> Hostnamen-Fehler. Öffne auf diesem Mac **Systemeinstellungen → Netzwerk → Firewall → Optionen**, schalte
+> **Alle eingehenden Verbindungen blockieren** aus, prüfe, ob SiliconScope (bzw. `sscope-agent-mac`) zugelassen
+> ist, und starte SiliconScope danach neu. Herausgefunden hat das
+> [@progenitor-amborella](https://github.com/progenitor-amborella) in [#63](https://github.com/kennss/SiliconScope/issues/63).
+
 **Einen Agent entfernen:** Führe auf dem betreffenden Rechner denselben Installer mit `--uninstall` aus.
 
 ```sh
