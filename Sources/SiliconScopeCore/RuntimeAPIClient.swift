@@ -1,12 +1,12 @@
 //
 //  File:      RuntimeAPIClient.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-24
+//  Updated:   2026-09-25
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Opt-in probes of local AI runtime HTTP APIs, keyed by the detected runtime.
 //             Ollama /api/ps gives the authoritative model size + GPU/CPU split (size_vram
 //             / size); llama.cpp /metrics gives real tokens/sec; LM Studio reports the
-//             loaded model id + quant + context; exo/Rapid-MLX/mlx-dspark/MTPLX/DS4 expose an
+//             loaded instances (REST v1, else v0 state) + quant + context; exo/Rapid-MLX/mlx-dspark/MTPLX/DS4 expose an
 //             OpenAI-compatible /v1/models, while oMLX reports per-model loaded state on
 //             /v1/models/status. All sudoless, localhost-only (LocalHTTP).
 //  Notes:     Every JSON field is optional (version drift tolerant). A non-answer maps to
@@ -72,33 +72,59 @@ public struct RuntimeAPIClient: Sendable {
         return s
     }
 
-    // MARK: - LM Studio (127.0.0.1:1234; REST /api/v0 then OpenAI /v1)
+    // MARK: - LM Studio (127.0.0.1:1234; REST /api/v1, then /api/v0)
 
+    /// LM Studio's loaded set, from the only two endpoints that say what is resident.
+    ///
+    /// ⚠️ Its OpenAI-compatible `/v1/models` is NOT one of them. LM Studio documents that it "may
+    /// include all downloaded models when Just-In-Time loading is enabled" — the catalog, like
+    /// oMLX's (#66), so reading it as the loaded set names a model that is on disk and resident
+    /// nowhere. With neither REST API answering, the honest result is "no answer", not a list.
     private func probeLMStudio(port: Int) async -> RuntimeAPISample {
         var s = RuntimeAPISample(); s.source = .lmStudio
-        if let data = try? await http.get(port: port, path: "/api/v0/models"),
-           let resp = try? JSONDecoder().decode(LMSModels.self, from: data) {
+        // v1 REST (LM Studio 0.4+): each model lists its loaded instances.
+        if let data = try? await http.get(port: port, path: "/api/v1/models"),
+           let resp = try? JSONDecoder().decode(LMSModelsV1.self, from: data), resp.models != nil {
             s.status = .ok; s.lastUpdated = Date()
-            s.loadedModels = (resp.data ?? [])
-                .filter { ($0.state ?? "loaded") == "loaded" }
-                .map { m in
-                    RuntimeModelInfo(name: m.id, sizeBytes: 0, sizeVRAMBytes: 0,
-                                     parameterSize: nil, quantization: m.quantization,
-                                     contextLength: m.loaded_context_length ?? m.max_context_length)
-                }
+            s.loadedModels = Self.lmStudioLoadedModels(resp)
             return s
         }
-        if let data = try? await http.get(port: port, path: "/v1/models"),
-           let resp = try? JSONDecoder().decode(OpenAIModels.self, from: data) {
+        // v0 REST (superseded, still served): a per-model `state`.
+        if let data = try? await http.get(port: port, path: "/api/v0/models"),
+           let resp = try? JSONDecoder().decode(LMSModels.self, from: data), resp.data != nil {
             s.status = .ok; s.lastUpdated = Date()
-            s.loadedModels = (resp.data ?? []).map {
-                RuntimeModelInfo(name: $0.id, sizeBytes: 0, sizeVRAMBytes: 0,
-                                 parameterSize: nil, quantization: nil, contextLength: nil)
-            }
+            s.loadedModels = Self.lmStudioLoadedModels(resp)
             return s
         }
         s.status = .runningNoServer
         return s
+    }
+
+    /// v1: a model is loaded when it has loaded instances, and each instance is one resident copy
+    /// under its own identifier — the name the OpenAI endpoints accept, so the benchmark can use it.
+    ///
+    /// Sizes stay unset, as for oMLX: `size_bytes` with no VRAM figure makes `processorLabel` read
+    /// "100% CPU" for a model LM Studio runs on the GPU.
+    static func lmStudioLoadedModels(_ resp: LMSModelsV1) -> [RuntimeModelInfo] {
+        (resp.models ?? []).flatMap { m in
+            (m.loaded_instances ?? []).map { inst in
+                RuntimeModelInfo(name: inst.id, sizeBytes: 0, sizeVRAMBytes: 0,
+                                 parameterSize: m.params_string, quantization: m.quantization?.name,
+                                 contextLength: inst.config?.context_length ?? m.max_context_length)
+            }
+        }
+    }
+
+    /// v0: only an explicit "loaded" counts. A missing state is not evidence of residency —
+    /// defaulting it to loaded is the assumption that over-reported oMLX (#66).
+    static func lmStudioLoadedModels(_ resp: LMSModels) -> [RuntimeModelInfo] {
+        (resp.data ?? [])
+            .filter { $0.state == "loaded" }
+            .map { m in
+                RuntimeModelInfo(name: m.id, sizeBytes: 0, sizeVRAMBytes: 0,
+                                 parameterSize: nil, quantization: m.quantization,
+                                 contextLength: m.loaded_context_length ?? m.max_context_length)
+            }
     }
 
     // MARK: - Generic OpenAI-compatible server (Rapid-MLX :8000, etc.)
@@ -210,7 +236,26 @@ public struct RuntimeAPIClient: Sendable {
         struct Details: Codable { let parameter_size: String?; let quantization_level: String? }
     }
 
-    private struct LMSModels: Codable {
+    /// LM Studio v1 REST `GET /api/v1/models`. Every field optional: a newer build that adds or
+    /// drops one must not make the whole list unreadable.
+    struct LMSModelsV1: Codable {
+        let models: [Model]?
+        struct Model: Codable {
+            let key: String?
+            let params_string: String?
+            let quantization: Quantization?
+            let max_context_length: Int?
+            let loaded_instances: [Instance]?
+        }
+        struct Quantization: Codable { let name: String? }
+        struct Instance: Codable {
+            let id: String
+            let config: Config?
+            struct Config: Codable { let context_length: Int? }
+        }
+    }
+
+    struct LMSModels: Codable {
         let data: [Model]?
         struct Model: Codable {
             let id: String
