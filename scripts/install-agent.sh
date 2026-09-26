@@ -2,7 +2,7 @@
 #
 #  File:      install-agent.sh
 #  Created:   2026-07-22
-#  Updated:   2026-09-05
+#  Updated:   2026-09-27
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  THE install entry point for the SiliconScope fleet agent — one URL for every platform.
 #             On macOS it hands off to install-agent-mac.sh; on Linux it detects the CPU arch, fetches
@@ -77,6 +77,15 @@ else
 fi
 echo "  installed: $BIN ($("$BIN" --version))"
 
+# --- state directory: token + self-signed TLS cert ---
+# Created here rather than left to systemd's StateDirectory=, which only exists from systemd 235.
+# Synology DSM 7 ships systemd 219: it ignores StateDirectory= ("Unknown lvalue"), no directory is
+# made, STATE_DIRECTORY is never set, and the agent keeps its token somewhere else — while this
+# script reads the pairing token from here. Owning the path ourselves, and passing it to the agent
+# explicitly below, makes it the same on every systemd. `install -d` keeps an existing token.
+STATE_DIR="/var/lib/sscope-agent"
+$SUDO install -d -m 0700 -o "$RUN_USER" "$STATE_DIR"
+
 # --- systemd service (auto-start on boot, restart on crash) ---
 echo "▸ Registering systemd service (user: $RUN_USER, port: $PORT)…"
 $SUDO tee "$SERVICE" >/dev/null <<UNIT
@@ -92,7 +101,11 @@ User=$RUN_USER
 ExecStart=$BIN --serve :$PORT
 Restart=on-failure
 RestartSec=5
-# Token + self-signed TLS cert live here; systemd creates /var/lib/sscope-agent (writable under strict).
+# Token + self-signed TLS cert. The path is passed explicitly so the agent finds it on any systemd;
+# StateDirectory= is kept because on systemd 235+ it is what keeps the directory writable under
+# ProtectSystem=strict. Older systemd ignores both lines below it, and the directory made above
+# is used as it is.
+Environment=SSCOPE_CONFIG_DIR=$STATE_DIR
 StateDirectory=sscope-agent
 # Hardening: the agent otherwise only reads /proc and shells out to nvidia-smi.
 NoNewPrivileges=true
@@ -113,7 +126,7 @@ $SUDO systemctl --no-pager --lines=0 status sscope-agent || true
 
 # Show the pairing token (the service generated it on first start) to enter on the Mac.
 sleep 1
-TOKEN_FILE="/var/lib/sscope-agent/token"
+TOKEN_FILE="$STATE_DIR/token"
 echo
 TOKEN="$($SUDO cat "$TOKEN_FILE" 2>/dev/null || true)"
 # A reachable address for the viewer: the route-selected source IP, else the first configured one.
