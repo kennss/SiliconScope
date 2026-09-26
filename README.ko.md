@@ -207,6 +207,8 @@ Apple Silicon**이 필요합니다. 이후 업데이트는 앱이 **알아서 �
 
 직접 빌드하려면 영어 README의 [Build & run](README.md#build--run)을 보세요.
 
+측정 부분은 `SiliconScopeCore`라는 Swift 라이브러리라서 자기 도구에 넣어 쓸 수 있습니다. [라이브러리로 쓰기](docs/library.md)(영어)를 보세요. 안정된 API는 아닙니다.
+
 ## 주요 기능
 
 - **프로세스 인스펙터** *(3.0에서 추가)* — 프로세스 하나를 골라 CPU(P/E 구분), IPC, 프로세스별

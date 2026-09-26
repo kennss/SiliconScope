@@ -229,6 +229,8 @@ danach **selbst** (Sparkle); ein DMG musst du also nie wieder von Hand herunterl
 
 Du willst selbst bauen? Die Anleitung steht unter [Build & run](README.md#build--run) im englischen README.
 
+Die Messschicht ist eine Swift-Bibliothek, `SiliconScopeCore`, die du in eigene Tools einbinden kannst. Siehe [Using SiliconScopeCore as a library](docs/library.md) (Englisch). Eine stabile API ist sie nicht.
+
 ## Hauptfunktionen
 
 - **Prozess-Inspektor** *(seit 3.0)*: nimmt einen einzelnen Prozess in den Fokus und zeigt CPU

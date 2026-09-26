@@ -143,6 +143,8 @@ App 已使用 Developer ID 签名并通过 **Apple 公证**，打开时不会弹
 
 想自己构建？请看英文 README 的 [Build & run](README.md#build--run)。
 
+测量部分是一个名为 `SiliconScopeCore` 的 Swift 库，可以集成到你自己的工具里。请看[作为库使用](docs/library.md)（英文）。它不是稳定的 API。
+
 ## 功能亮点
 
 - **进程检查器** *(3.0 新增)*：聚焦单个进程，查看 CPU（P/E 拆分）、IPC、进程级**功耗（W）**、内存、磁盘和 **Neural Engine 内存**，全部无需 sudo

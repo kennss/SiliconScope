@@ -255,6 +255,9 @@ open dist/SiliconScope.app          # launch the local app bundle
 > Use `xcrun`. A non-Xcode `swift` (e.g. swiftly) may not match the macOS SDK and
 > will fail with `Failed to build module 'Foundation'`.
 
+The measurement layer is a Swift library, `SiliconScopeCore`, and it can be linked into your own
+tool. See [Using SiliconScopeCore as a library](docs/library.md). It is not a stable API.
+
 ## How it works (all sudoless)
 
 | Data | Source |

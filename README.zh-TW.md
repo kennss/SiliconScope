@@ -150,6 +150,8 @@ App 已使用 Developer ID 簽署並通過 **Apple 公證**，開啟時不會跳
 
 想自己建置？請參考英文 README 的 [Build & run](README.md#build--run)。
 
+量測部分是名為 `SiliconScopeCore` 的 Swift 函式庫，可以整合進你自己的工具。請參考[當作函式庫使用](docs/library.md)（英文）。它不是穩定的 API。
+
 ## 功能亮點
 
 - **程序檢查器** *(3.0 新增)*：鎖定單一程序，查看 CPU（P/E 拆分）、IPC、各程序**功耗（W）**、記憶體、磁碟與 **Neural Engine 記憶體**，全部免 sudo

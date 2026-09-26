@@ -148,6 +148,8 @@ Developer ID で署名し、**Apple の公証**も受けているので、Gateke
 
 自分でビルドする場合は、英語版 README の [Build & run](README.md#build--run) を参照してください。
 
+計測部分は `SiliconScopeCore` という Swift ライブラリなので、自分のツールに組み込んで使えます。[ライブラリとして使う](docs/library.md)（英語）を参照してください。安定した API ではありません。
+
 ## 主な機能
 
 - **プロセスインスペクタ** *(3.0 で追加)*：1 つのプロセスについて、CPU（P/E 別）、IPC、プロセスごとの**電力（W）**、メモリ、ディスク、**Neural Engine メモリ**を表示。どれも sudo は不要
