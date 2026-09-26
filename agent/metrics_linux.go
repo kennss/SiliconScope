@@ -3,7 +3,7 @@
 //
 //  File:      metrics_linux.go
 //  Created:   2026-09-11
-//  Updated:   2026-09-11
+//  Updated:   2026-09-27
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Linux CPU, memory, and machine identity readers for the fleet agent.
 //  Notes:     CPU usage is a 200ms delta of /proc/stat. Memory comes from
@@ -184,6 +184,22 @@ var localFSTypes = map[string]bool{
 	"ext4": true, "ext3": true, "xfs": true, "btrfs": true, "zfs": true, "f2fs": true,
 }
 
+// isStorageMount decides from a /proc/mounts entry alone whether it is this machine's storage.
+//
+// A loop device is a FILE mounted as a filesystem, so its space already belongs to the filesystem
+// that holds the file; listing it counts that space twice. Synology DSM mounts one at
+// /tmp/SynologyAuthService (a 27 MB ext4 image), which passed the type check and showed up on the
+// storage card as a 0.0 TB disk. Ubuntu's snaps are loop devices too, but squashfs, so the type
+// check already dropped them — this closes the same gap for images formatted with a real filesystem.
+func isStorageMount(device, mount, fsType string) bool {
+	if strings.HasPrefix(device, "/dev/loop") {
+		return false
+	}
+	// A container's root is an overlay, and it is that machine's real disk from the inside, so
+	// accept overlay at "/" even though it is otherwise a stacking filesystem worth skipping.
+	return localFSTypes[fsType] || (fsType == "overlay" && mount == "/")
+}
+
 // readDisks parses /proc/mounts, keeps real local filesystems, dedupes by backing device so bind
 // mounts don't double-count, and statfs's each. Free uses Bavail*Bsize, NOT Bfree*Bsize: Bfree
 // includes root-reserved blocks an unprivileged process can't use, so it overstates free space.
@@ -203,9 +219,7 @@ func readDisks() []Disk {
 			continue
 		}
 		device, mount, fsType := fields[0], unescapeMount(fields[1]), fields[2]
-		// A container's root is an overlay, and it is that machine's real disk from the inside, so
-		// accept overlay at "/" even though it is otherwise a stacking filesystem worth skipping.
-		if !localFSTypes[fsType] && !(fsType == "overlay" && mount == "/") {
+		if !isStorageMount(device, mount, fsType) {
 			continue
 		}
 		// Bind mounts of a single file (a container's /etc/hosts) carry the whole backing device's
