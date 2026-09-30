@@ -139,7 +139,7 @@ public struct AIRuntimeSample: Sendable, Equatable, Codable {
         // CLIs serve nothing, and 8000 is shared with oMLX and Rapid-MLX.
         case .mtplx:     return observedPort(of: .mtplx)
         case .ds4:       return observedPort(of: .ds4)
-        case .mlx, .jan, .gpt4all, .vllm, .spectalo, .spectaling, .other: return nil
+        case .mlx, .jan, .gpt4all, .vllm, .spectalo, .spectaling, .ltxVideo, .beacon, .other: return nil
         }
     }
 

@@ -41,7 +41,7 @@ public struct RuntimeAPIClient: Sendable {
         // Both serve one model per process, so /v1/models lists exactly what is resident.
         case .mtplx:     return await probeOpenAI(port: port, apiKey: nil, source: .mtplx)
         case .ds4:       return await probeOpenAI(port: port, apiKey: nil, source: .ds4)
-        case .mlx, .jan, .gpt4all, .vllm, .spectalo, .spectaling, .other:
+        case .mlx, .jan, .gpt4all, .vllm, .spectalo, .spectaling, .ltxVideo, .beacon, .other:
             var s = RuntimeAPISample(); s.status = .runningNoServer; return s
         }
     }
