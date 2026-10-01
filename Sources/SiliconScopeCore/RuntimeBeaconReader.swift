@@ -1,6 +1,7 @@
 //
 //  File:      RuntimeBeaconReader.swift
 //  Created:   2026-07-15
+//  Updated:   2026-10-01
 //  Developer: Vincent Gourbin
 //  Overview:  Reads opt-in "AI runtime beacons" — small JSON manifests that inference
 //             frameworks write to ~/Library/Application Support/ai-runtime-beacons/

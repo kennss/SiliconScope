@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSampler.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-24
+//  Updated:   2026-10-01
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Turns the already-built process table into an AIRuntimeSample. Caches the
 //             per-pid match verdict (a process's path/args are immutable for its lifetime),

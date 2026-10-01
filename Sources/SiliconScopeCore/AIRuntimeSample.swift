@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeSample.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-24
+//  Updated:   2026-10-01
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Per-snapshot result of AI-runtime detection: the matched processes plus
 //             grouped roll-ups (RAM / CPU% per kind, primary kind, embedded port).

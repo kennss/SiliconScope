@@ -1,6 +1,7 @@
 //
 //  File:      RuntimeBeaconTests.swift
 //  Created:   2026-07-15
+//  Updated:   2026-10-01
 //  Developer: Vincent Gourbin
 //  Overview:  Tests for RuntimeBeaconReader (manifest decoding, dead-pid GC,
 //             freshest-wins on nested operations) and for the AIRuntimeSampler
