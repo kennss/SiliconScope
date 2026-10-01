@@ -125,9 +125,9 @@ swift run sscope-cli | sed -n '/AI runtime/,/primary/p'
 
 ## Reference producers
 
-- `ltx-video-swift-mlx`: `Sources/LTXVideo/Utils/RuntimeBeacon.swift` (`LTX_RUNTIME_BEACON=1`,
+- [`ltx-video-swift-mlx`](https://github.com/VincentGourbin/ltx-video-swift-mlx/blob/main/Sources/LTXVideo/Utils/RuntimeBeacon.swift) (`LTX_RUNTIME_BEACON=1`,
   `ltx-video --beacon`)
-- `flux-2-swift-mlx`: `Sources/Flux2Core/Utils/RuntimeBeacon.swift` (`FLUX2_RUNTIME_BEACON=1`,
+- [`flux-2-swift-mlx`](https://github.com/VincentGourbin/flux-2-swift-mlx/blob/main/Sources/Flux2Core/Utils/RuntimeBeacon.swift) (`FLUX2_RUNTIME_BEACON=1`,
   `--beacon` through `BeaconOptions`)
 
 Both use the same Swift file with a different `runtimeID` and `displayName`. The pattern
@@ -252,8 +252,8 @@ Deliverables:
 - A short README section: what the beacon is, how to enable it (toggle / env / --beacon),
   and a sample manifest.
 
-Reference implementation with the same contract, to mirror in Swift projects:
-ltx-video-swift-mlx, Sources/LTXVideo/Utils/RuntimeBeacon.swift.
+Reference implementation with the same contract, to mirror in Swift projects (read it first):
+https://github.com/VincentGourbin/ltx-video-swift-mlx/blob/main/Sources/LTXVideo/Utils/RuntimeBeacon.swift
 
 To check the result by hand, run a real operation with the beacon enabled and watch
 `ls ~/Library/Application\ Support/ai-runtime-beacons/`. The file must appear, change as steps
