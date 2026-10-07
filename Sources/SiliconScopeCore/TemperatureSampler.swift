@@ -71,9 +71,14 @@ public final class TemperatureSampler {
     public func sample() -> TemperatureSample {
         // 1) Best: curated per-generation SMC keys read directly -> friendly per-unit names
         //    (P-Core / E-Core / GPU / Memory), the iStat-style breakdown.
+        //    GPU sensors are always taken from the hardware scan (keysByCategory[.gpu]) so that
+        //    chips with more GPU cores than the curated table lists (e.g. M5 Ultra with 20 cores
+        //    vs the table's 8) automatically show the right count — no table update required.
         if let smc {
             let gen = SensorCatalog.detectGeneration()
-            if gen != .unknown, let curated = Self.curatedSample(smc: smc, gen: gen) {
+            let scannedGPUKeys = keysByCategory[.gpu] ?? []
+            if gen != .unknown, let curated = Self.curatedSample(smc: smc, gen: gen,
+                                                                  scannedGPUKeys: scannedGPUKeys) {
                 // Some dies expose only a subset of their generation's keys (e.g. M4 Max reads
                 // back no Memory key). For any category the table INTENDS but that didn't read,
                 // fill it from the HID set so the panel isn't sparse — without fabricating the
@@ -245,9 +250,17 @@ public final class TemperatureSampler {
     /// Reads the curated SMC key table for the detected Apple Silicon generation, directly
     /// (not by scanning), yielding friendly per-unit names. Returns nil if the chip is
     /// unknown or none of the keys read back (then the caller falls back to HID / scan).
-    static func curatedSample(smc: SMCReader, gen: AppleSiliconGen) -> TemperatureSample? {
+    ///
+    /// `scannedGPUKeys`: all `Tg*` temperature keys found on this hardware at startup.
+    /// When non-empty they completely replace the curated `.gpu` entries so the count
+    /// matches the chip's actual GPU core count rather than the table's fixed list.
+    static func curatedSample(smc: SMCReader, gen: AppleSiliconGen,
+                              scannedGPUKeys: [String] = []) -> TemperatureSample? {
+        let floor = SensorCategory.gpu.plausibleFloorCelsius
         var byCategory: [SensorCategory: [TempSensor]] = [:]
-        for entry in SensorCatalog.curated(for: gen) {
+
+        // Non-GPU entries: use the curated table for correct friendly names (P-Core, Super, …).
+        for entry in SensorCatalog.curated(for: gen) where entry.category != .gpu {
             // Dropped rather than shown: a die reading below its floor is the SMC handing back
             // something that is not a temperature (#57). Dropping the whole CPU group when every
             // core key is affected is deliberate — `sample()` then sees the category as missing and
@@ -259,6 +272,22 @@ public final class TemperatureSampler {
             byCategory[entry.category, default: []].append(
                 TempSensor(rawName: entry.key, name: entry.name, celsius: value))
         }
+
+        // GPU entries: use the hardware-scanned Tg* keys so the count reflects the real GPU
+        // core count (e.g. 20 on M5 Ultra) regardless of what the curated table lists.
+        // Falls back to the curated table's GPU entries only when the scan found nothing.
+        let gpuKeys: [String]
+        if !scannedGPUKeys.isEmpty {
+            gpuKeys = scannedGPUKeys.sorted()
+        } else {
+            gpuKeys = SensorCatalog.curated(for: gen).filter { $0.category == .gpu }.map(\.key)
+        }
+        for (i, key) in gpuKeys.enumerated() {
+            guard let value = smc.readDouble(key), value > floor, value < 130 else { continue }
+            byCategory[.gpu, default: []].append(
+                TempSensor(rawName: key, name: "GPU \(i + 1)", celsius: value))
+        }
+
         guard !byCategory.isEmpty else { return nil }
 
         var result = TemperatureSample()
