@@ -19,11 +19,14 @@ public final class TemperatureSampler {
     private let smc: SMCReader?
     private let keysByCategory: [SensorCategory: [String]]
     private let coreCount: Int
+    /// Authoritative GPU core count from IORegistry (`gpu-core-count`). 0 = not found (Intel/VM).
+    private let gpuCoreCount: Int
 
     public init(coreCount: Int = 0) {
         let reader = SMCReader()
         self.smc = reader
         self.coreCount = coreCount
+        self.gpuCoreCount = CPUTopology.gpuCoreCount()
 
         var map: [SensorCategory: [String]] = [:]
         if let reader {
@@ -76,7 +79,14 @@ public final class TemperatureSampler {
         //    vs the table's 8) automatically show the right count — no table update required.
         if let smc {
             let gen = SensorCatalog.detectGeneration()
-            let scannedGPUKeys = keysByCategory[.gpu] ?? []
+            // Cap scanned Tg* keys to the hardware's actual GPU core count. The SMC exposes more
+            // keys than there are cores (hotspot/max sensors per cluster); using all of them
+            // over-counts — e.g. 22 keys on a 20-core M4 Pro. gpuCoreCount is 0 on Intel/VM,
+            // in which case we pass all scanned keys and let the curated table's fallback decide.
+            let allGPUKeys = keysByCategory[.gpu] ?? []
+            let scannedGPUKeys: [String] = gpuCoreCount > 0
+                ? Array(allGPUKeys.sorted().prefix(gpuCoreCount))
+                : allGPUKeys
             if gen != .unknown, let curated = Self.curatedSample(smc: smc, gen: gen,
                                                                   scannedGPUKeys: scannedGPUKeys) {
                 // Some dies expose only a subset of their generation's keys (e.g. M4 Max reads

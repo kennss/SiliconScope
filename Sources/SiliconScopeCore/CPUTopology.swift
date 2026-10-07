@@ -182,6 +182,30 @@ public struct CPUTopology: Sendable, Codable {
         return String(cBuffer: buffer)
     }
 
+    // MARK: - GPU core count (IORegistry)
+
+    /// Reads the GPU core count directly from the IORegistry `gpu-core-count` property.
+    /// This is the authoritative value — what `ioreg -l | grep gpu-core-count` reports and
+    /// what `system_profiler SPDisplaysDataType` shows as "Total Number of Cores".
+    /// Returns 0 when not found (Intel, VMs, or any machine that doesn't expose the key).
+    public static func gpuCoreCount() -> Int {
+        var iterator = io_iterator_t()
+        guard IOServiceGetMatchingServices(kIOMainPortDefault,
+              IOServiceMatching("AGXAccelerator"), &iterator) == KERN_SUCCESS else { return 0 }
+        defer { IOObjectRelease(iterator) }
+        var entry = IOIteratorNext(iterator)
+        while entry != IO_OBJECT_NULL {
+            defer { IOObjectRelease(entry); entry = IOIteratorNext(iterator) }
+            if let val = IORegistryEntrySearchCFProperty(entry, kIOServicePlane,
+                                                         "gpu-core-count" as CFString,
+                                                         kCFAllocatorDefault,
+                                                         IOOptionBits(kIORegistryIterateParents | kIORegistryIterateRecursively)) as? Int {
+                return val
+            }
+        }
+        return 0
+    }
+
     // MARK: - DVFS table (IORegistry)
 
     private static func readVoltageStates(_ key: String) -> [Double] {
