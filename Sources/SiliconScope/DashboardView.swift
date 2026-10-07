@@ -1139,6 +1139,16 @@ private struct NetworkDiskCard: View {
             SubLabel("Network", menuBarPin: menuBarItems.pin(.network))
             KV(key: "↓ Download", value: formatRate(network.downloadBytesPerSec), valueColor: downColor)
             KV(key: "↑ Upload", value: formatRate(network.uploadBytesPerSec), valueColor: upColor)
+            // Per-interface breakdown — only shown when more than one interface is active, or when
+            // the single active interface has a name that adds information (i.e. not "Total" alone).
+            // Capped to at most 2 rows to fit the fixed-height card layout.
+            if network.interfaces.count > 1 ||
+                (network.interfaces.count == 1 && !network.interfaces[0].name.isEmpty) {
+                ForEach(network.interfaces.prefix(2)) { iface in
+                    KV(key: "  \(iface.name)",
+                       value: "↓ \(formatRate(iface.downloadBytesPerSec))  ↑ \(formatRate(iface.uploadBytesPerSec))")
+                }
+            }
             Spacer(minLength: 4)
             Sparkline(downHistory, color: downColor, role: .inline(height: Layout.Meter.sparklinePair))
             Sparkline(upHistory, color: upColor, role: .inline(height: Layout.Meter.sparklinePair))
