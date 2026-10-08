@@ -66,9 +66,20 @@ SiliconScope shows real **per-unit** temperatures (E-Core / P-Core / GPU / Memor
 generation, so they're hand-maintained in
 [`Sources/SiliconScopeCore/SensorCatalog.swift`](Sources/SiliconScopeCore/SensorCatalog.swift).
 
-**Status:** the **M1** table is validated on real hardware (M1 Max). **M2–M5 are adapted from
-[Stats](https://github.com/exelban/stats) but NOT yet verified** on-device. If you have an
-M2/M3/M4/M5 (especially Pro / Max / Ultra / base variants), please confirm or correct them.
+**Status** — the tables started from [Stats](https://github.com/exelban/stats); this is what has
+been checked on real hardware since:
+
+| Generation | Checked on | What is verified | Open |
+|---|---|---|---|
+| M1 | M1 Max | the whole table | — |
+| M2 | M2 Max ([#57](https://github.com/kennss/SiliconScope/issues/57)) | CPU keys present and following load; GPU keys plausible in ten of ten runs | CPU keys intermittently read a constant 6.7 °C (now rejected); GPU not loaded; memory keys unchecked |
+| M3 | — | nothing yet | **every M3 chip** |
+| M4 | M4 Max ([#6](https://github.com/kennss/SiliconScope/issues/6)), base M4 ([#58](https://github.com/kennss/SiliconScope/pull/58)) | M4 Pro/Max GPU 1–2 keys; base-M4 CPU keys read and rise under load | base M4: the table has 8 P-core keys, the chip has 4 P cores, so the labels are wrong |
+| M5 | M5 Max ([#58](https://github.com/kennss/SiliconScope/pull/58)) | all 18 CPU keys under load; memory key | GPU keys read but were not loaded; `Tg1g` absent |
+| A18 Pro | — | recognised, no curated keys ([#12](https://github.com/kennss/SiliconScope/issues/12)) | the whole table |
+
+If you have one of the open chips — especially any M3, a base M4, or a GPU load on an M5 — please
+confirm or correct them.
 
 ### How to verify your chip (one command)
 
