@@ -18,8 +18,10 @@ agent/sscope-agent
 reference/
 
 # Tooling / local config
-.claude/
-CLAUDE.md
+.claude/*
+# Shared with contributors' coding agents: it only points at AGENTS.md.
+!.claude/CLAUDE.md
+/CLAUDE.md
 
 # macOS
 .DS_Store
