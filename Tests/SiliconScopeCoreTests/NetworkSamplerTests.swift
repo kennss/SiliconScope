@@ -1,8 +1,12 @@
 //
 //  File:      NetworkSamplerTests.swift
 //  Created:   2026-10-09
+//  Updated:   2026-10-10
 //  Developer: Gabriel-Florin Manaila / IBM
 //  Overview:  Tests for NetworkSampler, InterfaceStat, and NetworkSample decoding compatibility.
+//  Notes:     The breakdown-order and routable-address tests pin a case seen on a real Mac:
+//             sorted by name, a link-local-only `anri0` and Wi-Fi `en0` filled the two rows
+//             while Ethernet `en7`, carrying the default route, was cut off.
 //
 import XCTest
 @testable import SiliconScopeCore
@@ -68,6 +72,29 @@ final class NetworkSamplerTests: XCTestCase {
         for iface in physical {
             XCTAssertFalse(NetworkSampler.isVirtualOrTunnel(bsdName: iface), "\(iface) should not be identified as virtual/tunnel")
         }
+    }
+
+    func testPrimaryInterfaceComesFirstSoItIsNeverCutOff() {
+        let candidates = ["en7", "en0", "en10"]
+        XCTAssertEqual(NetworkSampler.breakdownOrder(candidates, primary: "en7"), ["en7", "en0", "en10"])
+        XCTAssertEqual(Array(NetworkSampler.breakdownOrder(candidates, primary: "en7")
+                                .prefix(NetworkSampler.maxInterfaceRows)), ["en7", "en0"])
+        // No primary, or one that isn't a candidate: plain name order.
+        XCTAssertEqual(NetworkSampler.breakdownOrder(candidates, primary: nil), ["en0", "en10", "en7"])
+        XCTAssertEqual(NetworkSampler.breakdownOrder(candidates, primary: "utun3"), ["en0", "en10", "en7"])
+    }
+
+    func testLinkLocalAddressesDoNotQualifyAnInterface() {
+        XCTAssertTrue(NetworkSampler.isRoutableIPv4([192, 168, 68, 108]))
+        XCTAssertTrue(NetworkSampler.isRoutableIPv4([100, 85, 226, 22]))
+        XCTAssertFalse(NetworkSampler.isRoutableIPv4([169, 254, 147, 155]))   // self-assigned
+
+        var linkLocal = [UInt8](repeating: 0, count: 16); linkLocal[0] = 0xfe; linkLocal[1] = 0x80
+        XCTAssertFalse(NetworkSampler.isRoutableIPv6(linkLocal))              // fe80::, every up interface has one
+        var global = [UInt8](repeating: 0, count: 16); global[0] = 0x24; global[1] = 0x01
+        XCTAssertTrue(NetworkSampler.isRoutableIPv6(global))
+        var uniqueLocal = [UInt8](repeating: 0, count: 16); uniqueLocal[0] = 0xfd
+        XCTAssertTrue(NetworkSampler.isRoutableIPv6(uniqueLocal))             // fd00::/8 is routable on the LAN
     }
 
     func testNetworkSamplerLiveSampleDoesNotCrash() {
