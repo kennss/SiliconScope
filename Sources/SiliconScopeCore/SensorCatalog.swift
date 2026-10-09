@@ -1,7 +1,7 @@
 //
 //  File:      SensorCatalog.swift
 //  Created:   2026-06-19
-//  Updated:   2026-09-12
+//  Updated:   2026-10-09
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Curated per-generation SMC temperature-key tables for Apple Silicon (M1–M5).
 //             Apple's SMC FourCC keys are near-arbitrary and change every generation, so the
@@ -97,7 +97,12 @@ public enum SensorCatalog {
         gpu([("Tg0G", "GPU 1"), ("Tg0H", "GPU 2"),                    // base M4
              ("Tg1U", "GPU 1"), ("Tg1k", "GPU 2"),                    // M4 Pro/Max/Ultra (mutually exclusive w/ base)
              ("Tg0K", "GPU 3"), ("Tg0L", "GPU 4"), ("Tg0d", "GPU 5"),
-             ("Tg0e", "GPU 6"), ("Tg0j", "GPU 7"), ("Tg0k", "GPU 8")]) +
+             ("Tg0e", "GPU 6"), ("Tg0j", "GPU 7"), ("Tg0k", "GPU 8"),
+             ("Tg04", "GPU 9"), ("Tg05", "GPU 10"), ("Tg0X", "GPU 11"),
+             ("Tg0Y", "GPU 12"), ("Tg0y", "GPU 13"), ("Tg0z", "GPU 14"),
+             ("Tg1E", "GPU 15"), ("Tg1F", "GPU 16"), ("Tg1c", "GPU 17"),
+             ("Tg1d", "GPU 18"), ("Tg1V", "GPU 19"), ("Tg1l", "GPU 20"),
+             ("Tg0R", "GPU 21"), ("Tg0S", "GPU 22")]) +
         mem([("Tm0p", "Memory 1"), ("Tm1p", "Memory 2"), ("Tm2p", "Memory 3")])
 
     private static let m5: [CuratedSensor] =
