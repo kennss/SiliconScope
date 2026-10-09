@@ -66,6 +66,11 @@ because people measured on their own hardware carefully enough that nothing had 
 - **[@TianjinAI](https://github.com/TianjinAI)** — oMLX shows the model that is loaded, not the
   first one installed ([#67](https://github.com/kennss/SiliconScope/pull/67)), and pointed out that LM Studio's path had the same flaw
   ([#66](https://github.com/kennss/SiliconScope/issues/66)).
+- **[@ticlazau](https://github.com/ticlazau)** — the per-interface network breakdown: each
+  interface's own throughput under the totals, names cached, VPN tunnels kept out of the totals so
+  they no longer count the same bytes twice ([#74](https://github.com/kennss/SiliconScope/pull/74)). And M4 Pro GPU sensor readings,
+  idle and under load, that showed the M4 table's GPU keys come in duplicate pairs
+  ([#75](https://github.com/kennss/SiliconScope/pull/75)).
 - **[@jrideout](https://github.com/jrideout)** — mlx-dspark detection, following its `--port` to the
   API it actually serves ([#48](https://github.com/kennss/SiliconScope/pull/48)).
 
