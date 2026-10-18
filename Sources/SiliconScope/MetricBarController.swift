@@ -1,7 +1,7 @@
 //
 //  File:      MetricBarController.swift
 //  Created:   2026-06-19
-//  Updated:   2026-09-24
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style per-metric menu-bar items via AppKit NSStatusItem. SwiftUI's
 //             MenuBarExtra can't do dynamic toggling here (a conditional scene won't compile
@@ -23,7 +23,7 @@ import SwiftUI
 import SiliconScopeCore
 
 @MainActor
-final class MetricBarController: NSObject {
+final class MetricBarController: NSObject, NSPopoverDelegate {
     static let shared = MetricBarController()
 
     private struct Entry { let item: NSStatusItem; let popover: NSPopover; var lastSig: String? }
@@ -74,6 +74,7 @@ final class MetricBarController: NSObject {
         item.autosaveName = config.autosaveName
         let popover = NSPopover()
         popover.behavior = .transient
+        popover.delegate = self
         // The dropdown paints `Theme.bg` — a fixed near-black — so the chrome AppKit draws around
         // it must be dark for the same reason the main window's is (#50). Left to inherit, a
         // light-mode Mac drew a pale arrow and border into a near-black panel. Set per popover
@@ -95,8 +96,12 @@ final class MetricBarController: NSObject {
             entry.popover.performClose(nil)
             return
         }
-        // Build the dropdown on first open, then keep it: a hosting controller and its
-        // subscribers should not exist for a panel the user has never looked at.
+        // Build the dropdown on every open and drop it on close (`popoverDidClose`). Kept alive,
+        // the hosting controller held on to graphics surfaces from its first render for the life
+        // of the app — measured ~110 MB charged to our footprint on a 5K display, flipping between
+        // dirty and reclaimable, part of the 80-360 MB swing Activity Monitor showed. A fresh
+        // controller also means a panel nobody is looking at
+        // has no subscribers.
         if entry.popover.contentViewController == nil, let m = monitor,
            let config = MenuBarItemsModel.shared.items.first(where: { $0.id == id }) {
             entry.popover.contentViewController = NSHostingController(rootView: MenuBarItemRenderer.dropdown(config, m))
@@ -122,7 +127,8 @@ final class MetricBarController: NSObject {
             // share a full-screen Space; `.moveToActiveSpace` makes it follow the user instead of
             // pinning to every Space the way `.canJoinAllSpaces` would. Inserted rather than
             // assigned so AppKit's own flags survive, and applied after show() because the
-            // backing window does not exist until then — it is reused for later opens.
+            // backing window does not exist until then. The content is rebuilt on every open (see
+            // above), so this runs against the window of each fresh show().
             //
             // ⚠️ The re-order is load-bearing, not tidying. `.moveToActiveSpace` is evaluated when
             // the window is ORDERED FRONT, and show() has already placed it by the time we can
@@ -133,6 +139,16 @@ final class MetricBarController: NSObject {
             window.collectionBehavior.insert([.fullScreenAuxiliary, .moveToActiveSpace])
             window.makeKeyAndOrderFront(nil)
         }
+    }
+
+    /// Release the dropdown's SwiftUI content once the popover is gone, so its graphics memory is
+    /// returned instead of kept for the next open (Apple's Popover sample does the same). Only the
+    /// content goes; the NSPopover itself is a few hundred bytes and carries the appearance and
+    /// delegate we set once in `makeEntry`. Skipped if the popover was already reopened before this
+    /// callback arrived, which would otherwise blank a visible panel.
+    func popoverDidClose(_ notification: Notification) {
+        guard let popover = notification.object as? NSPopover, !popover.isShown else { return }
+        popover.contentViewController = nil
     }
 
     /// Dismiss the combined "SS" MenuBarExtra popover. SwiftUI has no public API to close a
