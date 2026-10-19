@@ -22,5 +22,6 @@ func (c *Collector) readContainers(context.Context) *[]Container { return nil }
 func (c *Collector) containerOf(pid int) string                  { return "" }
 func (c *Collector) readComfyUI(context.Context) *ComfyUI         { return nil }
 func (c *Collector) processUser(pid int) string                  { return "" }
+func (c *Collector) readNetworkDisks(context.Context) []Disk      { return nil }
 
 func describeProc(pid int, name string) (string, string) { return name, "" }

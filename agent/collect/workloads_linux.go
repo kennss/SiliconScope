@@ -70,6 +70,9 @@ type platformState struct {
 	comfyMu   sync.Mutex
 	comfyAt   time.Time
 	comfyPort int // 0 = no host ComfyUI seen at the last scan
+
+	netMu sync.Mutex
+	net   netMountState // network filesystems' sizes (netmounts_linux.go)
 }
 
 func newPlatformState(opts Options) *platformState {
@@ -83,6 +86,7 @@ func newPlatformState(opts Options) *platformState {
 			}},
 		},
 		userNames: map[string]string{},
+		net:       newNetMountState(),
 	}
 }
 

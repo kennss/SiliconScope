@@ -33,7 +33,7 @@ import (
 	"github.com/kennss/SiliconScope/agent/collect"
 )
 
-const agentVersion = "1.5.1"
+const agentVersion = "1.5.2"
 
 func main() {
 	serve := flag.String("serve", "", "run an HTTPS server on this addr (e.g. :7799) exposing GET /metrics (token-protected), instead of printing one snapshot and exiting")

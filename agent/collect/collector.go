@@ -12,10 +12,12 @@
 //             binary pure-Go/static; NVML via go-nvml would need cgo). VRAM is MiB from nvidia-smi
 //             (×1 MiB → bytes). Compute processes are matched to their GPU by UUID (gpu_procs.go).
 //             Ollama is optional (nil when unreachable).
-//             What a Collector remembers — the extended nvidia-smi fields this driver answers, the
-//             Docker container list (10 s), uid → name, the ComfyUI port (10 s), LM Studio's last
-//             rate — sits behind its own lock, so concurrent Collect calls are safe. ctx bounds the
-//             commands and HTTP requests of one sample; a cancelled one returns what it has.
+//             What a Collector remembers — the extended nvidia-smi fields this driver answers, each
+//             card's temperature limits (gpu_limits.go), the Docker container list (10 s), uid →
+//             name, the ComfyUI port (10 s), network filesystems' sizes (netmounts_linux.go), LM
+//             Studio's last rate — sits behind its own lock, so concurrent Collect calls are safe.
+//             ctx bounds the commands and HTTP requests of one sample; a cancelled one returns what
+//             it has.
 //
 package collect
 
@@ -35,6 +37,7 @@ import (
 type Collector struct {
 	opts      Options
 	gpuFields gpuFieldState
+	gpuLimits gpuLimitState
 	platform  *platformState // what the OS-specific readers remember (workloads_linux.go)
 	lmStudio  lmStudioWatcher
 	stop      context.CancelFunc
@@ -75,7 +78,7 @@ func (c *Collector) Collect(ctx context.Context) MachineMetrics {
 		Memory:       readMemory(),
 		Containers:   c.readContainers(ctx), // before GPUs: GPU processes are named after their containers
 		GPUs:         c.readGPUs(ctx),
-		Disks:        readDisks(),
+		Disks:        append(readDisks(), c.readNetworkDisks(ctx)...),
 		LLM:          c.readLLM(ctx),
 		ComfyUI:      c.readComfyUI(ctx),
 	}
@@ -121,6 +124,7 @@ func (c *Collector) readGPUs(ctx context.Context) []GPU {
 		return []GPU{}
 	}
 	gpus := parseGPUs(string(out), extra)
+	c.gpuLimits.apply(ctx, gpus)
 	attachProcs(gpus, readComputeApps(ctx), c.describeComputeApp())
 	return gpus
 }

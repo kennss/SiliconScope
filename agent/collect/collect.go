@@ -35,4 +35,9 @@ type Options struct {
 	// Studio only reports a rate when a prediction finishes, so this is for a long-lived caller; a
 	// one-shot sample would exit before anything is seen. Close stops it.
 	WatchLMStudio bool
+	// NetworkMounts also reports the network filesystems mounted now (NFS, SMB, sshfs) as Disks
+	// with Network set. An automount that isn't mounted is never touched, so asking doesn't
+	// mount a share, and a server that doesn't answer can't stall a sample (netmounts_linux.go).
+	// Linux only.
+	NetworkMounts bool
 }

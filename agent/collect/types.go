@@ -110,6 +110,14 @@ type GPU struct {
 	DecoderPercent *float64 `json:"decoderPercent,omitempty"` // NVDEC
 	// Why the clocks are held down right now. nil = the card doesn't say; [] = nothing is.
 	ThrottleReasons *[]string `json:"throttleReasons,omitempty"`
+
+	// The card's own temperature limits, as its driver states them (gpu_limits.go): it shuts down
+	// at ShutdownTempC, halves its clocks at SlowdownTempC, and is specified up to
+	// MaxOperatingTempC; TargetTempC is what its fan curve aims for. Omitted when not reported.
+	ShutdownTempC     *float64 `json:"shutdownTempC,omitempty"`
+	SlowdownTempC     *float64 `json:"slowdownTempC,omitempty"`
+	MaxOperatingTempC *float64 `json:"maxOperatingTempC,omitempty"`
+	TargetTempC       *float64 `json:"targetTempC,omitempty"`
 }
 
 // Disk is one mounted local filesystem's capacity. The viewer derives used as total - free, so no
@@ -121,6 +129,13 @@ type Disk struct {
 	TotalBytes int64  `json:"totalBytes"`
 	FreeBytes  int64  `json:"freeBytes"`
 	FSType     string `json:"fsType,omitempty"`
+	// Network is true for a filesystem served by another machine (NFS, SMB, sshfs), reported only
+	// when Options.NetworkMounts asks for them (netmounts_linux.go). Its sizes are from the last
+	// time its server answered, at most a minute or so ago.
+	Network bool `json:"network,omitempty"`
+	// Unresponsive is true when a network filesystem's server hasn't answered (it is down, or the
+	// link is): TotalBytes and FreeBytes are then 0 and mean unknown, not empty.
+	Unresponsive bool `json:"unresponsive,omitempty"`
 }
 
 // LLMModel is one model a runtime has, by name and size on disk.
