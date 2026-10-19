@@ -1,7 +1,7 @@
 //
 //  File:      FleetSource.swift
 //  Created:   2026-07-21
-//  Updated:   2026-10-05
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Transports behind the source-agnostic MachineMetrics boundary. `FleetSource` is the
 //             protocol the aggregator/UI depend on; concrete transports are interchangeable:
@@ -16,7 +16,8 @@
 //             `.unauthorized` (HTTP 401) is distinct so the UI can prompt for pairing.
 //             HTTP sessions are long-lived and pooled per agent (FleetSessionPool), so a poll reuses
 //             the open TLS connection: a session per fetch handshook every 3 s, which was most of
-//             the ~11 KB a poll cost (#71).
+//             the ~11 KB a poll cost (#71). A fetch checks its session out of the pool for the
+//             whole request, so closing the pool can't invalidate it between lookup and task creation.
 //
 import Foundation
 import CryptoKit
@@ -76,7 +77,11 @@ public struct HTTPFleetSource: FleetSource {
         // HTTPS: pin the agent's self-signed cert (default trust would reject it). If we already have
         // a pin, enforce it; otherwise trust the first cert and report it upward (TOFU). Plain HTTP
         // uses the shared session (used only in dev/tests; production agents are always TLS).
-        let session = FleetSessionPool.shared.session(for: self)
+        // Checked out for the whole request: creating a task on a session the pool has already
+        // invalidated is an Objective-C exception, which Swift can't catch, so the app would abort.
+        let pool = FleetSessionPool.shared
+        let session = pool.checkOut(for: self)
+        defer { pool.checkIn(session) }
 
         let data: Data, resp: URLResponse
         do {
@@ -109,11 +114,17 @@ public struct HTTPFleetSource: FleetSource {
 /// source comes back with a pin and gets a new, enforcing session, and the trusting one is dropped.
 /// FleetMonitor drops sessions it no longer polls (`retainOnly`) and closes them all when polling
 /// stops (`closeAll`), so nothing stays connected to an agent while no one is watching.
+///
+/// Those run on the main actor while fetches run on the cooperative pool, so a session can be
+/// dropped between a fetch looking it up and starting its request. A session still checked out is
+/// therefore only retired, and invalidated when its last fetch checks it back in.
 public final class FleetSessionPool: @unchecked Sendable {
     public static let shared = FleetSessionPool()
 
     private let lock = NSLock()
-    private var sessions: [String: URLSession] = [:]   // guarded by `lock`
+    private var sessions: [String: URLSession] = [:]               // guarded by `lock`
+    private var inFlight: [ObjectIdentifier: Int] = [:]           // guarded by `lock`
+    private var retired: [ObjectIdentifier: URLSession] = [:]     // guarded by `lock`
 
     public init() {}
 
@@ -121,9 +132,32 @@ public final class FleetSessionPool: @unchecked Sendable {
         "\(endpoint.scheme ?? "")://\(endpoint.host ?? ""):\(endpoint.port ?? 0)|\(pinned?.lowercased() ?? "tofu")"
     }
 
-    func session(for source: HTTPFleetSource) -> URLSession {
-        let key = Self.key(endpoint: source.endpoint, pinned: source.pinnedFingerprint)
+    /// The session for `source`, held open until the matching `checkIn`.
+    func checkOut(for source: HTTPFleetSource) -> URLSession {
         lock.lock(); defer { lock.unlock() }
+        let session = sessionLocked(for: source)
+        inFlight[ObjectIdentifier(session), default: 0] += 1
+        return session
+    }
+
+    /// Ends a `checkOut`; invalidates the session if the pool dropped it in the meantime.
+    func checkIn(_ session: URLSession) {
+        let id = ObjectIdentifier(session)
+        lock.lock()
+        let left = (inFlight[id] ?? 1) - 1
+        inFlight[id] = left > 0 ? left : nil
+        let done = left <= 0 ? retired.removeValue(forKey: id) : nil
+        lock.unlock()
+        done?.invalidateAndCancel()
+    }
+
+    func session(for source: HTTPFleetSource) -> URLSession {
+        lock.lock(); defer { lock.unlock() }
+        return sessionLocked(for: source)
+    }
+
+    private func sessionLocked(for source: HTTPFleetSource) -> URLSession {
+        let key = Self.key(endpoint: source.endpoint, pinned: source.pinnedFingerprint)
         if let existing = sessions[key] { return existing }
         let config = URLSessionConfiguration.ephemeral
         config.httpMaximumConnectionsPerHost = 1          // one poll at a time per agent
@@ -147,8 +181,9 @@ public final class FleetSessionPool: @unchecked Sendable {
         lock.lock()
         let stale = sessions.filter { !keep.contains($0.key) }
         for k in stale.keys { sessions[k] = nil }
+        let idle = retireLocked(Array(stale.values))
         lock.unlock()
-        for s in stale.values { s.invalidateAndCancel() }
+        for s in idle { s.invalidateAndCancel() }
     }
 
     /// Close every session and its connections.
@@ -156,11 +191,23 @@ public final class FleetSessionPool: @unchecked Sendable {
         lock.lock()
         let all = Array(sessions.values)
         sessions.removeAll()
+        let idle = retireLocked(all)
         lock.unlock()
-        for s in all { s.invalidateAndCancel() }
+        for s in idle { s.invalidateAndCancel() }
+    }
+
+    /// Splits dropped sessions: those still checked out wait in `retired` for their `checkIn`; the
+    /// idle ones are returned for the caller to invalidate outside the lock.
+    private func retireLocked(_ dropped: [URLSession]) -> [URLSession] {
+        var idle: [URLSession] = []
+        for s in dropped {
+            if inFlight[ObjectIdentifier(s)] != nil { retired[ObjectIdentifier(s)] = s } else { idle.append(s) }
+        }
+        return idle
     }
 
     var count: Int { lock.lock(); defer { lock.unlock() }; return sessions.count }
+    var retiredCount: Int { lock.lock(); defer { lock.unlock() }; return retired.count }
 }
 
 /// URLSession delegate implementing TOFU pinning of the agent's self-signed cert (default TLS trust

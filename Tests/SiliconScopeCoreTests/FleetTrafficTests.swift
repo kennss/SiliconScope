@@ -1,12 +1,13 @@
 //
 //  File:      FleetTrafficTests.swift
 //  Created:   2026-10-05
-//  Updated:   2026-10-05
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  #71: a viewer polling every 3 s cost ~11 KB a poll — a TLS handshake each time and an
 //             uncompressed body. Pins the two Core pieces of the fix: the gzip member the Mac agent
 //             sends (checked against the system's own gunzip), and the session pool that keeps one
-//             connection per agent instead of one per poll.
+//             connection per agent instead of one per poll — and that closing the pool never
+//             invalidates a session a fetch has checked out (that aborted the app).
 //
 import XCTest
 @testable import SiliconScopeCore
@@ -71,6 +72,38 @@ final class FleetTrafficTests: XCTestCase {
         XCTAssertEqual(pool.count, 1)
         pool.closeAll()
         XCTAssertEqual(pool.count, 0)
+    }
+
+    /// Closing the pool mid-fetch must not invalidate the session the fetch is about to use:
+    /// a task created on an invalidated session throws an Objective-C exception and aborts the app.
+    func testClosingThePoolWaitsForACheckedOutSession() async throws {
+        let pool = FleetSessionPool()
+        let a = source("127.0.0.1", pin: "AA")
+        let session = pool.checkOut(for: a)
+        pool.closeAll()
+        XCTAssertEqual(pool.count, 0)
+        XCTAssertEqual(pool.retiredCount, 1)
+        // Still usable: this would abort the test process if the session had been invalidated.
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:9/")!)
+        req.timeoutInterval = 1
+        _ = try? await session.data(for: req)
+        pool.checkIn(session)
+        XCTAssertEqual(pool.retiredCount, 0)
+        // A later fetch gets a new session, not the closed one.
+        let next = pool.checkOut(for: a)
+        XCTAssertFalse(next === session)
+        pool.checkIn(next)
+        pool.closeAll()
+    }
+
+    func testRetainOnlyWaitsForACheckedOutSession() {
+        let pool = FleetSessionPool()
+        let trusting = pool.checkOut(for: source("10.0.0.1", pin: nil))
+        pool.retainOnly([source("10.0.0.1", pin: "AA")])
+        XCTAssertEqual(pool.retiredCount, 1)
+        pool.checkIn(trusting)
+        XCTAssertEqual(pool.retiredCount, 0)
+        pool.closeAll()
     }
 
     private func gunzip(_ data: Data) throws -> Data {
