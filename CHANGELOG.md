@@ -1,5 +1,40 @@
 # Changelog
 
+## v4.7.0 — 2026-10-19
+
+**🎛️ Every card in a multi-GPU box.** A Linux machine with more than one NVIDIA card
+now shows each of them in Fleet: a chip per card with its load, memory and temperature,
+and the page below — charts, details, processes — describes the card you pick. Each
+card keeps its own history, so switching cards doesn't mix their charts. The overview
+tile charts up to two cards and lists the rest; the sidebar shows every card's load.
+
+**Processes on the card they actually use.** The Linux agent matches each GPU process
+to its card by the card's UUID, so a job on GPU 1 is listed under GPU 1, and a process
+that uses two cards appears under both, with the memory it holds on each. Every
+process also shows the account it runs as — on a shared box, that is who holds the
+card. An older agent lists every process under the first card, as before.
+
+**🌐 Your local addresses.** The Network section shows each interface's IPv4 and IPv6
+addresses in its row; expand it for the full, copyable addresses. VPN and tunnel
+interfaces are listed under More addresses. Nothing is looked up online.
+([#79](https://github.com/kennss/SiliconScope/pull/79), @evn88)
+
+**Fixes** — all four from @nova28:
+- Fleet could crash the app while polling, when a connection was closed just as a
+  request was about to use it. ([#83](https://github.com/kennss/SiliconScope/pull/83))
+- With notifications on and the window closed, the GPU throttle alert was judged on
+  the last temperature and power measured while the window was open. It now measures
+  them. ([#81](https://github.com/kennss/SiliconScope/pull/81))
+- A menu-bar dropdown now gives back its memory when it closes. Before, it held on to
+  about 110 MB of graphics memory for the life of the app on a 5K display.
+  ([#80](https://github.com/kennss/SiliconScope/pull/80))
+- A remote Mac whose GPU power is still pending, or that has no GPU sensor, no longer
+  reads "0W · 0°C" in Fleet; the value is left out.
+  ([#82](https://github.com/kennss/SiliconScope/pull/82))
+
+The Linux agent is now **1.5.0** for the per-card processes and accounts above; the Mac
+agent is unchanged at 1.4.1.
+
 ## v4.6.0 — 2026-10-16
 
 **🔌 Which network carries the traffic.** The Network section lists each interface

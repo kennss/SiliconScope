@@ -32,7 +32,7 @@ import (
 	"github.com/grandcat/zeroconf"
 )
 
-const agentVersion = "1.4.0"
+const agentVersion = "1.5.0"
 
 // MachineMetrics is the wire schema (source-agnostic): Linux-NVML and Mac-headless both fill it.
 type MachineMetrics struct {
