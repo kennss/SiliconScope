@@ -80,6 +80,15 @@ because people measured on their own hardware carefully enough that nothing had 
   ([#75](https://github.com/kennss/SiliconScope/pull/75)).
 - **[@jrideout](https://github.com/jrideout)** — mlx-dspark detection, following its `--port` to the
   API it actually serves ([#48](https://github.com/kennss/SiliconScope/pull/48)).
+- **[@nova28](https://github.com/nova28)** — four fixes in one day, each traced to its cause in the
+  code. A Fleet crash when a connection was closed just as a request was about to use it, found from
+  one overnight crash report and pinned with a test that aborts if it comes back
+  ([#83](https://github.com/kennss/SiliconScope/pull/83)). A throttle alert judged on temperatures
+  that stopped being measured once the window was shut
+  ([#81](https://github.com/kennss/SiliconScope/pull/81)). About 110 MB of graphics memory a
+  menu-bar dropdown held for the life of the app, measured on a 5K display
+  ([#80](https://github.com/kennss/SiliconScope/pull/80)). And remote Macs reading "0W · 0°C" for
+  values they never measured ([#82](https://github.com/kennss/SiliconScope/pull/82)).
 
 ## Found numbers that were wrong without looking wrong
 
