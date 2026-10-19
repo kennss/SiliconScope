@@ -1,6 +1,9 @@
+//go:build linux || windows
+
 //
 //  File:      tokenrate.go
 //  Created:   2026-08-10
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads the decode rate (tokens/sec) of whatever local LLM runtime is serving on this
 //             machine, so a Fleet view can show how fast a remote box is actually generating —
@@ -17,11 +20,15 @@
 //             the reader to believe it is current. Ollama exposes no server-side rate at all (its
 //             embedded llama-server is built without --metrics), so it is absent here by fact,
 //             not by omission.
+//             The LM Studio stream belongs to a Collector made with WatchLMStudio and ends with its
+//             Close; its `lms` child is also told to die with this process (deathsig_*.go), so a
+//             host that restarts or is killed never leaves one behind.
 //
-package main
+package collect
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -34,15 +41,6 @@ import (
 	"time"
 )
 
-// TokenRate is one runtime's most recent decode rate.
-type TokenRate struct {
-	TokensPerSec float64 `json:"tokensPerSec"`
-	Source       string  `json:"source"`            // "llama.cpp" | "lmstudio"
-	Model        string  `json:"model,omitempty"`   // which model produced it, when known
-	MeasuredAt   int64   `json:"measuredAt"`        // unix ms — how stale the number is
-	TTFTSec      float64 `json:"ttftSec,omitempty"` // time to first token (LM Studio reports it)
-}
-
 // MARK: - llama.cpp server — Prometheus /metrics
 
 // llamaCppPorts are the ports a llama.cpp-compatible server is conventionally reachable on.
@@ -52,10 +50,14 @@ var llamaCppPorts = []int{8080, 8081}
 // readLlamaCppRate polls /metrics for the decode-rate gauge. Returns nil unless a server answers
 // AND was started with `--metrics` — without that flag the endpoint 501s, which is not an error
 // worth reporting, just an absence.
-func readLlamaCppRate() *TokenRate {
+func readLlamaCppRate(ctx context.Context) *TokenRate {
 	client := http.Client{Timeout: 2 * time.Second}
 	for _, port := range llamaCppPorts {
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/metrics", port))
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", port), nil)
+		if err != nil {
+			continue
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			continue
 		}
@@ -103,12 +105,9 @@ func parsePrometheus(text, key string) (float64, bool) {
 // value rather than a live gauge. Keeping it behind a mutex lets the sampler read it at any moment
 // without blocking the stream, and the timestamp lets the UI decide when it has gone stale.
 type lmStudioWatcher struct {
-	mu    sync.RWMutex
-	rate  *TokenRate
-	start sync.Once
+	mu   sync.RWMutex
+	rate *TokenRate
 }
-
-var lmStudio = &lmStudioWatcher{}
 
 // latest returns a copy of the last observed rate, or nil if nothing has been seen yet.
 func (w *lmStudioWatcher) latest() *TokenRate {
@@ -138,28 +137,31 @@ func lmsBinary() string {
 	return ""
 }
 
-// watchLMStudio starts the log stream and keeps it running for the life of the process.
+// watchLMStudio starts the log stream and keeps it running until ctx ends (Close).
 //
-// Only meaningful under `--serve`: a one-shot snapshot exits before any prediction could complete,
-// and starting a child process just to kill it would be pure cost. The stream is restarted with a
-// backoff if LM Studio quits, so an agent that outlives the app still recovers when it returns.
-func watchLMStudio() {
-	lmStudio.start.Do(func() {
-		bin := lmsBinary()
-		if bin == "" {
-			return
+// Only meaningful for a long-lived caller: a one-shot snapshot exits before any prediction could
+// complete, and starting a child process just to kill it would be pure cost. The stream is
+// restarted with a backoff if LM Studio quits, so a caller that outlives the app still recovers
+// when it returns.
+func (c *Collector) watchLMStudio(ctx context.Context) {
+	bin := lmsBinary()
+	if bin == "" {
+		return
+	}
+	c.running.Add(1)
+	go func() {
+		defer c.running.Done()
+		for ctx.Err() == nil {
+			c.lmStudio.run(ctx, bin)
+			sleep(ctx, 15*time.Second) // LM Studio not running (or it died) — retry, quietly
 		}
-		go func() {
-			for {
-				runLMStudioStream(bin)
-				time.Sleep(15 * time.Second) // LM Studio not running (or it died) — retry, quietly
-			}
-		}()
-	})
+	}()
 }
 
-func runLMStudioStream(bin string) {
-	cmd := exec.Command(bin, "log", "stream", "--json", "--stats")
+// run reads one `lms log stream` until it ends or ctx does; ending ctx kills the child.
+func (w *lmStudioWatcher) run(ctx context.Context, bin string) {
+	cmd := exec.CommandContext(ctx, bin, "log", "stream", "--json", "--stats")
+	dieWithParent(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return
@@ -200,15 +202,15 @@ func runLMStudioStream(bin string) {
 		if at == 0 {
 			at = time.Now().UnixMilli()
 		}
-		lmStudio.mu.Lock()
-		lmStudio.rate = &TokenRate{
+		w.mu.Lock()
+		w.rate = &TokenRate{
 			TokensPerSec: ev.Data.Stats.TokensPerSecond,
 			Source:       "lmstudio",
 			Model:        ev.Data.ModelIdentifier,
 			MeasuredAt:   at,
 			TTFTSec:      ev.Data.Stats.TimeToFirstTokenSec,
 		}
-		lmStudio.mu.Unlock()
+		w.mu.Unlock()
 	}
 }
 
@@ -217,9 +219,9 @@ func runLMStudioStream(bin string) {
 // readTokenRate returns the rate to publish this sample, preferring the live HTTP source over the
 // remembered stream one: llama.cpp's gauge is current by construction, whereas LM Studio's is the
 // last prediction, which may be hours old.
-func readTokenRate() *TokenRate {
-	if r := readLlamaCppRate(); r != nil {
+func (c *Collector) readTokenRate(ctx context.Context) *TokenRate {
+	if r := readLlamaCppRate(ctx); r != nil {
 		return r
 	}
-	return lmStudio.latest()
+	return c.lmStudio.latest()
 }

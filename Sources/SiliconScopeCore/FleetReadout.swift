@@ -1,7 +1,7 @@
 //
 //  File:      FleetReadout.swift
 //  Created:   2026-10-18
-//  Updated:   2026-10-18
+//  Updated:   2026-10-19
 //  Developer: SiliconScope contributors
 //  Overview:  How a remote machine's GPU watts and temperature are worded in the Fleet views, so a
 //             value the machine could not measure is left out instead of printed as 0.
@@ -17,7 +17,7 @@ public enum FleetReadout {
     ///   (`PowerSample.gpuKnown`) — the wire carries 0 then, which must not read as a reading.
     ///   A span longer than a tick is prefixed "~", as everywhere else.
     /// - NVIDIA/Linux: shown as sent. The Go agent turns an unsupported `nvidia-smi` value into 0
-    ///   (parseFloat, agent/main.go:422) and the wire has no validity flag, so unknown can't be
+    ///   (atof, agent/collect/collector.go) and the wire has no validity flag, so unknown can't be
     ///   told from a true 0 W there.
     public static func gpuWatts(_ g: FleetGPU, apple: FleetApple?) -> String? {
         guard let apple else { return "\(Int(g.powerDrawW))W" }

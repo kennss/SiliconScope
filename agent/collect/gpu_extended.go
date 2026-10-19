@@ -1,7 +1,9 @@
+//go:build linux || windows
+
 //
 //  File:      gpu_extended.go
 //  Created:   2026-09-29
-//  Updated:   2026-09-29
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The NVIDIA fields beyond the basic nine: memory-controller utilisation (the
 //             bandwidth signal), SM and memory clocks against their maxima, P-state, fan, NVENC /
@@ -12,11 +14,13 @@
 //             the fields are chosen once from `nvidia-smi --help-query-gpu`, and a query that still
 //             fails drops back to the basic nine for good. Losing the extras must never lose the
 //             GPU (#33 was a whole machine vanishing over one field). "[N/A]" / "[Not Supported]"
-//             mean the card doesn't report it: the field is omitted, never sent as 0.
+//             mean the card doesn't report it: the field is omitted, never sent as 0. What was
+//             chosen is kept per Collector (gpuFieldState), not per process.
 //
-package main
+package collect
 
 import (
+	"context"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -59,12 +63,14 @@ var throttleNames = map[string]string{
 
 type resolvedField struct{ key, name string }
 
-var (
-	extendedOnce     sync.Once
-	extendedFields   []resolvedField
-	extendedDisabled bool
-	extendedMu       sync.Mutex
-)
+// gpuFieldState is which extended fields this driver answers: chosen once from
+// `--help-query-gpu`, and given up for good when a query with them fails.
+type gpuFieldState struct {
+	once     sync.Once
+	fields   []resolvedField
+	mu       sync.Mutex
+	disabled bool
+}
 
 var quotedName = regexp.MustCompile(`"([a-z0-9_.]+)"`)
 
@@ -97,27 +103,28 @@ func resolveGPUFields(supported map[string]bool) []resolvedField {
 	return out
 }
 
-func extendedGPUQuery() []resolvedField {
-	extendedOnce.Do(func() {
-		help, err := exec.Command("nvidia-smi", "--help-query-gpu").Output()
+// query is the extended fields to ask for this sample.
+func (s *gpuFieldState) query(ctx context.Context) []resolvedField {
+	s.once.Do(func() {
+		help, err := exec.CommandContext(ctx, "nvidia-smi", "--help-query-gpu").Output()
 		if err == nil {
-			extendedFields = resolveGPUFields(supportedGPUFields(string(help)))
+			s.fields = resolveGPUFields(supportedGPUFields(string(help)))
 		}
 	})
-	extendedMu.Lock()
-	defer extendedMu.Unlock()
-	if extendedDisabled {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.disabled {
 		return nil
 	}
-	return extendedFields
+	return s.fields
 }
 
-// disableExtendedGPUQuery is called when a query with the extra fields fails: from then on only the
-// basic nine are asked for, so a driver that chokes on one of them still reports its GPU.
-func disableExtendedGPUQuery() {
-	extendedMu.Lock()
-	extendedDisabled = true
-	extendedMu.Unlock()
+// disable is called when a query with the extra fields fails: from then on only the basic nine
+// are asked for, so a driver that chokes on one of them still reports its GPU.
+func (s *gpuFieldState) disable() {
+	s.mu.Lock()
+	s.disabled = true
+	s.mu.Unlock()
 }
 
 // optFloat reads a value nvidia-smi may decline to give. nil means "not reported", never 0.

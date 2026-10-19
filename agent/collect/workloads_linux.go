@@ -3,7 +3,7 @@
 //
 //  File:      workloads_linux.go
 //  Created:   2026-09-29
-//  Updated:   2026-10-18
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  What is running on a Linux GPU box besides the model server: Docker containers
 //             (read from the Engine API over its unix socket, restart counts included), which
@@ -19,8 +19,10 @@
 //             own argv (#53: observe the process, don't poll the neighbourhood). A ComfyUI inside a
 //             container is skipped: asking localhost for it would reach whatever the host serves on
 //             that port and credit the answer to the wrong server.
+//             The Docker endpoint comes from Options.DockerHost (the agent passes DOCKER_HOST);
+//             what these readers remember lives in the Collector's platformState.
 //
-package main
+package collect
 
 import (
 	"context"
@@ -53,34 +55,48 @@ func dockerEndpoint(dockerHost string) (network, address string) {
 	}
 }
 
-var dockerClient = func() *http.Client {
-	network, address := dockerEndpoint(os.Getenv("DOCKER_HOST"))
-	return &http.Client{
-		Timeout: 2 * time.Second,
-		Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, network, address)
-		}},
-	}
-}()
+// platformState is what the Linux readers remember between samples, each part behind its lock.
+type platformState struct {
+	docker *http.Client
 
-var (
 	containersMu     sync.Mutex
 	containersAt     time.Time
 	containersCached *[]Container
 	containerIDs     map[string]string // full container id -> name, for GPU process attribution
-)
+
+	userNamesMu sync.Mutex
+	userNames   map[string]string // uid → name, only for uids that resolved
+
+	comfyMu   sync.Mutex
+	comfyAt   time.Time
+	comfyPort int // 0 = no host ComfyUI seen at the last scan
+}
+
+func newPlatformState(opts Options) *platformState {
+	network, address := dockerEndpoint(opts.DockerHost)
+	return &platformState{
+		docker: &http.Client{
+			Timeout: 2 * time.Second,
+			Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, network, address)
+			}},
+		},
+		userNames: map[string]string{},
+	}
+}
 
 // readContainers lists running containers, refreshed every 10 s (each refresh inspects every
 // container for its restart count). nil = Docker isn't reachable; [] = it is, and runs nothing.
-func readContainers() *[]Container {
-	containersMu.Lock()
-	defer containersMu.Unlock()
-	if time.Since(containersAt) < 10*time.Second {
-		return containersCached
+func (c *Collector) readContainers(ctx context.Context) *[]Container {
+	p := c.platform
+	p.containersMu.Lock()
+	defer p.containersMu.Unlock()
+	if time.Since(p.containersAt) < 10*time.Second {
+		return p.containersCached
 	}
-	containersAt = time.Now()
-	containersCached, containerIDs = nil, map[string]string{}
+	p.containersAt = time.Now()
+	p.containersCached, p.containerIDs = nil, map[string]string{}
 
 	var list []struct {
 		ID     string   `json:"Id"`
@@ -89,31 +105,35 @@ func readContainers() *[]Container {
 		State  string   `json:"State"`
 		Status string   `json:"Status"`
 	}
-	if !dockerGet("/containers/json", &list) {
+	if !p.dockerGet(ctx, "/containers/json", &list) {
 		return nil
 	}
 	out := []Container{}
-	for _, c := range list {
-		name := c.ID[:min(12, len(c.ID))]
-		if len(c.Names) > 0 {
-			name = strings.TrimPrefix(c.Names[0], "/")
+	for _, ls := range list {
+		name := ls.ID[:min(12, len(ls.ID))]
+		if len(ls.Names) > 0 {
+			name = strings.TrimPrefix(ls.Names[0], "/")
 		}
-		ct := Container{Name: name, Image: c.Image, State: c.State, Status: c.Status}
+		ct := Container{Name: name, Image: ls.Image, State: ls.State, Status: ls.Status}
 		var inspect struct {
 			RestartCount *int `json:"RestartCount"`
 		}
-		if dockerGet("/containers/"+c.ID+"/json", &inspect) {
+		if p.dockerGet(ctx, "/containers/"+ls.ID+"/json", &inspect) {
 			ct.RestartCount = inspect.RestartCount
 		}
 		out = append(out, ct)
-		containerIDs[c.ID] = name
+		p.containerIDs[ls.ID] = name
 	}
-	containersCached = &out
-	return containersCached
+	p.containersCached = &out
+	return p.containersCached
 }
 
-func dockerGet(path string, into any) bool {
-	resp, err := dockerClient.Get("http://docker" + path)
+func (p *platformState) dockerGet(ctx context.Context, path string, into any) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker"+path, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := p.docker.Do(req)
 	if err != nil {
 		return false
 	}
@@ -137,14 +157,15 @@ func containerID(pid int) string {
 
 // containerOf names the container a GPU process belongs to, "" when it runs on the host or in a
 // container Docker didn't list.
-func containerOf(pid int) string {
+func (c *Collector) containerOf(pid int) string {
 	id := containerID(pid)
 	if id == "" {
 		return ""
 	}
-	containersMu.Lock()
-	defer containersMu.Unlock()
-	return containerIDs[id]
+	p := c.platform
+	p.containersMu.Lock()
+	defer p.containersMu.Unlock()
+	return p.containerIDs[id]
 }
 
 // describeProc turns nvidia-smi's process name into something a person can tell apart. nvidia-smi
@@ -188,16 +209,11 @@ func scriptOf(args []string) string {
 
 // MARK: - Process owner
 
-var (
-	userNamesMu sync.Mutex
-	userNames   = map[string]string{} // uid → name, only for uids that resolved
-)
-
 // processUser is the account a process runs as: the real uid in /proc/<pid>/status, by name when
 // the system's user database knows it (os/user reads /etc/passwd in this cgo-free build, so a
 // directory-only account such as LDAP stays a number), else the uid itself. "" when the status
 // file can't be read — the process has exited, or /proc hides it (hidepid).
-func processUser(pid int) string {
+func (c *Collector) processUser(pid int) string {
 	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
 	if err != nil {
 		return ""
@@ -206,13 +222,14 @@ func processUser(pid int) string {
 	if !ok {
 		return ""
 	}
-	userNamesMu.Lock()
-	defer userNamesMu.Unlock()
-	if name, ok := userNames[uid]; ok {
+	p := c.platform
+	p.userNamesMu.Lock()
+	defer p.userNamesMu.Unlock()
+	if name, ok := p.userNames[uid]; ok {
 		return name
 	}
 	if u, err := user.LookupId(uid); err == nil && u.Username != "" {
-		userNames[uid] = u.Username
+		p.userNames[uid] = u.Username
 		return u.Username
 	}
 	return uid // not cached: an account added later is named on a later sample
@@ -240,21 +257,16 @@ func realUID(status string) (string, bool) {
 
 // MARK: - ComfyUI
 
-var (
-	comfyMu   sync.Mutex
-	comfyAt   time.Time
-	comfyPort int // 0 = no host ComfyUI seen at the last scan
-)
-
 // findComfyUIPort scans the process table (every 10 s) for a ComfyUI server on the host and
 // returns the port from its argv (--port N), or its default 8188. 0 when none is running.
-func findComfyUIPort() int {
-	comfyMu.Lock()
-	defer comfyMu.Unlock()
-	if time.Since(comfyAt) < 10*time.Second {
-		return comfyPort
+func (c *Collector) findComfyUIPort() int {
+	p := c.platform
+	p.comfyMu.Lock()
+	defer p.comfyMu.Unlock()
+	if time.Since(p.comfyAt) < 10*time.Second {
+		return p.comfyPort
 	}
-	comfyAt, comfyPort = time.Now(), 0
+	p.comfyAt, p.comfyPort = time.Now(), 0
 	dirs, _ := filepath.Glob("/proc/[0-9]*")
 	for _, d := range dirs {
 		raw, err := os.ReadFile(d + "/cmdline")
@@ -267,11 +279,11 @@ func findComfyUIPort() int {
 			if containerID(pid) != "" {
 				continue // inside a container: localhost would not reach it
 			}
-			comfyPort = port
+			p.comfyPort = port
 			break
 		}
 	}
-	return comfyPort
+	return p.comfyPort
 }
 
 func readlink(p string) string { s, _ := os.Readlink(p); return s }
@@ -310,8 +322,8 @@ func comfyUIPort(args []string, cwd string) (int, bool) {
 var comfyHTTP = &http.Client{Timeout: 2 * time.Second}
 
 // readComfyUI asks a seen ComfyUI for its queue. nil when none is running or it doesn't answer.
-func readComfyUI() *ComfyUI {
-	port := findComfyUIPort()
+func (c *Collector) readComfyUI(ctx context.Context) *ComfyUI {
+	port := c.findComfyUIPort()
 	if port == 0 {
 		return nil
 	}
@@ -320,23 +332,27 @@ func readComfyUI() *ComfyUI {
 		Running []json.RawMessage `json:"queue_running"`
 		Pending []json.RawMessage `json:"queue_pending"`
 	}
-	if !httpGetJSON(base+"/queue", &q) {
+	if !httpGetJSON(ctx, base+"/queue", &q) {
 		return nil
 	}
-	c := &ComfyUI{Port: port, Running: len(q.Running), Pending: len(q.Pending)}
+	ui := &ComfyUI{Port: port, Running: len(q.Running), Pending: len(q.Pending)}
 	var st struct {
 		System struct {
 			Version string `json:"comfyui_version"`
 		} `json:"system"`
 	}
-	if httpGetJSON(base+"/system_stats", &st) {
-		c.Version = st.System.Version
+	if httpGetJSON(ctx, base+"/system_stats", &st) {
+		ui.Version = st.System.Version
 	}
-	return c
+	return ui
 }
 
-func httpGetJSON(url string, into any) bool {
-	resp, err := comfyHTTP.Get(url)
+func httpGetJSON(ctx context.Context, url string, into any) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := comfyHTTP.Do(req)
 	if err != nil {
 		return false
 	}

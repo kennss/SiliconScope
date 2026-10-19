@@ -1,4 +1,4 @@
-module siliconscope-agent
+module github.com/kennss/SiliconScope/agent
 
 go 1.26
 

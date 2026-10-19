@@ -1,17 +1,19 @@
 //go:build windows
 
 //
-//  File:      metrics_windows.go
+//  File:      system_windows.go
 //  Created:   2026-09-11
-//  Updated:   2026-09-11
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  Windows CPU, memory, and machine identity readers for the fleet agent.
+//  Overview:  Windows CPU, memory, and machine identity readers (moved from the agent's
+//             metrics_windows.go).
 //  Notes:     Uses kernel32 system times and memory status plus registry identity.
 //             CPU usage is a 200ms delta. Windows APIs are called without CGO.
 //
-package main
+package collect
 
 import (
+	"context"
 	"os"
 	"runtime"
 	"strconv"
@@ -38,10 +40,10 @@ func hostname() string {
 
 // MARK: - CPU
 
-func readCPU() CPU {
+func readCPU(ctx context.Context) CPU {
 	c := CPU{Cores: runtime.NumCPU(), LoadAvg1: loadAvg1()}
 	i1, t1, ok1 := systemTimes()
-	time.Sleep(200 * time.Millisecond)
+	sleep(ctx, 200*time.Millisecond)
 	i2, t2, ok2 := systemTimes()
 	if totalDelta := t2 - t1; ok1 && ok2 && totalDelta > 0 {
 		busyDelta := totalDelta - (i2 - i1)

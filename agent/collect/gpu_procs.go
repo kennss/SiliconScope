@@ -1,20 +1,22 @@
+//go:build linux || windows
+
 //
 //  File:      gpu_procs.go
 //  Created:   2026-10-18
-//  Updated:   2026-10-18
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Which GPU each compute process is on. `nvidia-smi --query-compute-apps` lists one row
 //             per process per GPU, tagged with that GPU's UUID; the rows are matched to the GPUs of
 //             `--query-gpu` by the same UUID, so a box with several GPUs shows each process under
 //             the GPU it actually uses.
 //  Notes:     The parsing and matching are pure functions (tested with a two-GPU fixture); the
-//             sampler in main.go runs nvidia-smi and fills in each process's details.
+//             sampler in collector.go runs nvidia-smi and fills in each process's details.
 //             A process on two GPUs is two rows and is listed under both, each with the memory it
 //             holds on that GPU. On a single-GPU box every row belongs to that GPU whatever its
 //             UUID says. With several GPUs, a row whose UUID matches none of them is left out
 //             rather than credited to a GPU it may not be on.
 //
-package main
+package collect
 
 import "strings"
 

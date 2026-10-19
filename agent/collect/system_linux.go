@@ -1,18 +1,20 @@
 //go:build linux
 
 //
-//  File:      metrics_linux.go
+//  File:      system_linux.go
 //  Created:   2026-09-11
-//  Updated:   2026-09-27
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  Linux CPU, memory, and machine identity readers for the fleet agent.
+//  Overview:  Linux CPU, memory, disk and machine identity readers (moved from the agent's
+//             metrics_linux.go).
 //  Notes:     CPU usage is a 200ms delta of /proc/stat. Memory comes from
 //             /proc/meminfo in kB converted to bytes. Identity comes from /etc.
 //
-package main
+package collect
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"runtime"
 	"sort"
@@ -28,10 +30,10 @@ func hostname() string { return firstLine("/etc/hostname") }
 
 // MARK: - CPU
 
-func readCPU() CPU {
+func readCPU(ctx context.Context) CPU {
 	c := CPU{Cores: runtime.NumCPU(), LoadAvg1: loadAvg1(), Model: cpuModel()}
 	t1, i1 := procStatTotals()
-	time.Sleep(200 * time.Millisecond)
+	sleep(ctx, 200*time.Millisecond)
 	t2, i2 := procStatTotals()
 	if dt := t2 - t1; dt > 0 {
 		busy := (t2 - t1) - (i2 - i1) // total delta minus idle delta

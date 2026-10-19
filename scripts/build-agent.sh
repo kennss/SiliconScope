@@ -2,7 +2,7 @@
 #
 #  File:      build-agent.sh
 #  Created:   2026-07-22
-#  Updated:   2026-09-24
+#  Updated:   2026-10-19
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  Cross-compiles the SiliconScope fleet agent (agent/) into static, dependency-free
 #             single binaries for Linux amd64 + arm64 — the download targets for install-agent.sh
@@ -18,9 +18,8 @@ cd "$(dirname "$0")/.."
 OUT="dist/agent"
 mkdir -p "$OUT"
 
-# Read from the source, not `go run . --version`: the readers are build-tagged for Linux and
-# Windows (metrics_linux.go / metrics_windows.go), so the package does not build for the macOS
-# host this script runs on.
+# Read from the source, not `go run . --version`: the readers in agent/collect are build-tagged for
+# Linux and Windows, so the agent does not build for the macOS host this script runs on.
 VERSION="$(sed -n 's/^const agentVersion = "\(.*\)"$/\1/p' agent/main.go)"
 [ -n "$VERSION" ] || { echo "✗ agentVersion not found in agent/main.go" >&2; exit 1; }
 echo "▸ Building sscope-agent $VERSION (static, CGO_ENABLED=0)…"

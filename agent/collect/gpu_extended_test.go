@@ -1,14 +1,16 @@
+//go:build linux || windows
+
 //
 //  File:      gpu_extended_test.go
 //  Created:   2026-09-29
-//  Updated:   2026-09-29
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Tests for choosing and reading the extended NVIDIA fields.
 //  Notes:     The help excerpt and values follow `nvidia-smi` on driver 595 with an RTX 3090
 //             (kennt-Ubuntu). The package builds only for Linux/Windows: from a Mac, run
 //             `GOOS=linux go test -c` and execute the binary on a Linux box.
 //
-package main
+package collect
 
 import (
 	"reflect"

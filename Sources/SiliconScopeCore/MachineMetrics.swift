@@ -1,14 +1,14 @@
 //
 //  File:      MachineMetrics.swift
 //  Created:   2026-07-21
-//  Updated:   2026-10-18
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The source-agnostic fleet metric schema — the boundary the Mac aggregator consumes
 //             for every remote machine, regardless of how the data arrives. Mirrors the Go Linux
-//             agent's JSON (agent/main.go) so its output decodes directly, and carries Apple-Silicon
-//             extras (E/P split, ANE/Media, per-requestor bandwidth, power breakdown, fans) that a
-//             Mac agent fills in. Keeping this UI-independent (Core) is what lets one view render
-//             both a Linux GPU box and a headless Mac.
+//             agent's JSON (agent/collect/types.go) so its output decodes directly, and carries
+//             Apple-Silicon extras (E/P split, ANE/Media, per-requestor bandwidth, power breakdown,
+//             fans) that a Mac agent fills in. Keeping this UI-independent (Core) is what lets one
+//             view render both a Linux GPU box and a headless Mac.
 //  Notes:     JSON keys are camelCase matching the property names, so no CodingKeys are needed.
 //             Apple-only fields are Optional so Linux JSON (which omits them) still decodes — the
 //             UI shows a slot only when its value is present. Byte fields are absolute bytes; `ts`

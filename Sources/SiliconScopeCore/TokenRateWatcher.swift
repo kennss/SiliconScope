@@ -1,11 +1,11 @@
 //
 //  File:      TokenRateWatcher.swift
 //  Created:   2026-08-10
-//  Updated:   2026-09-24
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Collects the decode rate (tokens/sec) a local LLM runtime reports for its OWN work,
 //             so a Mac serving models can publish it the way the Linux agent already does
-//             (agent/tokenrate.go). Same two sources, same wire shape — a fleet must not describe
+//             (agent/collect/tokenrate.go). Same two sources, same wire shape — a fleet must not describe
 //             a Mac and a Linux box in different vocabularies.
 //  Notes:     - llama.cpp server: `llamacpp:predicted_tokens_seconds` on /metrics (needs --metrics).
 //               A plain HTTP poll, current by construction — but ONLY against a port the caller

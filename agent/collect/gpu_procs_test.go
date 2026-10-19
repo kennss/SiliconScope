@@ -1,7 +1,9 @@
+//go:build linux || windows
+
 //
 //  File:      gpu_procs_test.go
 //  Created:   2026-10-18
-//  Updated:   2026-10-18
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Tests for reading nvidia-smi's GPU and compute-app rows and putting each process
 //             under the GPU it is on.
@@ -10,7 +12,7 @@
 //             package builds only for Linux/Windows: from a Mac, run `GOOS=linux go test -c` and
 //             execute the binary on a Linux box.
 //
-package main
+package collect
 
 import (
 	"reflect"
@@ -123,7 +125,8 @@ func TestAttachProcsWithoutGPUsOrApps(t *testing.T) {
 }
 
 func TestDescribeComputeAppReadsAProcessOnce(t *testing.T) {
-	describe := describeComputeApp()
+	c, _ := New(Options{})
+	describe := c.describeComputeApp()
 	a := describe(computeApp{GPUUUID: uuid0, PID: 999999, Name: "/bin/x", VRAMBytes: 1})
 	b := describe(computeApp{GPUUUID: uuid1, PID: 999999, Name: "/bin/x", VRAMBytes: 2})
 	if a.Name != b.Name || a.VRAMBytes != 1 || b.VRAMBytes != 2 {

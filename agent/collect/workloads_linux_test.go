@@ -3,7 +3,7 @@
 //
 //  File:      workloads_linux_test.go
 //  Created:   2026-09-29
-//  Updated:   2026-10-18
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Tests for recognising a ComfyUI server, reading a container id from a cgroup, naming
 //             a process's Python script, following DOCKER_HOST to the Docker API, and the
@@ -11,7 +11,7 @@
 //  Notes:     argv shapes follow kennt-Ubuntu: a host ComfyUI (`venv/bin/python main.py --listen
 //             0.0.0.0`) beside a ComfyUI worker container. Run on Linux (`GOOS=linux go test -c`).
 //
-package main
+package collect
 
 import (
 	"os"
@@ -105,10 +105,11 @@ func TestProcessUserNamesThisProcess(t *testing.T) {
 	if err != nil {
 		t.Skip("no current user:", err)
 	}
-	if got := processUser(os.Getpid()); got != me.Username {
+	c, _ := New(Options{})
+	if got := c.processUser(os.Getpid()); got != me.Username {
 		t.Fatalf("processUser(self) = %q, want %q", got, me.Username)
 	}
-	if got := processUser(-1); got != "" {
+	if got := c.processUser(-1); got != "" {
 		t.Fatalf("an unreadable process = %q, want empty", got)
 	}
 }
