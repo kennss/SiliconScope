@@ -1,7 +1,7 @@
 //
 //  File:      MetricDemandTests.swift
 //  Created:   2026-09-24
-//  Updated:   2026-09-24
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Locks in demand-driven sampling and the shape of a gap (#13): a group nobody is
 //             looking at is not measured, and the record says so instead of saying zero.
@@ -168,5 +168,24 @@ final class MetricDemandTests: XCTestCase {
 
         for _ in 0..<20 { activity.update(SystemSnapshot(), measured: [.memory]) }
         XCTAssertTrue(activity.cpu, "an unmeasured CPU must not latch OFF on a zeroed sample")
+    }
+
+    // MARK: - Alert path
+
+    /// The alert verdicts must be judged on freshly measured groups. Each pair below is a field a
+    /// verdict reads and the group that produces it; a verdict reading a group missing from
+    /// `MetricGroup.alerts` would evaluate a value carried forward from an older tick.
+    func testAlertDemandCoversEveryGroupTheVerdictsRead() {
+        let reads: [(field: String, group: MetricGroup)] = [
+            ("gpu.usage / gpu.freqMHz", .gpu),
+            ("temperature.gpuCelsius / dieCelsius", .temperature),
+            ("power.gpuWatts", .power),
+            ("thermal.pressure", .thermal),
+            ("memoryBudget / paging rates / memory.pressure", .memory),
+        ]
+        for read in reads {
+            XCTAssertTrue(MetricGroup.alerts.contains(read.group),
+                          "alert demand must include the group behind \(read.field)")
+        }
     }
 }

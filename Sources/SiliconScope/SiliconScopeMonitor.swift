@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -136,10 +136,12 @@ final class SiliconScopeMonitor {
             demand.formUnion(MenuBarItemRenderer.demand(for: item))
         }
         // The alert path runs whether or not anything is on screen: gpuThrottling reads the GPU
-        // clock against thermal pressure, memoryRisk reads the paging rates. A monitor that stops
-        // noticing a throttle because its window is shut has stopped being a monitor.
+        // clock and load (.gpu) against die/GPU temperature (.temperature), GPU power (.power) and
+        // thermal pressure (.thermal); memoryRisk reads the paging rates and budget (.memory).
+        // A monitor that stops noticing a throttle because its window is shut has stopped being a
+        // monitor, and one that judges it from a carried-forward temperature is no better.
         if UserDefaults.standard.bool(forKey: "notificationsEnabled") {
-            demand.formUnion([.gpu, .memory, .thermal])
+            demand.formUnion(.alerts)
         }
         return demand
     }

@@ -1,7 +1,7 @@
 //
 //  File:      MetricDemand.swift
 //  Created:   2026-09-24
-//  Updated:   2026-09-24
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  What one tick is actually asked to measure. `SystemSampler.sample` takes a
 //             MetricGroup set — the demand — and reads only those groups; `MetricsEngine.ingest`
@@ -52,6 +52,13 @@ public struct MetricGroup: OptionSet, Sendable, Hashable, Codable {
     /// alert path — a monitor that stops noticing memory pressure while its window is shut has
     /// stopped being a monitor.
     public static let essential: MetricGroup = [.memory, .thermal]
+
+    /// Everything the alert verdicts read, so they never judge a carried-forward value.
+    /// - `MetricsEngine.gpuThrottling`: `gpu.usage` / `gpu.freqMHz` (.gpu), `temperature.gpuCelsius`
+    ///   and the die temperature (.temperature), `power.gpuWatts` (.power), `thermal.pressure` (.thermal).
+    /// - `MetricsEngine.memoryRisk` and the critical-pressure alert: `memoryBudget`, the paging
+    ///   rates and `memory.pressure`, all of which come from .memory.
+    public static let alerts: MetricGroup = [.gpu, .power, .temperature, .memory, .thermal]
 }
 
 public extension DataChannel {
