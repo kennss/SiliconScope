@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeRootView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-10-06
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The single-window shell: a NavigationSplitView with a "Devices" sidebar (This Mac +
 //             every discovered fleet agent) and a detail pane that shows the selected device's
@@ -224,7 +224,9 @@ private struct DeviceSidebarRow: View {
             parts.append(String(format: "%.0f tok/s", r.tokensPerSec))
         }
         if let g = m.gpus.first {
-            parts.append("GPU \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W")
+            // Watts the machine can't vouch for are left out, not printed as 0 (FleetReadout).
+            parts.append(["GPU \(Int(g.utilizationPercent))%", FleetReadout.gpuWatts(g, apple: m.apple)]
+                .compactMap { $0 }.joined(separator: " · "))
         } else {
             parts.append("CPU \(Int(m.cpu.usagePercent))%")
         }

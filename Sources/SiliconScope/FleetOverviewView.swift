@@ -1,7 +1,7 @@
 //
 //  File:      FleetOverviewView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-10-02
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  At-a-glance view of every machine at once — an adaptive grid of compact tiles. THIS
 //             MAC is always the first tile (a laptop glyph, taps through to its full dashboard);
@@ -117,7 +117,7 @@ private struct FleetTile: View {
                 // one here left such a machine stuck on "Connecting…" even though it was reporting
                 // fine (#33). CPU/RAM is what every machine has, so that's the row that always draws.
                 if let g = m.gpus.first {
-                    gpuCaption(g)
+                    gpuCaption(g, apple: m.apple)
                     miniChart(history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
                               history.map { $0.vramFrac }, MetricPalette.gpuMemC)
                 }
@@ -184,9 +184,12 @@ private struct FleetTile: View {
 
     // MARK: - captions (the tinted metric word doubles as the chart legend)
 
-    private func gpuCaption(_ g: FleetGPU) -> some View {
-        (tag("GPU", MetricPalette.gpuC)
-         + dim(" \(Int(g.utilizationPercent))% · \(Int(g.powerDrawW))W · \(Int(g.temperatureC))°C · ")
+    private func gpuCaption(_ g: FleetGPU, apple: FleetApple?) -> some View {
+        // Watts and °C the machine can't vouch for are left out, not printed as 0 (FleetReadout).
+        let parts = ["\(Int(g.utilizationPercent))%", FleetReadout.gpuWatts(g, apple: apple),
+                     FleetReadout.gpuTemperature(g, apple: apple)].compactMap { $0 }
+        return (tag("GPU", MetricPalette.gpuC)
+         + dim(" " + parts.joined(separator: " · ") + " · ")
          + tag("VRAM", MetricPalette.gpuMemC)
          + dim(" \(gb(g.vramUsedBytes))/\(gb(g.vramTotalBytes))"))
             .font(Theme.font(.caption)).lineLimit(1)
