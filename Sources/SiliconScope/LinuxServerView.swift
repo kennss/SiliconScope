@@ -1,7 +1,7 @@
 //
 //  File:      LinuxServerView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-30
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail dashboard for a remote LINUX / NVIDIA server — GPU-centric, distinct from the
 //             Mac layout. The header carries the machine's identity (OS, agent, cores, RAM, GPU,
@@ -10,7 +10,9 @@
 //             with Ollama and ComfyUI | containers), and the host (CPU/RAM chart | storage). A
 //             GPU-less box keeps the workload row, minus the card's column. Three rows to This
 //             Mac's four, with lists scrolling inside their cards, so the page is never taller
-//             than This Mac's.
+//             than This Mac's. A box with several GPUs gets one more row on top: a chip per card
+//             (load, VRAM, temperature), and the chosen card's chart, detail and processes below —
+//             four rows, still never taller than This Mac.
 //             Deliberately omits Apple-only concepts (ANE / E-P / Media).
 //  Notes:     Reuses the app's shared `Sparkline` + `MetricPalette` (line + gradient fill, NOT Swift
 //             Charts) so it matches the local GPU/CPU cards — GPU=green, VRAM=sky-cyan, CPU=blue,
@@ -27,13 +29,21 @@ struct LinuxServerView: View {
 
     private var entry: FleetMonitor.Entry? { fleet.entries.first { $0.id == machineID } }
     private var history: [FleetMonitor.Sample] { fleet.history[machineID] ?? [] }
+    /// The card chosen among several (FleetGPU.historyKey); the first card until one is picked, or
+    /// when the chosen one is no longer reported.
+    @State private var chosenGPU: String?
+
+    private func selectedGPU(_ m: MachineMetrics) -> FleetGPU? {
+        m.gpus.first { $0.historyKey == chosenGPU } ?? m.gpus.first
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.section) {
                 if let m = entry?.metrics {
-                    let g = m.gpus.first
-                    header(m, g)
+                    let g = selectedGPU(m)
+                    header(m)
+                    if m.gpus.count > 1, let g { gpuChips(m.gpus, selected: g) }
 
                     // Rows sit on the same grid constants as This Mac, and there are three of them to
                     // its four: the page can be shorter than This Mac, never taller. Lists scroll
@@ -43,13 +53,14 @@ struct LinuxServerView: View {
                     // the host. A Pi / CPU-only box has no GPU rows at all rather than flat ones (#33).
                     if let g {
                         HStack(alignment: .top, spacing: Space.row) {
-                            dualChart(title: "GPU / VRAM", caption: gpuCaption(g),
-                                      history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
-                                      history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+                            dualChart(title: m.gpus.count > 1 ? "GPU \(g.index) / VRAM" : "GPU / VRAM",
+                                      caption: gpuCaption(g),
+                                      history.gpuUtil(g), MetricPalette.gpuC,
+                                      history.vramFrac(g), MetricPalette.gpuMemC)
                             // The questions asked of Apple Silicon, asked of the NVIDIA card:
                             // bandwidth-bound? boosting? held back, and by what? Only from an agent
                             // that reports them.
-                            if g.hasExtendedDetail { gpuDetailCard(g) }
+                            if g.hasExtendedDetail { gpuDetailCard(g, several: m.gpus.count > 1) }
                         }
                         .frame(minHeight: Layout.Row.dense)
                     }
@@ -62,7 +73,7 @@ struct LinuxServerView: View {
                     let showRuntime = g != nil || hasRuntime(m)
                     if g != nil || showRuntime || m.containers != nil {
                         HStack(alignment: .top, spacing: Space.row) {
-                            if let g { computeProcesses(g) }
+                            if let g { computeProcesses(g, several: m.gpus.count > 1) }
                             if showRuntime { runtimeCard(m) }
                             if let containers = m.containers { containersCard(containers) }
                         }
@@ -89,8 +100,8 @@ struct LinuxServerView: View {
     // MARK: - sections
 
     /// The NVIDIA card beyond utilisation and VRAM. Each row appears only when the card reports it.
-    private func gpuDetailCard(_ g: FleetGPU) -> some View {
-        card("GPU DETAIL") {
+    private func gpuDetailCard(_ g: FleetGPU, several: Bool) -> some View {
+        card(several ? "GPU \(g.index) DETAIL" : "GPU DETAIL") {
             if let mem = g.memUtilPercent {
                 KV(key: "Memory bandwidth", value: String(format: "%.0f%% busy", mem))
             }
@@ -135,7 +146,7 @@ struct LinuxServerView: View {
 
     /// Name and identity in one header — the machine's shape (cores, RAM, GPU, VRAM) is a fact about
     /// it, not a reading, so it needs no card of its own.
-    private func header(_ m: MachineMetrics, _ g: FleetGPU?) -> some View {
+    private func header(_ m: MachineMetrics) -> some View {
         HStack(spacing: Space.card) {
             Image(systemName: "server.rack")
             VStack(alignment: .leading, spacing: Space.hair) {
@@ -144,7 +155,7 @@ struct LinuxServerView: View {
                 // the core count and RAM in exactly the part that was elided.
                 Text("\(m.os) · agent \(m.agentVersion)").font(Theme.font(.caption)).foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text(hardwareLine(m, g)).font(Theme.font(.caption)).foregroundStyle(.secondary)
+                Text(hardwareLine(m)).font(Theme.font(.caption)).foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer()
@@ -155,11 +166,47 @@ struct LinuxServerView: View {
         }
     }
 
-    private func hardwareLine(_ m: MachineMetrics, _ g: FleetGPU?) -> String {
+    private func hardwareLine(_ m: MachineMetrics) -> String {
         var parts = ["\(m.cpu.cores) cores", "\(gbInt(m.memory.totalBytes)) RAM"]
         // A machine without a GPU (Pi, CPU-only server, VM) says nothing about one.
-        if let g { parts.append("\(g.name) \(gbInt(g.vramTotalBytes))") }
+        if let gpus = FleetGPU.inventoryLabel(m.gpus, memory: gbInt) { parts.append(gpus) }
         return parts.joined(separator: " · ")
+    }
+
+    /// One chip per card on a box with several: what each is doing at a glance, and the way to pick
+    /// the one the rows below show. The same bars and colours as the cards they lead to.
+    private func gpuChips(_ gpus: [FleetGPU], selected: FleetGPU) -> some View {
+        HStack(alignment: .top, spacing: Space.row) {
+            ForEach(gpus) { g in
+                let isSelected = g.historyKey == selected.historyKey
+                Button { chosenGPU = g.historyKey } label: {
+                    VStack(alignment: .leading, spacing: Space.tight) {
+                        HStack(spacing: Space.row) {
+                            Text("GPU \(g.index)").font(.system(.caption, design: .monospaced).bold())
+                            Text(g.name).font(Theme.font(.caption)).foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 0)
+                            Text("\(Int(g.temperatureC))°C").font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                        Bar(label: "GPU", value: g.utilizationPercent / 100,
+                            detail: "\(Int(g.utilizationPercent))%", encoding: .identity(MetricPalette.gpuC))
+                        Bar(label: "VRAM", value: g.vramFraction,
+                            detail: "\(gb(g.vramUsedBytes)) / \(gb(g.vramTotalBytes))",
+                            encoding: .identity(MetricPalette.gpuMemC))
+                    }
+                    .padding(Space.section)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(RoundedRectangle(cornerRadius: Radius.panel)
+                        .fill(.quaternary.opacity(isSelected ? 0.8 : 0.35)))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.panel)
+                        .strokeBorder(isSelected ? MetricPalette.gpuC.opacity(0.6) : .clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
     }
 
     private func gpuCaption(_ g: FleetGPU?) -> Text {
@@ -219,8 +266,8 @@ struct LinuxServerView: View {
         }
     }
 
-    private func computeProcesses(_ g: FleetGPU) -> some View {
-        card("COMPUTE PROCESSES") {
+    private func computeProcesses(_ g: FleetGPU, several: Bool) -> some View {
+        card(several ? "COMPUTE PROCESSES · GPU \(g.index)" : "COMPUTE PROCESSES") {
             if g.processes.isEmpty {
                 Text("nothing is using the GPU").font(Theme.font(.caption)).foregroundStyle(.secondary)
             }
@@ -237,7 +284,8 @@ struct LinuxServerView: View {
                                 Text(gb(p.vramBytes)).font(.system(.caption2, design: .monospaced))
                                     .foregroundStyle(.secondary)
                             }
-                            Text(["pid \(p.pid)", p.script, p.container].compactMap { $0 }.joined(separator: " · "))
+                            Text(["pid \(p.pid)", p.user, p.script, p.container].compactMap { $0 }
+                                    .joined(separator: " · "))
                                 .font(Theme.font(.caption)).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }

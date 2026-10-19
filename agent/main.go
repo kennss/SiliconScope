@@ -1,7 +1,7 @@
 //
 //  File:      main.go
 //  Created:   2026-07-21
-//  Updated:   2026-10-05
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  SiliconScope fleet agent (v0.1, Linux). Samples CPU / memory / NVIDIA GPU /
 //             Ollama and prints ONE MachineMetrics JSON to stdout. This is the source-agnostic
@@ -12,8 +12,8 @@
 //             (keeps the binary pure-Go/static; NVML via go-nvml would need CGO). VRAM is MiB
 //             from nvidia-smi (×1MiB → bytes). Memory is kB from /proc/meminfo (×1024). CPU
 //             usage is a 200ms delta of /proc/stat. Ollama is optional (nil when unreachable).
-//             v0.1 attaches all compute-apps to GPU 0 (single-GPU box); multi-GPU needs
-//             gpu_uuid matching — TODO.
+//             Compute processes are matched to their GPU by UUID (gpu_procs.go), so a box with
+//             several GPUs lists each process under the GPU it is on.
 //
 package main
 
@@ -94,10 +94,16 @@ type GPUProc struct {
 	Container string `json:"container,omitempty"`
 	// The Python script it runs (e.g. "halluc_bench.py"), so two jobs in one environment differ.
 	Script string `json:"script,omitempty"`
+	// The account it runs as: the real uid of /proc/<pid>/status, by name from the system's user
+	// database, else the uid as a number. Empty when it can't be read (and on Windows).
+	User string `json:"user,omitempty"`
 }
 
 type GPU struct {
-	Index              int       `json:"index"`
+	Index int `json:"index"`
+	// The driver's identifier for this card ("GPU-d5a8caa7-…"). Unlike the index it stays with the
+	// card when another one is added or removed, so a viewer can key a GPU's history on it.
+	UUID               string    `json:"uuid,omitempty"`
 	Name               string    `json:"name"`
 	Driver             string    `json:"driver"`
 	VRAMTotalBytes     int64     `json:"vramTotalBytes"`
@@ -288,8 +294,12 @@ func portFromAddr(addr string) int {
 
 // MARK: - GPU (nvidia-smi)
 
-// baseGPUQuery is the nine fields every supported driver answers; readGPUs never gives them up.
-const baseGPUQuery = "index,name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw,power.limit"
+// baseGPUQuery is the fields every supported driver answers; readGPUs never gives them up.
+// uuid is what compute processes are matched on (gpu_procs.go).
+const baseGPUQuery = "index,name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw,power.limit,uuid"
+
+// baseGPUFields is how many leading columns baseGPUQuery yields; extended fields follow them.
+const baseGPUFields = 10
 
 func readGPUs() []GPU {
 	extra := extendedGPUQuery()
@@ -310,11 +320,17 @@ func readGPUs() []GPU {
 		// viewer's decode for every GPU-less machine (issue #33).
 		return []GPU{}
 	}
-	procs := readGPUProcs()
+	gpus := parseGPUs(string(out), extra)
+	attachProcs(gpus, readComputeApps(), describeComputeApp())
+	return gpus
+}
+
+// parseGPUs reads the CSV rows of baseGPUQuery followed by the extended fields. Pure, for testing.
+func parseGPUs(out string, extra []resolvedField) []GPU {
 	gpus := []GPU{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		f := splitCSV(line)
-		if len(f) < 9 {
+		if len(f) < baseGPUFields {
 			continue
 		}
 		g := GPU{
@@ -329,40 +345,42 @@ func readGPUs() []GPU {
 			PowerLimitW:        atof(f[8]),
 			Processes:          []GPUProc{},
 		}
-		if len(f) >= 9+len(extra) {
-			applyExtended(&g, extra, f[9:])
+		if id := optString(f[9]); id != nil {
+			g.UUID = *id
+		}
+		if len(f) >= baseGPUFields+len(extra) {
+			applyExtended(&g, extra, f[baseGPUFields:])
 		}
 		gpus = append(gpus, g)
-	}
-	// v0.1: single-GPU box — attach all compute-apps to GPU 0. (Multi-GPU: match gpu_uuid.)
-	if len(gpus) > 0 && len(procs) > 0 {
-		gpus[0].Processes = procs
 	}
 	return gpus
 }
 
-func readGPUProcs() []GPUProc {
-	out, err := exec.Command("nvidia-smi",
-		"--query-compute-apps=pid,process_name,used_memory",
+func readComputeApps() []computeApp {
+	out, err := exec.Command("nvidia-smi", "--query-compute-apps="+computeAppsQuery,
 		"--format=csv,noheader,nounits").Output()
 	if err != nil {
-		return []GPUProc{} // never nil — see readGPUs (#33)
+		return nil // no processes listed; every GPU keeps its empty (never nil) Processes
 	}
-	var procs []GPUProc
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line == "" {
-			continue
+	return parseComputeApps(string(out))
+}
+
+// describeComputeApp returns the per-sample describer: a process on several GPUs is several rows,
+// and its /proc details are read once.
+func describeComputeApp() func(computeApp) GPUProc {
+	type details struct{ path, script, container, user string }
+	seen := map[int]details{}
+	return func(a computeApp) GPUProc {
+		d, ok := seen[a.PID]
+		if !ok {
+			d.path, d.script = describeProc(a.PID, a.Name)
+			d.container = containerOf(a.PID)
+			d.user = processUser(a.PID)
+			seen[a.PID] = d
 		}
-		f := splitCSV(line)
-		if len(f) < 3 {
-			continue
-		}
-		pid := atoi(f[0])
-		path, script := describeProc(pid, f[1])
-		procs = append(procs, GPUProc{PID: pid, Name: path, VRAMBytes: mibToBytes(f[2]),
-			Container: containerOf(pid), Script: script})
+		return GPUProc{PID: a.PID, Name: d.path, VRAMBytes: a.VRAMBytes, Container: d.container,
+			Script: d.script, User: d.user}
 	}
-	return procs
 }
 
 // MARK: - LLM (Ollama)

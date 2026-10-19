@@ -3,16 +3,21 @@
 //
 //  File:      workloads_linux_test.go
 //  Created:   2026-09-29
-//  Updated:   2026-09-30
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Tests for recognising a ComfyUI server, reading a container id from a cgroup, naming
-//             a process's Python script, and following DOCKER_HOST to the Docker API.
+//             a process's Python script, following DOCKER_HOST to the Docker API, and the
+//             account a process runs as.
 //  Notes:     argv shapes follow kennt-Ubuntu: a host ComfyUI (`venv/bin/python main.py --listen
 //             0.0.0.0`) beside a ComfyUI worker container. Run on Linux (`GOOS=linux go test -c`).
 //
 package main
 
-import "testing"
+import (
+	"os"
+	"os/user"
+	"testing"
+)
 
 func TestComfyUIIsRecognisedWithItsPort(t *testing.T) {
 	cases := []struct {
@@ -80,5 +85,30 @@ func TestDockerEndpointFollowsDockerHost(t *testing.T) {
 		if n != want[0] || a != want[1] {
 			t.Errorf("%q: got (%s, %s), want %v", in, n, a, want)
 		}
+	}
+}
+
+func TestRealUIDIsTheFirstOfTheUidLine(t *testing.T) {
+	status := "Name:\tpython\nUmask:\t0002\nState:\tS (sleeping)\nUid:\t1000\t0\t0\t0\nGid:\t1000\t1000\t1000\t1000\n"
+	if uid, ok := realUID(status); !ok || uid != "1000" {
+		t.Fatalf("got (%q, %v), want 1000", uid, ok)
+	}
+	for _, bad := range []string{"", "Name:\tx\n", "Uid:\n", "Uid:\tabc\t0\n"} {
+		if uid, ok := realUID(bad); ok {
+			t.Errorf("%q: got %q, want no uid", bad, uid)
+		}
+	}
+}
+
+func TestProcessUserNamesThisProcess(t *testing.T) {
+	me, err := user.Current()
+	if err != nil {
+		t.Skip("no current user:", err)
+	}
+	if got := processUser(os.Getpid()); got != me.Username {
+		t.Fatalf("processUser(self) = %q, want %q", got, me.Username)
+	}
+	if got := processUser(-1); got != "" {
+		t.Fatalf("an unreadable process = %q, want empty", got)
 	}
 }

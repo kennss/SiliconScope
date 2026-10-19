@@ -1,7 +1,7 @@
 //
 //  File:      FleetMonitor.swift
 //  Created:   2026-07-21
-//  Updated:   2026-10-05
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Mac-side fleet aggregator: owns mDNS discovery (FleetDiscovery), holds the set of
 //             discovered machines, and polls each on an interval for the latest MachineMetrics (or
@@ -16,6 +16,8 @@
 //             window costs the agents nothing (#71). Discovery keeps running — it is local mDNS and
 //             cheap, and keeps the list ready for when the window returns. On resume each history
 //             gets a gap sample, so a chart doesn't join two readings an hour apart as if adjacent.
+//             Each GPU has its own trace, keyed by FleetGPU.historyKey (its UUID when the agent sends
+//             one): a box with several cards charts each, and a card missing from a sample is a gap.
 //
 import Foundation
 import Observation
@@ -55,12 +57,16 @@ final class FleetMonitor {
         let id: Int          // monotonic sequence (stable Chart identity)
         let t: Date
         let cpu: Double      // 0..100
-        let gpuUtil: Double  // 0..100 (first GPU; 0 if none)
-        let gpuPowerW: Double
         let memFrac: Double  // 0..1 (RAM used / total)
-        let vramFrac: Double // 0..1 (first GPU VRAM used / total)
+        let gpus: [String: GPUPoint]   // FleetGPU.historyKey → that card's reading; [] in a gap
         let aneFrac: Double  // 0..1 (ANE watts / peak; Apple only, 0 on Linux)
         let bwFrac: Double   // 0..1 (memory bandwidth / peak; Apple only, 0 on Linux)
+    }
+
+    /// One GPU's reading in a history sample.
+    struct GPUPoint {
+        let util: Double     // 0..100
+        let vramFrac: Double // 0..1 (VRAM used / total)
     }
 
     private(set) var entries: [Entry] = []
@@ -280,12 +286,13 @@ final class FleetMonitor {
             let peak = $0.bandwidth.totalPeakGBs ?? $0.bandwidth.totalGBs
             return peak > 0 ? min(1, $0.bandwidth.totalGBs / peak) : 0
         } ?? 0
+        let gpus = Dictionary(m.gpus.map { ($0.historyKey, GPUPoint(util: $0.utilizationPercent,
+                                                                    vramFrac: $0.vramFraction)) },
+                              uniquingKeysWith: { first, _ in first })
         return Sample(id: sampleSeq, t: Date(),
                       cpu: m.cpu.usagePercent,
-                      gpuUtil: m.gpus.first?.utilizationPercent ?? 0,
-                      gpuPowerW: m.gpus.first?.powerDrawW ?? 0,
                       memFrac: memFrac,
-                      vramFrac: m.gpus.first?.vramFraction ?? 0,
+                      gpus: gpus,
                       aneFrac: aneFrac,
                       bwFrac: bwFrac)
     }
@@ -293,8 +300,8 @@ final class FleetMonitor {
     /// A sample that draws as a break in every trace (Sparkline skips non-finite values).
     private func gapSample() -> Sample {
         sampleSeq += 1
-        return Sample(id: sampleSeq, t: Date(), cpu: .nan, gpuUtil: .nan, gpuPowerW: .nan,
-                      memFrac: .nan, vramFrac: .nan, aneFrac: .nan, bwFrac: .nan)
+        return Sample(id: sampleSeq, t: Date(), cpu: .nan, memFrac: .nan, gpus: [:],
+                      aneFrac: .nan, bwFrac: .nan)
     }
 
     /// Break every history where polling stopped, unless it already ends in a break.
@@ -320,4 +327,13 @@ final class FleetMonitor {
         localHistory.append(makeSample(m))
         if localHistory.count > historyLimit { localHistory.removeFirst(localHistory.count - historyLimit) }
     }
+}
+
+extension Array where Element == FleetMonitor.Sample {
+    /// One GPU's utilisation trace, 0…1. A sample without that card (a gap, or the agent didn't
+    /// read it) is NaN, which a Sparkline draws as a break rather than as an idle card.
+    func gpuUtil(_ gpu: FleetGPU) -> [Double] { map { ($0.gpus[gpu.historyKey]?.util).map { $0 / 100 } ?? .nan } }
+
+    /// One GPU's VRAM trace, 0…1, with the same gaps as `gpuUtil`.
+    func vramFrac(_ gpu: FleetGPU) -> [Double] { map { $0.gpus[gpu.historyKey]?.vramFrac ?? .nan } }
 }

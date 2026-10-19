@@ -1,7 +1,7 @@
 //
 //  File:      FleetOverviewView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-10-18
+//  Updated:   2026-10-19
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  At-a-glance view of every machine at once — an adaptive grid of compact tiles. THIS
 //             MAC is always the first tile (a laptop glyph, taps through to its full dashboard);
@@ -12,6 +12,8 @@
 //             one screen ("which box is busy / idle / hot right now"). With no remote machine yet,
 //             the page carries the install command (copyable) and a link to docs/fleet.md. A tile
 //             of a box running Docker ends with its container count, and how many were restarted.
+//             A box with two GPUs charts each; with more, each card gets one caption line (four at
+//             most, then a count), as their charts would no longer fit the tile.
 //  Notes:     Uses the shared `Sparkline` + `MetricPalette` (NOT Swift Charts) to match the local
 //             GPU/CPU cards exactly — GPU=green, VRAM=sky-cyan, CPU=blue, RAM=amber. All four series
 //             are normalized to 0…1 (util ÷100; VRAM/RAM fractions as-is) to share one axis. FleetTile
@@ -116,10 +118,18 @@ private struct FleetTile: View {
                 // A GPU is optional — a Raspberry Pi, CPU-only server or VM has none, and requiring
                 // one here left such a machine stuck on "Connecting…" even though it was reporting
                 // fine (#33). CPU/RAM is what every machine has, so that's the row that always draws.
-                if let g = m.gpus.first {
-                    gpuCaption(g, apple: m.apple)
-                    miniChart(history.map { $0.gpuUtil / 100 }, MetricPalette.gpuC,
-                              history.map { $0.vramFrac }, MetricPalette.gpuMemC)
+                if m.gpus.count <= 2 {
+                    ForEach(m.gpus) { g in
+                        gpuCaption(g, numbered: m.gpus.count > 1, apple: m.apple)
+                        miniChart(history.gpuUtil(g), MetricPalette.gpuC,
+                                  history.vramFrac(g), MetricPalette.gpuMemC)
+                    }
+                } else {
+                    ForEach(m.gpus.prefix(Self.gpuLines)) { g in gpuCaption(g, numbered: true, apple: m.apple) }
+                    if m.gpus.count > Self.gpuLines {
+                        Text("+\(m.gpus.count - Self.gpuLines) more GPUs")
+                            .font(Theme.font(.caption)).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
                 cpuCaption(m)
                 miniChart(history.map { $0.cpu / 100 }, MetricPalette.cpuC,
@@ -172,6 +182,8 @@ private struct FleetTile: View {
     /// All tiles share one height; the charts flex to fill, so a 2-chart (Linux) and a 3-chart
     /// (Apple, incl. ANE/Bandwidth) tile are the same size with no dead space.
     private let tileHeight: CGFloat = 246
+    /// GPU caption lines a tile has room for on a box with more than two cards.
+    private static let gpuLines = 4
 
     @ViewBuilder private var cornerGlyph: some View {
         if isLocal {
@@ -184,11 +196,11 @@ private struct FleetTile: View {
 
     // MARK: - captions (the tinted metric word doubles as the chart legend)
 
-    private func gpuCaption(_ g: FleetGPU, apple: FleetApple?) -> some View {
+    private func gpuCaption(_ g: FleetGPU, numbered: Bool, apple: FleetApple?) -> some View {
         // Watts and °C the machine can't vouch for are left out, not printed as 0 (FleetReadout).
         let parts = ["\(Int(g.utilizationPercent))%", FleetReadout.gpuWatts(g, apple: apple),
                      FleetReadout.gpuTemperature(g, apple: apple)].compactMap { $0 }
-        return (tag("GPU", MetricPalette.gpuC)
+        return (tag(numbered ? "GPU\(g.index)" : "GPU", MetricPalette.gpuC)
          + dim(" " + parts.joined(separator: " · ") + " · ")
          + tag("VRAM", MetricPalette.gpuMemC)
          + dim(" \(gb(g.vramUsedBytes))/\(gb(g.vramTotalBytes))"))

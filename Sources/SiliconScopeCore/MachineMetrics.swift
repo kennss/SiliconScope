@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics.swift
 //  Created:   2026-07-21
-//  Updated:   2026-09-29
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The source-agnostic fleet metric schema — the boundary the Mac aggregator consumes
 //             for every remote machine, regardless of how the data arrives. Mirrors the Go Linux
@@ -348,10 +348,14 @@ public struct FleetGPUProc: Codable, Sendable, Equatable {
     public let container: String?
     /// The Python script it runs, so two jobs in one environment can be told apart.
     public let script: String?
+    /// The account it runs as (agent 1.5+): a user name, or a uid when the host's user database
+    /// doesn't name it. nil from an older agent, or when the agent couldn't read it.
+    public let user: String?
 
-    public init(pid: Int, name: String, vramBytes: Int64, container: String? = nil, script: String? = nil) {
+    public init(pid: Int, name: String, vramBytes: Int64, container: String? = nil, script: String? = nil,
+                user: String? = nil) {
         self.pid = pid; self.name = name; self.vramBytes = vramBytes; self.container = container
-        self.script = script
+        self.script = script; self.user = user
     }
 
     /// A short name that tells GPU processes apart. Most are Python in a virtual environment, so the
@@ -377,8 +381,11 @@ public struct FleetGPUProc: Codable, Sendable, Equatable {
 }
 
 public struct FleetGPU: Codable, Sendable, Equatable, Identifiable {
-    public var id: Int { index }
+    public var id: String { historyKey }
     public let index: Int
+    /// The driver's identifier for the card (agent 1.5+). It stays with the card when another one
+    /// is added or removed, where the index can shift. nil from an older agent.
+    public let uuid: String?
     public let name: String
     public let driver: String
     public let vramTotalBytes: Int64
@@ -405,14 +412,15 @@ public struct FleetGPU: Codable, Sendable, Equatable, Identifiable {
     /// (hardware)" …). nil = the card doesn't say; [] = nothing is holding them down.
     public let throttleReasons: [String]?
 
-    public init(index: Int, name: String, driver: String, vramTotalBytes: Int64, vramUsedBytes: Int64,
+    public init(index: Int, uuid: String? = nil, name: String, driver: String, vramTotalBytes: Int64,
+                vramUsedBytes: Int64,
                 utilizationPercent: Double, temperatureC: Double, powerDrawW: Double, powerLimitW: Double,
                 processes: [FleetGPUProc], freqMHz: Double? = nil,
                 memUtilPercent: Double? = nil, smClockMHz: Double? = nil, smClockMaxMHz: Double? = nil,
                 memClockMHz: Double? = nil, memClockMaxMHz: Double? = nil, pstate: String? = nil,
                 fanPercent: Double? = nil, encoderPercent: Double? = nil, decoderPercent: Double? = nil,
                 throttleReasons: [String]? = nil) {
-        self.index = index; self.name = name; self.driver = driver
+        self.index = index; self.uuid = uuid; self.name = name; self.driver = driver
         self.vramTotalBytes = vramTotalBytes; self.vramUsedBytes = vramUsedBytes
         self.utilizationPercent = utilizationPercent; self.temperatureC = temperatureC
         self.powerDrawW = powerDrawW; self.powerLimitW = powerLimitW
@@ -432,6 +440,20 @@ public struct FleetGPU: Codable, Sendable, Equatable, Identifiable {
 
     /// VRAM fraction used (0…1), for a bar.
     public var vramFraction: Double { vramTotalBytes > 0 ? Double(vramUsedBytes) / Double(vramTotalBytes) : 0 }
+
+    /// What a GPU's history is keyed on: its UUID when the agent sends one, else its index. With the
+    /// UUID, a card keeps its own trace when another card leaves the box and the indices shift.
+    public var historyKey: String { uuid.map { "uuid:\($0)" } ?? "index:\(index)" }
+
+    /// The machine's GPUs in one phrase for its header: "NVIDIA GeForce RTX 3090 24 GB", or
+    /// "2× NVIDIA GeForce RTX 3090 24 GB" for identical cards, else each card in order. nil when
+    /// the machine has none. `memory` formats a byte count.
+    public static func inventoryLabel(_ gpus: [FleetGPU], memory: (Int64) -> String) -> String? {
+        guard !gpus.isEmpty else { return nil }
+        let labels = gpus.map { "\($0.name) \(memory($0.vramTotalBytes))" }
+        if labels.count > 1, Set(labels).count == 1 { return "\(labels.count)× \(labels[0])" }
+        return labels.joined(separator: " + ")
+    }
 }
 
 public struct FleetLLMModel: Codable, Sendable, Equatable {

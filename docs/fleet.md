@@ -26,7 +26,7 @@ anything.
 | Machine | What you see |
 |---|---|
 | **Apple Silicon Mac** | The same dashboard as This Mac: E/P cores, GPU, **Neural Engine**, Media Engine, memory bandwidth, power, fans, temperatures. |
-| **Linux with an NVIDIA card** | The card first: utilisation and VRAM, power against its limit, clocks, and why it is being held back (thermal, power cap). Then what runs on it: which processes hold VRAM (with their container), the AI runtime (Ollama models, LM Studio / llama.cpp decode rate, ComfyUI queue), and the containers. Then the host: CPU, memory, disks. |
+| **Linux with an NVIDIA card** | The card first: utilisation and VRAM, power against its limit, clocks, and why it is being held back (thermal, power cap). A box with several cards shows each one, and you pick the card the page below describes. Then what runs on it: which processes hold VRAM on that card (with the account they run as and their container), the AI runtime (Ollama models, LM Studio / llama.cpp decode rate, ComfyUI queue), and the containers. Then the host: CPU, memory, disks. |
 | **Linux without a GPU** | Containers (with restart counts), AI runtime if one runs, CPU, memory, disks. |
 | **Intel Mac** | CPU, memory, fans and temperatures. |
 | **Windows** | CPU, memory, and an NVIDIA card through the same path Linux uses. |

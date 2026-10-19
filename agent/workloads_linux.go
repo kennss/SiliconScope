@@ -3,11 +3,12 @@
 //
 //  File:      workloads_linux.go
 //  Created:   2026-09-29
-//  Updated:   2026-09-30
+//  Updated:   2026-10-18
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  What is running on a Linux GPU box besides the model server: Docker containers
 //             (read from the Engine API over its unix socket, restart counts included), which
-//             container a GPU process belongs to, and a ComfyUI server's queue.
+//             container a GPU process belongs to, the account it runs as, and a ComfyUI
+//             server's queue.
 //  Notes:     Docker is read through its Engine API, not by running the CLI: the service is
 //             hardened, and the API is what the CLI itself uses. By default that is
 //             /var/run/docker.sock, which needs the `docker` group — root in all but name, since it
@@ -28,6 +29,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -182,6 +184,58 @@ func scriptOf(args []string) string {
 		return ""
 	}
 	return ""
+}
+
+// MARK: - Process owner
+
+var (
+	userNamesMu sync.Mutex
+	userNames   = map[string]string{} // uid → name, only for uids that resolved
+)
+
+// processUser is the account a process runs as: the real uid in /proc/<pid>/status, by name when
+// the system's user database knows it (os/user reads /etc/passwd in this cgo-free build, so a
+// directory-only account such as LDAP stays a number), else the uid itself. "" when the status
+// file can't be read — the process has exited, or /proc hides it (hidepid).
+func processUser(pid int) string {
+	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return ""
+	}
+	uid, ok := realUID(string(raw))
+	if !ok {
+		return ""
+	}
+	userNamesMu.Lock()
+	defer userNamesMu.Unlock()
+	if name, ok := userNames[uid]; ok {
+		return name
+	}
+	if u, err := user.LookupId(uid); err == nil && u.Username != "" {
+		userNames[uid] = u.Username
+		return u.Username
+	}
+	return uid // not cached: an account added later is named on a later sample
+}
+
+// realUID is the first (real) uid of the "Uid:" line of a /proc/<pid>/status file. Pure, for
+// testing.
+func realUID(status string) (string, bool) {
+	for _, line := range strings.Split(status, "\n") {
+		rest, ok := strings.CutPrefix(line, "Uid:")
+		if !ok {
+			continue
+		}
+		f := strings.Fields(rest)
+		if len(f) == 0 {
+			return "", false
+		}
+		if _, err := strconv.Atoi(f[0]); err != nil {
+			return "", false
+		}
+		return f[0], true
+	}
+	return "", false
 }
 
 // MARK: - ComfyUI
