@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics.swift
 //  Created:   2026-07-21
-//  Updated:   2026-10-19
+//  Updated:   2026-10-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The source-agnostic fleet metric schema — the boundary the Mac aggregator consumes
 //             for every remote machine, regardless of how the data arrives. Mirrors the Go Linux
@@ -351,11 +351,31 @@ public struct FleetGPUProc: Codable, Sendable, Equatable {
     /// The account it runs as (agent 1.5+): a user name, or a uid when the host's user database
     /// doesn't name it. nil from an older agent, or when the agent couldn't read it.
     public let user: String?
+    /// What it uses the card for, as the driver classes it: "compute", "graphics" (a display server
+    /// or desktop shell) or "compute+graphics". nil from an older agent, which listed compute
+    /// processes only.
+    public let kind: String?
+    /// Its share of the card in the driver's last sampling window: SMs busy, and the memory
+    /// controller, in %. 0 = idle in that window; nil = not attributed (an older agent, no pmon on
+    /// the host, or a busy card on which no process was credited).
+    public let utilizationPercent: Double?
+    public let memUtilPercent: Double?
 
     public init(pid: Int, name: String, vramBytes: Int64, container: String? = nil, script: String? = nil,
-                user: String? = nil) {
+                user: String? = nil, kind: String? = nil, utilizationPercent: Double? = nil,
+                memUtilPercent: Double? = nil) {
         self.pid = pid; self.name = name; self.vramBytes = vramBytes; self.container = container
-        self.script = script; self.user = user
+        self.script = script; self.user = user; self.kind = kind
+        self.utilizationPercent = utilizationPercent; self.memUtilPercent = memUtilPercent
+    }
+
+    /// The kind as a row shows it: nothing for a compute process, the common case.
+    public var kindLabel: String? {
+        switch kind {
+        case "graphics": return "graphics"
+        case "compute+graphics": return "compute + graphics"
+        default: return nil
+        }
     }
 
     /// A short name that tells GPU processes apart. Most are Python in a virtual environment, so the

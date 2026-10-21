@@ -1,13 +1,14 @@
 //
 //  File:      FleetMultiGPUTests.swift
 //  Created:   2026-10-18
-//  Updated:   2026-10-18
+//  Updated:   2026-10-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins a box with several GPUs on the wire: each card's UUID and processes, the account
 //             a process runs as, what a card's history is keyed on, and the header's GPU phrase.
 //  Notes:     GPU 0 follows agent 1.5's output on kennt-Ubuntu (RTX 3090, driver 595); GPU 1 is a
 //             fixture in the same shape. An agent before 1.5 sends neither `uuid` nor `user`, and
-//             must still decode.
+//             must still decode; nor does one before per-process use send `kind`,
+//             `utilizationPercent` or `memUtilPercent`.
 //
 import XCTest
 @testable import SiliconScopeCore
@@ -35,6 +36,30 @@ final class FleetMultiGPUTests: XCTestCase {
         XCTAssertEqual(m.gpus[1].processes.map(\.pid), [4100])
         XCTAssertEqual(m.gpus[0].processes.first?.user, "kennt")
         XCTAssertEqual(m.gpus[1].processes.first?.user, "1001", "an account the host can't name stays a uid")
+    }
+
+    func testEachProcessCarriesItsKindAndShareOfTheCard() throws {
+        // As the agent sent it on kennt-Ubuntu, 2026-10-21, with a matrix multiply on one process.
+        let procs = #"[{"pid":2764343,"name":"/home/kennt/gemma-convert/bin/python","vramBytes":503316480,"kind":"compute","utilizationPercent":99,"memUtilPercent":12,"script":"sdload.py","user":"kennt"},"#
+            + #"{"pid":2724,"name":"/home/kennt/whisper-bench/bin/python","vramBytes":5670699008,"kind":"compute","utilizationPercent":0,"memUtilPercent":0,"user":"kennt"},"#
+            + #"{"pid":2764,"name":"/usr/lib/xorg/Xorg","vramBytes":179306496,"kind":"graphics","utilizationPercent":0,"memUtilPercent":0,"user":"gdm"}]"#
+        let m = try machine(gpus: "[" + gpu(0, uuid: "GPU-d5a8caa7-b8c9-a066-415f-550d411855cb", procs: procs) + "]")
+        let p = m.gpus[0].processes
+        XCTAssertEqual(p[0].utilizationPercent, 99)
+        XCTAssertEqual(p[0].memUtilPercent, 12)
+        XCTAssertNil(p[0].kindLabel, "a compute process needs no label")
+        XCTAssertEqual(p[1].utilizationPercent, 0, "idle is 0, not absent")
+        XCTAssertEqual(p[2].kind, "graphics")
+        XCTAssertEqual(p[2].kindLabel, "graphics")
+    }
+
+    func testAnAgentBeforePerProcessUseStillDecodes() throws {
+        let m = try machine(gpus: "[" + gpu(0, uuid: nil,
+                                            procs: #"[{"pid":2724,"name":"/home/kennt/whisper-bench/bin/python","vramBytes":5670699008}]"#) + "]")
+        let p = try XCTUnwrap(m.gpus[0].processes.first)
+        XCTAssertNil(p.kind)
+        XCTAssertNil(p.utilizationPercent)
+        XCTAssertNil(p.memUtilPercent)
     }
 
     func testAnAgentBeforeUUIDsStillDecodes() throws {

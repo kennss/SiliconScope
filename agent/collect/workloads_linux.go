@@ -3,7 +3,7 @@
 //
 //  File:      workloads_linux.go
 //  Created:   2026-09-29
-//  Updated:   2026-10-19
+//  Updated:   2026-10-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  What is running on a Linux GPU box besides the model server: Docker containers
 //             (read from the Engine API over its unix socket, restart counts included), which
@@ -174,20 +174,41 @@ func (c *Collector) containerOf(pid int) string {
 
 // describeProc turns nvidia-smi's process name into something a person can tell apart. nvidia-smi
 // reports argv[0] as launched, so `bin/python halluc_bench.py` run from ~/whisper-bench arrives as
-// "bin/python" — no project in it. A relative name is resolved against the process's working
-// directory, and the script it runs (the first *.py argument) is reported alongside.
+// "bin/python" — no project in it. A relative path is resolved against the process's working
+// directory; a bare name ("python") was found on PATH, not in that directory, and is kept as it
+// is. The script it runs (the first *.py argument) is reported alongside.
 func describeProc(pid int, name string) (path, script string) {
 	path = name
-	if !strings.HasPrefix(name, "/") {
+	if !strings.HasPrefix(name, "/") && strings.Contains(name, "/") {
 		if cwd := readlink(fmt.Sprintf("/proc/%d/cwd", pid)); cwd != "" {
 			path = filepath.Join(cwd, name)
 		}
 	}
-	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err == nil {
-		script = scriptOf(strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00"))
+	if args := procArgs(pid); args != nil {
+		script = scriptOf(args)
 	}
 	return path, script
+}
+
+// describeRunningProc is describeProc for a process known by its PID and the kernel's short name
+// (pmon prints comm, at most 15 characters, not argv[0]): the name is its argv[0] when
+// /proc/<pid>/cmdline can be read, and the short name when not (the process has exited, or /proc
+// hides it).
+func describeRunningProc(pid int, comm string) (path, script string) {
+	name := comm
+	if args := procArgs(pid); len(args) > 0 && args[0] != "" {
+		name = args[0]
+	}
+	return describeProc(pid, name)
+}
+
+// procArgs is a process's argv from /proc/<pid>/cmdline; nil when it can't be read.
+func procArgs(pid int) []string {
+	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil || len(raw) == 0 {
+		return nil
+	}
+	return strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
 }
 
 // scriptOf is the Python script an interpreter's argv runs, by file name; "" when there is none

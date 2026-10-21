@@ -3,14 +3,15 @@
 //
 //  File:      collector.go
 //  Created:   2026-10-19
-//  Updated:   2026-10-19
+//  Updated:   2026-10-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Collector: one sample of the machine, and what it remembers between samples. The
 //             NVIDIA GPU readers (nvidia-smi) and the Ollama reader live here too, moved from the
 //             agent's main.go unchanged.
 //  Notes:     GPU comes from shelling out to `nvidia-smi --format=csv,noheader,nounits` (keeps the
 //             binary pure-Go/static; NVML via go-nvml would need cgo). VRAM is MiB from nvidia-smi
-//             (×1 MiB → bytes). Compute processes are matched to their GPU by UUID (gpu_procs.go).
+//             (×1 MiB → bytes). Compute processes are matched to their GPU by UUID, then pmon adds each
+//             process's use of the card and the graphics processes (gpu_procs.go).
 //             Ollama is optional (nil when unreachable).
 //             What a Collector remembers — the extended nvidia-smi fields this driver answers, each
 //             card's temperature limits (gpu_limits.go), the Docker container list (10 s), uid →
@@ -126,6 +127,7 @@ func (c *Collector) readGPUs(ctx context.Context) []GPU {
 	gpus := parseGPUs(string(out), extra)
 	c.gpuLimits.apply(ctx, gpus)
 	attachProcs(gpus, readComputeApps(ctx), c.describeComputeApp())
+	applyPmon(gpus, readPmon(ctx, gpus), c.describePmonRow())
 	return gpus
 }
 
@@ -182,8 +184,51 @@ func (c *Collector) describeComputeApp() func(computeApp) GPUProc {
 			d.user = c.processUser(a.PID)
 			seen[a.PID] = d
 		}
-		return GPUProc{PID: a.PID, Name: d.path, VRAMBytes: a.VRAMBytes, Container: d.container,
-			Script: d.script, User: d.user}
+		return GPUProc{PID: a.PID, Name: d.path, VRAMBytes: a.VRAMBytes, Kind: "compute",
+			Container: d.container, Script: d.script, User: d.user}
+	}
+}
+
+// readPmon samples each process's use of the GPUs: one `nvidia-smi pmon -c 1 -s um` (about 70 ms
+// on driver 595, as it reads the driver's recent samples rather than waiting a second), run once
+// per group of four GPUs on a box with more. nil when pmon fails (Windows, an old driver): the
+// processes keep their memory, with their use absent.
+func readPmon(ctx context.Context, gpus []GPU) []pmonRow {
+	indices := make([]int, len(gpus))
+	for i, g := range gpus {
+		indices[i] = g.Index
+	}
+	var out strings.Builder
+	for _, group := range pmonGroups(indices) {
+		args := []string{"pmon", "-c", "1", "-s", "um"}
+		if len(gpus) > pmonMaxGPUs {
+			ids := make([]string, len(group))
+			for i, idx := range group {
+				ids[i] = strconv.Itoa(idx)
+			}
+			args = append(args, "-i", strings.Join(ids, ","))
+		}
+		b, err := exec.CommandContext(ctx, "nvidia-smi", args...).Output()
+		if err != nil {
+			continue
+		}
+		out.Write(b)
+		out.WriteByte('\n')
+	}
+	if out.Len() == 0 {
+		return nil
+	}
+	return parsePmon(out.String())
+}
+
+// describePmonRow returns the per-sample describer for processes pmon lists and compute-apps did
+// not. pmon prints only the kernel's short name, so the path comes from the process's own argv
+// (describeRunningProc); kind and use are filled in by applyPmon.
+func (c *Collector) describePmonRow() func(pmonRow) GPUProc {
+	return func(r pmonRow) GPUProc {
+		path, script := describeRunningProc(r.PID, r.Command)
+		return GPUProc{PID: r.PID, Name: path, VRAMBytes: r.VRAMBytes, Container: c.containerOf(r.PID),
+			Script: script, User: c.processUser(r.PID)}
 	}
 }
 

@@ -1,12 +1,12 @@
 //
 //  File:      LinuxServerView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-10-18
+//  Updated:   2026-10-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail dashboard for a remote LINUX / NVIDIA server — GPU-centric, distinct from the
 //             Mac layout. The header carries the machine's identity (OS, agent, cores, RAM, GPU,
 //             VRAM). Then three rows on This Mac's grid constants, grouped by subject: the GPU
-//             (util/VRAM chart | NVIDIA detail), what runs on it (compute processes | AI runtime
+//             (util/VRAM chart | NVIDIA detail), what runs on it (GPU processes | AI runtime
 //             with Ollama and ComfyUI | containers), and the host (CPU/RAM chart | storage). A
 //             GPU-less box keeps the workload row, minus the card's column. Three rows to This
 //             Mac's four, with lists scrolling inside their cards, so the page is never taller
@@ -267,7 +267,7 @@ struct LinuxServerView: View {
     }
 
     private func computeProcesses(_ g: FleetGPU, several: Bool) -> some View {
-        card(several ? "COMPUTE PROCESSES · GPU \(g.index)" : "COMPUTE PROCESSES") {
+        card(several ? "GPU PROCESSES · GPU \(g.index)" : "GPU PROCESSES") {
             if g.processes.isEmpty {
                 Text("nothing is using the GPU").font(Theme.font(.caption)).foregroundStyle(.secondary)
             }
@@ -281,10 +281,16 @@ struct LinuxServerView: View {
                                 Text(p.displayName).font(.system(.caption, design: .monospaced)).lineLimit(1)
                                     .help(p.name)
                                 Spacer(minLength: Space.row)
+                                // Its share of the card (SMs busy), where the driver attributes it.
+                                if let sm = p.utilizationPercent {
+                                    Text("\(Int(sm.rounded()))%").font(.system(.caption2, design: .monospaced))
+                                        .help(p.memUtilPercent.map { "SMs \(Int(sm.rounded()))% · memory \(Int($0.rounded()))%" }
+                                              ?? "SMs \(Int(sm.rounded()))%")
+                                }
                                 Text(gb(p.vramBytes)).font(.system(.caption2, design: .monospaced))
                                     .foregroundStyle(.secondary)
                             }
-                            Text(["pid \(p.pid)", p.user, p.script, p.container].compactMap { $0 }
+                            Text(["pid \(p.pid)", p.kindLabel, p.user, p.script, p.container].compactMap { $0 }
                                     .joined(separator: " · "))
                                 .font(Theme.font(.caption)).foregroundStyle(.secondary).lineLimit(1)
                         }

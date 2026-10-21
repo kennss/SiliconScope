@@ -1,7 +1,7 @@
 //
 //  File:      main.go
 //  Created:   2026-07-21
-//  Updated:   2026-10-19
+//  Updated:   2026-10-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  SiliconScope fleet agent (Linux, Windows). Prints ONE MachineMetrics JSON to stdout,
 //             or with --serve answers GET /metrics over TLS with a bearer token and advertises
@@ -33,7 +33,7 @@ import (
 	"github.com/kennss/SiliconScope/agent/collect"
 )
 
-const agentVersion = "1.5.2"
+const agentVersion = "1.5.3"
 
 func main() {
 	serve := flag.String("serve", "", "run an HTTPS server on this addr (e.g. :7799) exposing GET /metrics (token-protected), instead of printing one snapshot and exiting")

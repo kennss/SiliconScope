@@ -1,7 +1,7 @@
 //
 //  File:      types.go
 //  Created:   2026-10-19
-//  Updated:   2026-10-19
+//  Updated:   2026-10-21
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The MachineMetrics wire schema: what one sample says about a machine. SiliconScope's
 //             viewer decodes this JSON (MachineMetrics.swift); the Mac agent emits the same shape.
@@ -68,11 +68,22 @@ type Memory struct {
 	AvailableBytes int64 `json:"availableBytes"`
 }
 
-// GPUProc is one process's memory on one GPU.
+// GPUProc is one process on one GPU: the memory it holds there and, where the driver attributes
+// the card's use to processes, how busy it keeps the card.
 type GPUProc struct {
 	PID       int    `json:"pid"`
 	Name      string `json:"name"`
 	VRAMBytes int64  `json:"vramBytes"`
+	// What it uses the card for, as the driver classes it: "compute" (CUDA), "graphics" (a display
+	// server or desktop shell drawing with it) or "compute+graphics". Absent from an agent older
+	// than this field, whose list held compute processes only.
+	Kind string `json:"kind,omitempty"`
+	// The share of the driver's last sampling window in which this process kept the card's SMs
+	// busy, and its memory controller (nvidia-smi pmon's sm and mem columns). 0 = it was idle in
+	// that window. Absent = the driver did not attribute the card's use to processes: pmon is not
+	// available (Windows, MIG), or the card was busy while every process on it read idle.
+	UtilizationPercent *float64 `json:"utilizationPercent,omitempty"`
+	MemUtilPercent     *float64 `json:"memUtilPercent,omitempty"`
 	// The Docker container holding this VRAM, when it runs in one. Empty for the host.
 	Container string `json:"container,omitempty"`
 	// The Python script it runs (e.g. "halluc_bench.py"), so two jobs in one environment differ.
