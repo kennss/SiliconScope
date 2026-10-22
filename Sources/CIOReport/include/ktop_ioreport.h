@@ -1,7 +1,7 @@
 //
 //  File:      ktop_ioreport.h
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  C declarations for Apple's private IOReport framework, exposed to
 //             Swift (SiliconScopeCore). There is no SDK stub for IOReport, so symbols are
@@ -55,6 +55,8 @@ extern CFStringRef IOReportChannelGetGroup(CFDictionaryRef channel);
 extern CFStringRef IOReportChannelGetSubGroup(CFDictionaryRef channel);
 extern CFStringRef IOReportChannelGetChannelName(CFDictionaryRef channel);
 extern int IOReportChannelGetFormat(CFDictionaryRef channel);
+// The channel's unit, e.g. "mJ", "uJ", "nJ" for energy, "B" or "events" for counters, "" for none.
+extern CFStringRef IOReportChannelGetUnitLabel(CFDictionaryRef channel);
 
 // Per-channel value readers.
 extern long IOReportSimpleGetIntegerValue(CFDictionaryRef channel, int index);

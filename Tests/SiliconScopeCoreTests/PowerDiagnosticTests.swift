@@ -1,7 +1,7 @@
 //
 //  File:      PowerDiagnosticTests.swift
 //  Created:   2026-08-10
-//  Updated:   2026-08-10
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins what `--power-debug` tells a reporter, for the machine shapes we cannot run.
 //             #35 is a macOS 27 beta on an M1 Max where every wattage reads 0.0 while temperature,
@@ -16,9 +16,9 @@ import XCTest
 
 final class PowerDiagnosticTests: XCTestCase {
 
-    private func row(_ group: String, _ name: String, raw: Int, sub: String = "") -> PowerSampler.ChannelRow {
-        PowerSampler.ChannelRow(group: group, subgroup: sub, name: name,
-                                raw: raw, watts: Double(raw) / 0.3 / 1000.0)
+    private func row(_ group: String, _ name: String, raw: Int, sub: String = "",
+                     unit: String = "mJ") -> PowerSampler.ChannelRow {
+        PowerSampler.ChannelRow(group: group, subgroup: sub, name: name, raw: raw, unit: unit, seconds: 0.3)
     }
 
     /// M1 Max on a shipping macOS — the shape every current user has.
@@ -92,5 +92,30 @@ final class PowerDiagnosticTests: XCTestCase {
         let lines = PowerSampler.channelSummary(many)
         XCTAssertLessThan(lines.count, 60, "summary must stay small enough to paste into an issue")
         XCTAssertTrue(lines.joined(separator: "\n").contains("more (add --full"))
+    }
+
+    // MARK: - Units (#84)
+
+    /// The M6 report's own rows, 0.3 s apart. GPU Energy counts nanojoules: 4,120,098 nJ is 0.014 W,
+    /// which the old every-channel-is-mJ reading printed as 13,733 W.
+    func testEachChannelIsConvertedByItsOwnUnit() {
+        let gpu = row("Energy Model", "GPU Energy", raw: 4_120_098, unit: "nJ")
+        XCTAssertEqual(gpu.watts!, 0.01373, accuracy: 0.00001)
+        XCTAssertEqual(gpu.line, "[Energy Model] GPU Energy = 0.014 W  (raw 4120098 nJ)")
+        XCTAssertEqual(row("Energy Model", "CPU Energy", raw: 728).watts!, 2.4267, accuracy: 0.0001)
+        XCTAssertEqual(row("Energy Model", "PCIe Port 0 Energy", raw: 3_000, unit: "uJ").watts!, 0.01, accuracy: 1e-9)
+    }
+
+    /// PMP's statistics are counts, not energy; they must not be shown as watts at all.
+    func testCountersAreNotShownAsWatts() {
+        let count = row("PMP", "update count", raw: 1, sub: "IO Reporting statistics", unit: "")
+        XCTAssertNil(count.watts)
+        XCTAssertEqual(count.line, "[PMP] (IO Reporting statistics) update count = 1  (not energy)")
+        XCTAssertEqual(row("PMP", "DCS", raw: 67, unit: "B").line, "[PMP] DCS = 67 B  (not energy)")
+    }
+
+    /// The "not populated" sentinel reads as 0 W, never as a huge negative wattage.
+    func testUnpopulatedChannelReadsZero() {
+        XCTAssertEqual(row("Energy Model", "ANE0", raw: Int.min).watts, 0)
     }
 }

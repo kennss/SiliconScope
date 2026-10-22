@@ -1,7 +1,7 @@
 //
 //  File:      PowerSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads per-domain SoC power (CPU E/P, GPU, ANE, DRAM) sudolessly via
 //             the private IOReport framework. Subscribes once, then each sample()
@@ -343,18 +343,52 @@ public final class PowerSampler {
         Double(IOReportNaming.sanitizeSimpleValue(raw)) / seconds / 1000.0
     }
 
-    /// One IOReport "Simple" (energy) channel, as read for a diagnostic dump.
+    /// One IOReport "Simple" channel, as read for a diagnostic dump.
     public struct ChannelRow: Sendable, Equatable {
         public let group: String
         public let subgroup: String
         public let name: String
+        /// The delta over `seconds`, as IOReport gives it (INT64_MIN = not populated this period).
         public let raw: Int
-        public let watts: Double
+        /// The channel's own unit label: "mJ", "uJ" or "nJ" for energy, "B", "events" or "" for
+        /// counters that are not energy at all.
+        public let unit: String
+        public let seconds: TimeInterval
 
-        /// `[group] (subgroup) name = W (raw)` — the line shape issues have quoted since v1.
+        public init(group: String, subgroup: String, name: String, raw: Int, unit: String,
+                    seconds: TimeInterval) {
+            self.group = group; self.subgroup = subgroup; self.name = name
+            self.raw = raw; self.unit = unit; self.seconds = seconds
+        }
+
+        /// Watts, converted by the channel's own unit; nil for a channel that does not count energy.
+        public var watts: Double? {
+            guard let joules = PowerSampler.joulesPerCount(unit: unit) else { return nil }
+            return Double(IOReportNaming.sanitizeSimpleValue(raw)) * joules / max(seconds, 0.001)
+        }
+
+        /// `[group] (subgroup) name = W (raw unit)` — the line shape issues have quoted since v1.
+        /// A counter that is not energy shows its value and says so, rather than a wattage.
         public var line: String {
             let sg = subgroup.isEmpty ? "" : " (\(subgroup))"
-            return "[\(group)]\(sg) \(name) = \(String(format: "%.3f", watts)) W  (raw \(raw))"
+            guard let w = watts else {
+                return "[\(group)]\(sg) \(name) = \(raw)\(unit.isEmpty ? "" : " \(unit)")  (not energy)"
+            }
+            return "[\(group)]\(sg) \(name) = \(String(format: "%.3f", w)) W  (raw \(raw) \(unit))"
+        }
+    }
+
+    /// Joules in one count of an energy channel, from its unit label; nil when the label is not an
+    /// energy unit. Channels in one group differ: on an M1 Max, "Energy Model" holds 156 mJ rails,
+    /// 5 µJ PCIe rails and "GPU Energy" in nJ, and PMP's are byte and event counters. Reading every
+    /// one as mJ is what made `--power-debug` print GPU Energy as 13,733 W on an M6 (#84).
+    static func joulesPerCount(unit: String) -> Double? {
+        switch unit {
+        case "J":        return 1
+        case "mJ":       return 1e-3
+        case "uJ", "µJ": return 1e-6
+        case "nJ":       return 1e-9
+        default:         return nil
         }
     }
 
@@ -385,13 +419,13 @@ public final class PowerSampler {
             else {
                 return Int32(kKtopIOReportIterOk)
             }
-            let raw = IOReportSimpleGetIntegerValue(channel, 0)
             rows.append(ChannelRow(
                 group: groupRef as String,
                 subgroup: (IOReportChannelGetSubGroup(channel)?.takeUnretainedValue() as String?) ?? "",
                 name: nameRef as String,
-                raw: raw,
-                watts: Double(raw) / seconds / 1000.0))   // Energy Model is mJ; other groups may differ
+                raw: IOReportSimpleGetIntegerValue(channel, 0),
+                unit: (IOReportChannelGetUnitLabel(channel)?.takeUnretainedValue() as String?) ?? "",
+                seconds: seconds))
             return Int32(kKtopIOReportIterOk)
         }
         return rows
