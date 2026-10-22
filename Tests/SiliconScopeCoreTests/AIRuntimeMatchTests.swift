@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntimeMatchTests.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-24
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Adversarial tests for AIRuntimeKind.match — the bundle-first, two-stage
 //             classifier. Locks in the cases that must NOT regress (Ollama runner is not
@@ -144,6 +144,22 @@ final class AIRuntimeMatchTests: XCTestCase {
         XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/oMLX", name: "oMLX", args: nil), .omlx)
         XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/omlx-server", name: "omlx-server", args: nil), .omlx)
         XCTAssertEqual(AIRuntimeKind.match(path: "/opt/homebrew/bin/oMLX-server", name: "oMLX-server", args: nil), .omlx)
+    }
+
+    // oMLX from pip (#85): the interpreter is the executable — a framework build's `Python` here,
+    // as Homebrew's venv python runs. `omlx serve` sets its title to "omlx-server", which is then
+    // all of argv (seen live through ps, 2026-10-22); without setproctitle argv names the script.
+    func testPipOMLXMatch() {
+        let python = "/opt/homebrew/Cellar/python@3.12/3.12.15/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python"
+        XCTAssertEqual(AIRuntimeKind.match(path: python, name: "Python", args: "omlx-server"), .omlx)
+        XCTAssertEqual(AIRuntimeKind.match(path: python, name: "Python",
+                                           args: "/Volumes/Intern/ai/omlx-env/bin/python3.12 /Volumes/Intern/ai/omlx-env/bin/omlx serve --port 2999"), .omlx)
+        XCTAssertEqual(AIRuntimeKind.match(path: python, name: "Python",
+                                           args: "/Volumes/Intern/ai/omlx-env/bin/python3.12 /Volumes/Intern/ai/omlx-env/bin/omlx"), .omlx)
+        // An oMLX-named folder or model directory in some other Python's argv is not oMLX.
+        XCTAssertNil(AIRuntimeKind.match(path: python, name: "Python", args: "python train.py --out /data/omlx-models"))
+        XCTAssertNil(AIRuntimeKind.match(path: python, name: "Python", args: "python /src/omlx/tools/bench.py"))
+        XCTAssertNil(AIRuntimeKind.match(path: python, name: "Python", args: "python /env/bin/omlx-convert x"))
     }
 
     // exo (exo-explore/exo) — OpenAI-compatible cluster server on :52415. Matches its console

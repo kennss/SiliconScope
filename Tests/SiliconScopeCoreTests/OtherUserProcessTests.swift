@@ -29,6 +29,9 @@ final class OtherUserProcessTests: XCTestCase {
         // A pip-installed oMLX or mlx_lm runs as python; only its argv says which.
         XCTAssertTrue(ProcessSampler.mayBeAIRuntime(path: "/opt/homebrew/bin/python3.12"))
         XCTAssertTrue(ProcessSampler.mayBeAIRuntime(path: "/usr/local/bin/llama-server"))
+        // A venv on Homebrew's or python.org's Python runs as the framework build's `Python`.
+        XCTAssertTrue(ProcessSampler.mayBeAIRuntime(path:
+            "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python"))
     }
 
     func testSystemProcessesAreNot() {

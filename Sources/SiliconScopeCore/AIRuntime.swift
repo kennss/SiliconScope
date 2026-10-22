@@ -1,7 +1,7 @@
 //
 //  File:      AIRuntime.swift
 //  Created:   2026-06-14
-//  Updated:   2026-09-24
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Catalog + identity for local AI runtimes (Ollama, llama.cpp, LM Studio,
 //             MLX, Rapid-MLX, mlx-dspark, MTPLX, DS4, Jan, GPT4All, vLLM, exo). Pure logic — no
@@ -143,6 +143,15 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         // DS4 ships native binaries with exact names. Exact basenames only — "ds4" alone is short,
         // and a substring would catch "ds4drv" (a DualShock 4 driver) and anything else so named.
         if Self.ds4Binaries.contains(base) { return .ds4 }
+        // oMLX installed with pip runs as Python too: its `omlx` console script is a shebang file,
+        // so the interpreter is the executable. `omlx serve` then renames itself with setproctitle
+        // (a required dependency), which overwrites ALL of argv with "omlx-server" — its --port goes
+        // with it, so the port is the user's setting (apiPort). Without setproctitle the argv still
+        // names the script. Every argv signal is bounded on both sides like MTPLX's, so an `omlx`
+        // folder or an `…/omlx-models` path in another process's argv cannot match (#85).
+        if base == "omlx" || base == "oMLX" || base == "omlx-server" || base == "oMLX-server"
+            || a == "omlx-server" || a.hasPrefix("omlx-server ")
+            || a.contains("/bin/omlx ") || a.hasSuffix("/bin/omlx") { return .omlx }
         if ["llama-server", "llama-cli", "llama-bench"].contains(base) { return .llamaCpp }
         if a.contains("mlx_lm.server") || a.contains("mlx_lm.generate") || a.contains("mlx_lm") { return .mlx }
         if base == "lms" || p.contains("LM Studio") || a.contains("LM Studio") { return .lmStudio }
@@ -161,7 +170,6 @@ public enum AIRuntimeKind: String, Sendable, CaseIterable, Codable {
         // names (hexo, Plexos, nexo) can't false-positive on the short "exo" substring.
         if base == "exo" || p.contains("/exo/main.py")
             || a.contains("/exo/main.py") || a.contains("/bin/exo") || a.contains(" exo.main") { return .exo }
-        if base == "omlx" || base == "oMLX" || base == "omlx-server" || base == "oMLX-server" { return .omlx }
 
         return nil
     }

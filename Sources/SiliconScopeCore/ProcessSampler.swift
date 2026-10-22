@@ -78,14 +78,18 @@ public final class ProcessSampler {
     /// Path basenames worth reading argv for (AI-runtime candidates only). Keeps the
     /// gated KERN_PROCARGS2 read off the hot path for the ~1k unrelated processes.
     private static let argvCandidateBasenames: Set<String> = [
-        "llama-server", "llama-cli", "python", "python3", "lms", "ollama",
+        "llama-server", "llama-cli", "lms", "ollama",
         "ds4-server",   // its `--port N` is where the API answers
         "mtplx",        // a launcher run directly: `serve`/`start` is what makes it a server
     ]
 
-    /// Whether argv is worth reading for a process with this basename.
+    /// Whether argv is worth reading for a process with this basename. Any Python interpreter
+    /// qualifies, since a Python runtime (mlx_lm, oMLX, vLLM, MTPLX …) is told apart only by its
+    /// argv. Matched without case: Homebrew's, python.org's and Xcode's Python are framework builds,
+    /// which re-exec as `…/Python.app/Contents/MacOS/Python`, so a venv's `bin/python3.12` runs
+    /// with the basename "Python" (#85). Versioned names (python3.12, python3.13t) pass the prefix.
     private static func wantsArgs(base: String) -> Bool {
-        argvCandidateBasenames.contains(base) || base.hasPrefix("python")
+        argvCandidateBasenames.contains(base) || base.lowercased().hasPrefix("python")
     }
 
     /// Whether another user's process may be an AI runtime, judged from the only thing libproc
@@ -134,9 +138,8 @@ public final class ProcessSampler {
                 infoCache[pid] = meta
             }
 
-            // argv only for AI-runtime candidates (gated by path basename). Python is
-            // prefix-matched so versioned interpreters (python3.12 from conda/homebrew,
-            // python3.13, …) still qualify — that's how mlx_lm / rapid-mlx args are seen.
+            // argv only for AI-runtime candidates (gated by path basename; see wantsArgs) —
+            // that's how mlx_lm / rapid-mlx / pip oMLX args are seen.
             var args: String? = nil
             if Self.wantsArgs(base: meta.base), let argv = Self.processArgs(pid), !argv.isEmpty {
                 args = argv.joined(separator: " ")
