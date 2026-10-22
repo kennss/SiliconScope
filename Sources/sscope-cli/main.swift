@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-15
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -99,17 +99,22 @@ print("  largest model that fits now: " + budget.fitsNow.map { $0.label }.joined
 let processes = ProcessSampler()
 _ = processes.sample(top: 1)            // prime CPU% baseline
 try? await Task.sleep(for: .seconds(0.5))
-let allRows = processes.sample(top: .max)
+let table = processes.sample(top: .max)
+let allRows = table.rows
 print("\ntop processes by CPU (no sudo):")
 for p in allRows.prefix(8) {
     print(String(format: "  %6d  %6.1f%%  %8.1f MB   %@", p.pid, p.cpuPercent, p.memoryMB, p.name))
 }
-let ai = AIRuntimeSampler().sample(from: allRows)
+let ai = AIRuntimeSampler().sample(from: table.forAIDetection)
+let otherUserPIDs = Set(table.otherUsers.map(\.pid))
 print("\nAI runtimes detected: \(ai.isActive ? "" : "none")")
 for p in ai.processes {
     let port = p.embeddedPort.map { " :\($0)" } ?? ""
-    print(String(format: "  %@%@  pid %d  %.0f%% CPU  %.1f GB",
-                 p.displayName, port, p.pid, p.cpuPercent, Double(p.memoryBytes) / 1e9))
+    // Another user's runtime is read through /bin/ps, not libproc (#85): say so, so a report
+    // shows which path found it.
+    let owner = otherUserPIDs.contains(p.pid) ? "  (another user's, via ps)" : ""
+    print(String(format: "  %@%@  pid %d  %.0f%% CPU  %.1f GB%@",
+                 p.displayName, port, p.pid, p.cpuPercent, Double(p.memoryBytes) / 1e9, owner as NSString))
 }
 if let kind = ai.primaryKind {
     print(String(format: "  primary: %@ (RSS %.1f GB) → budget loadable %.1f GB",

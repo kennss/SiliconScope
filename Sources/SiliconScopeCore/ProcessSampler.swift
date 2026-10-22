@@ -1,20 +1,52 @@
 //
 //  File:      ProcessSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Builds the process table sudolessly via libproc. Stateful: each
 //             sample() diffs cumulative CPU time against the previous call to derive
 //             CPU%. Memory is resident size (RSS). Also resolves each pid's executable
 //             path (proc_pidpath) and, for AI-runtime candidates only, its argv
-//             (KERN_PROCARGS2) — the plumbing AIRuntimeSampler builds on.
+//             (KERN_PROCARGS2) — the plumbing AIRuntimeSampler builds on. Other users'
+//             processes stay out of the table; the few that may be AI runtimes are read
+//             through /bin/ps for AI detection only (ProcessTable.otherUsers, #85).
 //  Notes:     proc_pidinfo(PROC_PIDTASKINFO) gives total_user+total_system (ns) and
-//             resident_size. Processes the user cannot inspect are skipped. Prime
-//             with one sample(), wait, then sample() again for meaningful CPU%.
-//             proc_pidpath across ~1k pids is ~7 ms (measured) — cheap. argv is read
-//             only for a small candidate shortlist so KERN_PROCARGS2 never runs per-pid.
+//             resident_size. Prime with one sample(), wait, then sample() again for
+//             meaningful CPU%. proc_pidpath across ~1k pids is ~7 ms (measured) — cheap.
+//             argv is read only for a small candidate shortlist so KERN_PROCARGS2 never
+//             runs per-pid.
+//             ⚠️ Without root, libproc tells one user only the executable PATH of another
+//             user's process: proc_name, PROC_PIDTASKINFO, PROC_PIDTBSDINFO and the fd list
+//             answer EPERM and KERN_PROCARGS2 EINVAL (measured on macOS 27 against root,
+//             _mdnsresponder and _locationd processes, 2026-10-22). /bin/ps is setuid root and
+//             reads their memory, CPU time and argv, so it fills in the candidates — and runs
+//             only on a sample that has one, which most Macs never do.
 //
 import Foundation
+
+/// One pass over the process list.
+public struct ProcessTable: Sendable, Equatable {
+    /// This user's processes, sorted by CPU% (descending): the Processes card's rows, which it can
+    /// inspect and signal.
+    public var rows: [ProcessRow]
+    /// Other users' processes that may be AI runtimes (their path names one, or is an interpreter or
+    /// launcher a runtime runs as), read through /bin/ps. Only AI detection reads them: without root
+    /// they can be neither inspected nor signalled, so they stay out of the table.
+    ///
+    /// ⚠️ Before these, a runtime run by a separate account (a sandboxed "ai" user serving Ollama
+    /// and oMLX to the login user) was invisible: the table skipped every process it could not read,
+    /// detection never saw the runtime, and the API was never asked although the user had set its
+    /// port and could reach it (#85).
+    public var otherUsers: [ProcessRow]
+
+    public init(rows: [ProcessRow] = [], otherUsers: [ProcessRow] = []) {
+        self.rows = rows
+        self.otherUsers = otherUsers
+    }
+
+    /// Every row AI detection looks at.
+    public var forAIDetection: [ProcessRow] { rows + otherUsers }
+}
 
 public final class ProcessSampler {
     private var previousCPU: [pid_t: UInt64] = [:]
@@ -24,7 +56,14 @@ public final class ProcessSampler {
     // never change for a process's lifetime, so re-resolving them every tick via proc_pidpath /
     // proc_name over thousands of pids was the enumeration's dominant cost (proc_pidpath alone is
     // ~24 ms/tick at ~3.4k pids). Only NEW pids pay the lookup; existing ones just re-read CPU.
-    private struct PidInfo { let path: String; let name: String; let base: String }
+    // Other users' pids are cached too, with whether they may be an AI runtime, so their lookup and
+    // that judgement (~15 substring probes, AIRuntimeKind.match) run once per pid, not every tick.
+    private struct PidInfo {
+        let path: String
+        let name: String
+        let base: String
+        var aiCandidate = false   // other users' processes only: mayBeAIRuntime(path:)
+    }
     private var infoCache: [pid_t: PidInfo] = [:]
 
     /// proc_taskinfo's pti_total_user/system are mach-absolute-time ticks, NOT nanoseconds.
@@ -44,33 +83,48 @@ public final class ProcessSampler {
         "mtplx",        // a launcher run directly: `serve`/`start` is what makes it a server
     ]
 
+    /// Whether argv is worth reading for a process with this basename.
+    private static func wantsArgs(base: String) -> Bool {
+        argvCandidateBasenames.contains(base) || base.hasPrefix("python")
+    }
+
+    /// Whether another user's process may be an AI runtime, judged from the only thing libproc
+    /// gives for it: its executable path. True when the path alone names a runtime (a bundle, a
+    /// support directory, a runtime's own binary) or names a program whose argv decides it.
+    static func mayBeAIRuntime(path: String) -> Bool {
+        guard !path.isEmpty else { return false }
+        let base = basename(path)
+        return wantsArgs(base: base) || AIRuntimeKind.match(path: path, name: base, args: nil) != nil
+    }
+
     public init() {}
 
-    /// Returns processes sorted by CPU% (descending), capped at `count`
-    /// (default: all, so the UI can re-sort/filter the full set).
-    public func sample(top count: Int = .max) -> [ProcessRow] {
+    /// This user's processes sorted by CPU% (descending), capped at `count` (default: all, so the
+    /// UI can re-sort/filter the full set), and other users' AI-runtime candidates.
+    public func sample(top count: Int = .max) -> ProcessTable {
         let nowNs = DispatchTime.now().uptimeNanoseconds
         let wallDelta = previousTimeNs > 0 ? Double(nowNs &- previousTimeNs) : 0
 
         var currentCPU: [pid_t: UInt64] = [:]
         var rows: [ProcessRow] = []
+        var listed = Set<pid_t>()
+        var candidates: [pid_t] = []
 
         for pid in Self.allPIDs() where pid > 0 {
-            guard let info = Self.taskInfo(pid) else { continue }
+            listed.insert(pid)
+            guard let info = Self.taskInfo(pid) else {
+                // Another user's process (or one that just exited): only its path can be read.
+                if otherUserInfo(pid).aiCandidate { candidates.append(pid) }
+                continue
+            }
             let cpuTicks = info.pti_total_user + info.pti_total_system
             let cpuNs = cpuTicks * UInt64(Self.timebase.numer) / UInt64(Self.timebase.denom)
             currentCPU[pid] = cpuNs
 
-            let prev = previousCPU[pid]
-            var cpuPercent = 0.0
-            if let prev, wallDelta > 0, cpuNs >= prev {
-                cpuPercent = Double(cpuNs - prev) / wallDelta * 100.0
-            }
-
             // Resolve path/name/basename from the cache (immutable per pid). Cumulative CPU only
             // ever rises within one process, so cpuNs < prev means the pid was recycled onto a new
             // process → drop the stale entry and re-resolve.
-            if let prev, cpuNs < prev { infoCache[pid] = nil }
+            if let prev = previousCPU[pid], cpuNs < prev { infoCache[pid] = nil }
             let meta: PidInfo
             if let hit = infoCache[pid] {
                 meta = hit
@@ -84,28 +138,139 @@ public final class ProcessSampler {
             // prefix-matched so versioned interpreters (python3.12 from conda/homebrew,
             // python3.13, …) still qualify — that's how mlx_lm / rapid-mlx args are seen.
             var args: String? = nil
-            if Self.argvCandidateBasenames.contains(meta.base) || meta.base.hasPrefix("python"),
-               let argv = Self.processArgs(pid), !argv.isEmpty {
+            if Self.wantsArgs(base: meta.base), let argv = Self.processArgs(pid), !argv.isEmpty {
                 args = argv.joined(separator: " ")
             }
 
             rows.append(ProcessRow(
                 pid: pid,
                 name: meta.name,
-                cpuPercent: cpuPercent,
+                cpuPercent: cpuPercent(pid: pid, cpuNs: cpuNs, wallDelta: wallDelta),
                 memoryBytes: info.pti_resident_size,
                 path: meta.path,
                 args: args
             ))
         }
 
+        var others: [ProcessRow] = []
+        if !candidates.isEmpty {
+            let read = Self.readThroughPS(candidates)
+            for pid in candidates {
+                guard let r = read[pid] else { continue }   // exited between the list and ps
+                // A recycled pid: its CPU time starts again, and its cached path is someone else's.
+                if let prev = previousCPU[pid], r.cpuNs < prev { infoCache[pid] = nil }
+                let meta = otherUserInfo(pid)
+                guard meta.aiCandidate else { continue }
+                currentCPU[pid] = r.cpuNs
+                others.append(ProcessRow(
+                    pid: pid,
+                    name: meta.name,
+                    cpuPercent: cpuPercent(pid: pid, cpuNs: r.cpuNs, wallDelta: wallDelta),
+                    memoryBytes: r.residentBytes,
+                    path: meta.path,
+                    args: r.args.isEmpty ? nil : r.args
+                ))
+            }
+        }
+
         previousCPU = currentCPU
         previousTimeNs = nowNs
-        // Drop cached metadata for pids that are gone so the cache can't grow unbounded.
-        let live = Set(currentCPU.keys)
-        infoCache = infoCache.filter { live.contains($0.key) }
+        // Drop cached metadata for pids that are gone so the cache can't grow unbounded. Kept for
+        // every listed pid, other users' included, so theirs is resolved once. One that is never
+        // read again cannot notice its pid being reused, which is fine in practice: the kernel hands
+        // out pids in sequence and a number returns only after the counter wraps (99,999).
+        infoCache = infoCache.filter { listed.contains($0.key) }
 
-        return Array(rows.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(count))
+        return ProcessTable(rows: Array(rows.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(count)),
+                            otherUsers: others)
+    }
+
+    /// CPU% over the last interval: the rise in cumulative CPU time over the wall time between the
+    /// two reads. 0 on the first read of a pid, and when the counter went down (a recycled pid).
+    private func cpuPercent(pid: pid_t, cpuNs: UInt64, wallDelta: Double) -> Double {
+        guard let prev = previousCPU[pid], wallDelta > 0, cpuNs >= prev else { return 0 }
+        return Double(cpuNs - prev) / wallDelta * 100.0
+    }
+
+    /// Another user's process as libproc gives it: the path, a name made from it (proc_name is
+    /// refused), and whether it may be an AI runtime. Cached like this user's.
+    private func otherUserInfo(_ pid: pid_t) -> PidInfo {
+        if let hit = infoCache[pid] { return hit }
+        let p = Self.path(pid)
+        let base = Self.basename(p)
+        let meta = PidInfo(path: p, name: base.isEmpty ? "pid \(pid)" : base, base: base,
+                           aiCandidate: Self.mayBeAIRuntime(path: p))
+        infoCache[pid] = meta
+        return meta
+    }
+
+    // MARK: - Other users' processes, through /bin/ps
+
+    /// What /bin/ps reports for one process.
+    struct PSRead: Equatable {
+        let residentBytes: UInt64
+        let cpuNs: UInt64
+        let args: String
+    }
+
+    /// Reads memory, CPU time and argv for `pids` through /bin/ps (setuid root, so it reads other
+    /// users' processes, which libproc refuses). A pid that exited in between is simply absent.
+    static func readThroughPS(_ pids: [pid_t]) -> [pid_t: PSRead] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        // -ww: never cut argv to a width; `=` drops the header; C locale keeps "0:01.23" in time.
+        process.arguments = ["-ww", "-o", "pid=,rss=,time=,args=",
+                             "-p", pids.map { String($0) }.joined(separator: ",")]
+        process.environment = ["LC_ALL": "C"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        // A listed pid that is gone is left out and the rest still print. A pid above the kernel's
+        // limit (99,999) makes ps refuse the whole list; these come from proc_listallpids, never are.
+        return parsePS(String(decoding: data, as: UTF8.self))
+    }
+
+    /// Parses `ps -o pid=,rss=,time=,args=` lines: "  1234  56789  12:34.56 /path/to/prog --flag".
+    /// rss is in KiB. args keeps its own spacing.
+    static func parsePS(_ text: String) -> [pid_t: PSRead] {
+        var result: [pid_t: PSRead] = [:]
+        for line in text.split(separator: "\n") {
+            var rest = Substring(line)
+            func field() -> Substring {
+                rest = rest.drop { $0 == " " }
+                let token = rest.prefix { $0 != " " }
+                rest = rest.dropFirst(token.count)
+                return token
+            }
+            guard let pid = pid_t(field()), let rssKiB = UInt64(field()),
+                  let cpuNs = psTimeNanoseconds(field()) else { continue }
+            result[pid] = PSRead(residentBytes: rssKiB * 1024, cpuNs: cpuNs,
+                                 args: String(rest.drop { $0 == " " }))
+        }
+        return result
+    }
+
+    /// ps's cumulative CPU time in nanoseconds. macOS prints "minutes:seconds.hundredths" with the
+    /// minutes unbounded ("227:53.69"); hours ("h:mm:ss.ss") and a "days-" prefix are read too.
+    static func psTimeNanoseconds(_ text: Substring) -> UInt64? {
+        var days: Double = 0
+        var clock = text
+        if let dash = text.firstIndex(of: "-") {
+            guard let d = Double(text[..<dash]) else { return nil }
+            days = d
+            clock = text[text.index(after: dash)...]
+        }
+        let parts = clock.split(separator: ":", omittingEmptySubsequences: false)
+        guard !parts.isEmpty, parts.count <= 3 else { return nil }
+        var seconds: Double = 0
+        for part in parts {
+            guard let v = Double(part), v >= 0 else { return nil }
+            seconds = seconds * 60 + v
+        }
+        return UInt64(((days * 86_400 + seconds) * 1e9).rounded())
     }
 
     // MARK: - libproc helpers

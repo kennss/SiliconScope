@@ -1,7 +1,7 @@
 //
 //  File:      SystemSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-10-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Aggregates every SiliconScopeCore sampler into one SystemSnapshot. Intended
 //             to run on a single background thread driven by the UI's refresh loop.
@@ -173,8 +173,10 @@ public final class SystemSampler: @unchecked Sendable {
     private func sampledProcesses() -> (rows: [ProcessRow], aiRuntime: AIRuntimeSample) {
         if Date().timeIntervalSince(lastProcessSample) >= processInterval {
             lastProcessSample = Date()
-            cachedProcesses = processes.sample()
-            cachedAIRuntime = aiRuntime.sample(from: cachedProcesses)
+            let table = processes.sample()
+            cachedProcesses = table.rows
+            // Detection also sees other users' runtimes, which the table cannot list (#85).
+            cachedAIRuntime = aiRuntime.sample(from: table.forAIDetection)
         }
         return (cachedProcesses, cachedAIRuntime)
     }
