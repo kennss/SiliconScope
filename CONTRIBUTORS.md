@@ -123,6 +123,10 @@ changes:
   connection, gzipped ([#71](https://github.com/kennss/SiliconScope/issues/71)).
 - **[@progenitor-amborella](https://github.com/progenitor-amborella)** — worked out that Lockdown
   Mode and a block-all firewall hide a Mac from Fleet, and how to let it in ([#63](https://github.com/kennss/SiliconScope/issues/63)).
+- **[@martin-kufner](https://github.com/martin-kufner)** — ran his AI runtimes under a separate
+  `ai` account from pip venvs, and SiliconScope saw none of them. That setup showed two faults: another
+  user's runtimes never reached detection, and Python runtimes from a Homebrew or python.org venv
+  were missed under any account ([#85](https://github.com/kennss/SiliconScope/issues/85)).
 
 ---
 
