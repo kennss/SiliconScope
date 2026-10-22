@@ -1,7 +1,7 @@
 //
 //  File:      PowerSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-22
+//  Updated:   2026-10-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads per-domain SoC power (CPU E/P, GPU, ANE, DRAM) sudolessly via
 //             the private IOReport framework. Subscribes once, then each sample()
@@ -11,7 +11,8 @@
 //             Energy unit is millijoules: Watts = (mJ delta / seconds) / 1000.
 //             M1 Pro/Max/M2+: everything is in the "Energy Model" group — CPU Energy = total CPU,
 //             EACC*_CPU = E clusters, PACC*_CPU = P clusters, GPU0/GPU SRAM0 = GPU, ANE0/ANE1 =
-//             Neural Engine, DRAM0 = memory ("GPU Energy" excluded — different unit ~nJ).
+//             Neural Engine, DRAM0 = memory. "GPU Energy" counts nJ, not mJ, so it stays out
+//             of the rails and is read on its own (nanojouleWatts) when they are not live (#65).
 //             Base M1 (MacBook Air) exposes NO ANE in "Energy Model": its ANE/GPU/DRAM/E-P rails
 //             live in the "PMP" group, "Energy Counters" subgroup (same mJ unit, verified via
 //             --power-debug: ANE=3.4W under load). sample() falls back to PMP when Energy Model

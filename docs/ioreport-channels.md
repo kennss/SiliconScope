@@ -11,11 +11,37 @@
 | `CPU Energy` | total CPU power | = sum of EACC + PACC |
 | `EACC_CPU` | E cluster | suffix `_CPU` = cluster total |
 | `PACC0_CPU`, `PACC1_CPU` | P clusters 0 / 1 | M1 Max has two P clusters |
-| `GPU0`, `GPU SRAM0` | GPU | `GPU Energy` uses a different unit (~nJ) → excluded |
+| `GPU0`, `GPU SRAM0` | GPU | |
+| `GPU Energy` | GPU | **nanojoules**, not mJ — see below |
 | `ANE0` (`ANE1`) | Neural Engine | 0 when idle (expected) |
 | `DRAM0` | memory | |
 
 `Watts = (mJ delta / interval_s) / 1000`
+
+### Units are per channel — `IOReportChannelGetUnitLabel`
+
+"Unit mJ" holds for the rails above, not for the whole group. Each channel carries its own unit
+label, read with `IOReportChannelGetUnitLabel(channel) -> CFString` (declared in
+`ktop_ioreport.h`). Measured on M1 Max, macOS 27 (2026-10-23, `sscope-cli --power-debug --full`):
+
+| Group | Unit | Channels |
+|---|---|---|
+| `Energy Model` | `mJ` | 156: every rail SiliconScope sums |
+| `Energy Model` | `uJ` | 5: `PCIe Port 0 Energy`, `PCIe Port 1 Energy`, `apciec0/1/2 Energy` |
+| `Energy Model` | `nJ` | 1: `GPU Energy` |
+| `PMP` | `B` | 67 byte counters (bandwidth): not energy |
+| `PMP` | `events` | 3 event counters: not energy |
+| `PMP` | (empty) | 3 statistics (`last update`, `update count`, …): not energy |
+
+- The power path picks its rails **by name** and assumes mJ, which is right for every name it
+  picks on every chip measured so far. `GPU Energy` is the exception and goes through its own
+  nJ conversion (`nanojouleWatts`).
+- **`GPU Energy` keeps its own clock.** On macOS 27 the mJ rails refresh slowly (M1: about every
+  30 min, or on a display event; #65), but `GPU Energy` stays live. SiliconScope reads it as the
+  GPU figure whenever the rails are not live.
+- `--power-debug` converts every row by its own label and marks non-energy rows `(not energy)`.
+  Before that it read every row as mJ: an M6's `GPU Energy` (4,120,098 nJ ≈ 0.014 W) printed as
+  13,733 W (#84).
 
 ## CPU frequency — group `CPU Stats`, subgroup `CPU Complex Performance States`, format State
 
