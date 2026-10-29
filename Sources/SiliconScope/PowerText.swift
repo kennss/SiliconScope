@@ -1,7 +1,7 @@
 //
 //  File:      PowerText.swift
 //  Created:   2026-09-24
-//  Updated:   2026-09-24
+//  Updated:   2026-10-29
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The one way a domain wattage becomes text. Knows the three states a reading can be
 //             in since macOS 27 (#65): live, an average over minutes, or not known yet.
@@ -105,14 +105,15 @@ extension MetricsEngine.History {
 /// then a half-hour average (#65) — no description of the present.
 ///
 /// Where a measurement is missing it steps back rather than inventing one: residency with watts
-/// where the ANE lane is not split out, watts alone where there is no residency at all.
+/// where the ANE lane is not split out, the traffic alone where there is no residency (M2 Pro #11,
+/// M4 Pro #87: no ANE state channel, but live ANE lanes in the PMP histogram), and watts alone
+/// only where neither exists.
 enum ANEText {
     static func activity(ane: ANESample?, bandwidth: BandwidthSample, power: PowerSample,
                          format: String = "%.1f W") -> String {
-        let watts = power.text(power.aneWatts, format: format)
-        guard let a = ane else { return watts }
+        let traffic = bandwidth.aneGBs.map { String(format: $0 < 10 ? "%.1f GB/s" : "%.0f GB/s", $0) }
+        guard let a = ane else { return traffic ?? power.text(power.aneWatts, format: format) }
         let pct = String(format: "%.0f%%", a.activeFraction * 100)
-        guard let gbs = bandwidth.aneGBs else { return pct + " · " + watts }
-        return pct + " · " + String(format: gbs < 10 ? "%.1f GB/s" : "%.0f GB/s", gbs)
+        return pct + " · " + (traffic ?? power.text(power.aneWatts, format: format))
     }
 }
