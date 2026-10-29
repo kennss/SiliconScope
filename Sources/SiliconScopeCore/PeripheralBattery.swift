@@ -1,7 +1,7 @@
 //
 //  File:      PeripheralBattery.swift
 //  Created:   2026-06-22
-//  Updated:   2026-07-15
+//  Updated:   2026-10-29
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Sudoless battery levels for connected peripherals, the way iStat Menus surfaces
 //             accessory batteries in its battery dropdown. Two sources, merged:
@@ -13,11 +13,16 @@
 //                  drives the real cadence (~5 s).
 //  Notes:     Logitech (MX Master etc.) expose battery only over HID++ — a separate tier (see
 //             NEXT_VERSION). No charging state yet (BatteryStatusFlags semantics unverified).
-//             system_profiler refresh blocks briefly when cold — call sample() off the main
-//             thread (the app samples on a background cadence). Use one sampler per thread.
+//             ⚠️ The app's sample() never waits for system_profiler: it starts a refresh in the
+//             background and returns the last finished one (#86). The tool talks to bluetoothd,
+//             and a wedged bluetoothd once meant a sampling loop stopped for good — every reading
+//             in the app frozen until a restart. The refresh is bounded (BoundedCommand) so a stuck
+//             one is killed and the next can start. A one-shot reader (the CLI) asks for `.fresh`.
+//             Use one sampler per thread; the background refresh touches only `bluetooth`.
 //
 import Foundation
 import IOKit
+import os
 
 public enum PeripheralKind: String, Sendable, Codable {
     case mouse, keyboard, trackpad, headphones, gamepad, other
@@ -68,22 +73,39 @@ public struct PeripheralBattery: Sendable, Equatable, Identifiable, Codable {
 }
 
 public final class PeripheralBatterySampler {
-    private var btCache: [PeripheralBattery] = []
-    private var btCacheTime: Date = .distantPast
+    /// How sample() gets the system_profiler devices (AirPods etc.).
+    public enum BluetoothRead: Sendable {
+        /// The last finished background refresh; starts the next one when it is due. Never blocks.
+        case cached
+        /// Runs system_profiler now and waits for it, up to `btTimeout`. For one-shot readers.
+        case fresh
+    }
+
+    private struct BluetoothState {
+        var devices: [PeripheralBattery] = []
+        var lastStart: Date = .distantPast
+        var refreshing = false
+    }
+    /// Shared with the background refresh, hence the lock.
+    private let bluetooth = OSAllocatedUnfairLock(initialState: BluetoothState())
     // Throttle the ~0.2 s system_profiler spawn (AirPods L/R/Case). Accessory battery % changes
     // slowly, so 30 s is plenty; the cheap IORegistry HID scan below stays on the caller's faster
     // cadence, so new-device latency is unaffected. (Was 3 s — energy: system_profiler was the
     // heaviest background sampler; see docs/energy-optimization.md FIX 4.)
     private let btTTL: TimeInterval = 30
+    /// system_profiler SPBluetoothDataType takes ~0.1–0.2 s (measured); fifty times that means
+    /// bluetoothd is not answering, and the run is abandoned.
+    static let btTimeout: TimeInterval = 10
 
     public init() {}
 
     /// All connected peripherals with a battery level, sorted by name. Sudoless. Merges the
     /// fast IORegistry scan with a cached system_profiler read (AirPods etc.), deduped by address.
-    public func sample() -> [PeripheralBattery] {
+    public func sample(bluetooth read: BluetoothRead = .cached) -> [PeripheralBattery] {
         var devices = ioRegistryDevices()
         let seen = Set(devices.map { Self.normalizedAddress($0.address) }.filter { !$0.isEmpty })
-        for d in bluetoothAudioDevices() where !seen.contains(Self.normalizedAddress(d.address)) {
+        let audio = read == .fresh ? Self.readBluetoothDevices() : bluetoothAudioDevices()
+        for d in audio where !seen.contains(Self.normalizedAddress(d.address)) {
             devices.append(d)
         }
         return devices.sorted { $0.name < $1.name }
@@ -144,24 +166,33 @@ public final class PeripheralBatterySampler {
 
     // MARK: - Source 2: system_profiler (AirPods L/R/Case, cached)
 
+    /// The last finished refresh. Starts a new one in the background when `btTTL` has passed and
+    /// none is running, so at most one system_profiler exists at a time.
     private func bluetoothAudioDevices() -> [PeripheralBattery] {
-        if Date().timeIntervalSince(btCacheTime) < btTTL { return btCache }
-        btCacheTime = Date()
-        btCache = Self.parseBluetoothBatteries(Self.runSystemProfiler())
-        return btCache
+        let ttl = btTTL
+        let start = bluetooth.withLock { s -> Bool in
+            guard !s.refreshing, Date().timeIntervalSince(s.lastStart) >= ttl else { return false }
+            s.refreshing = true
+            s.lastStart = Date()
+            return true
+        }
+        if start {
+            let state = bluetooth
+            DispatchQueue.global(qos: .utility).async {
+                let devices = Self.readBluetoothDevices()
+                state.withLock { $0.devices = devices; $0.refreshing = false }
+            }
+        }
+        return bluetooth.withLock { $0.devices }
     }
 
-    private static func runSystemProfiler() -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
-        process.arguments = ["SPBluetoothDataType"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return "" }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+    /// One bounded system_profiler run, parsed. A run that timed out yields no devices: a battery
+    /// level bluetoothd could not report just now is unknown, not the one read half a minute ago.
+    private static func readBluetoothDevices() -> [PeripheralBattery] {
+        guard let data = BoundedCommand.run("/usr/sbin/system_profiler", ["SPBluetoothDataType"],
+                                            timeout: btTimeout)
+        else { return [] }
+        return parseBluetoothBatteries(String(decoding: data, as: UTF8.self))
     }
 
     /// Parses `system_profiler SPBluetoothDataType` text into the connected devices that report a

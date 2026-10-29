@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-18
+//  Updated:   2026-10-29
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -10,9 +10,14 @@
 //             @unchecked Sendable and only touched there. UI reads snapshot on main.
 //             gpuClockPeakMHz is a slowly-decaying rolling peak; gpuThrottling flags a
 //             GPU clock held below that peak while thermal pressure has risen.
+//             A watchdog beside the loop logs any sampling stage still running after
+//             `stallSeconds` (subsystem ai.calidalab.SiliconScope, category "sampling"), so a
+//             frozen dashboard names its cause in `log show` instead of needing a restart to
+//             clear and leaving nothing behind (#86).
 //
 import Foundation
 import Observation
+import os
 import SiliconScopeCore
 
 @MainActor
@@ -54,6 +59,12 @@ final class SiliconScopeMonitor {
 
     private let sampler = SystemSampler()
     private var loopTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
+
+    /// Every stage of a tick normally ends within a fraction of a second; one still running after
+    /// this long has stopped the loop, and with it every reading in the app.
+    nonisolated private static let stallSeconds: Double = 10
+    nonisolated private static let samplingLog = Logger(subsystem: "ai.calidalab.SiliconScope", category: "sampling")
 
     // Session recording (Phase 1): the recorder streams full snapshots to a temp .ssrec. These
     // mirror its state into @Observable properties so the RecordBar reflects start/stop and the
@@ -151,6 +162,7 @@ final class SiliconScopeMonitor {
         // C5: clear rate state so the first tick after (re)start emits no spurious delta.
         engine.reset(); lastIngest = nil
         let sampler = sampler
+        startWatchdog(sampler)
         loopTask = Task { [weak self] in
             while !Task.isCancelled {
                 // Read on the main actor BEFORE detaching: demand depends on window, popover and
@@ -203,9 +215,33 @@ final class SiliconScopeMonitor {
         }
     }
 
+    /// Checks the sampler from outside the loop, because a stuck loop cannot report itself. Each
+    /// stuck stage is logged once, when it crosses `stallSeconds`; it holds no reference to self.
+    private func startWatchdog(_ sampler: SystemSampler) {
+        watchdogTask?.cancel()
+        watchdogTask = Task.detached(priority: .utility) {
+            var reported: Set<String> = []
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                let stalled = sampler.stalledStages(longerThan: Self.stallSeconds)
+                let now = DispatchTime.now().uptimeNanoseconds
+                for s in stalled where reported.insert("\(s.stage)@\(s.startedNs)").inserted {
+                    let seconds = Int(Double(now &- s.startedNs) / 1_000_000_000)
+                    Self.samplingLog.error(
+                        "Sampling stalled: stage \(s.stage, privacy: .public) running for \(seconds, privacy: .public) s")
+                }
+                // Forget stages that have finished, so the set stays as small as what is stuck.
+                let live = Set(stalled.map { "\($0.stage)@\($0.startedNs)" })
+                reported.formIntersection(live)
+            }
+        }
+    }
+
     func stop() {
         loopTask?.cancel()
         loopTask = nil
+        watchdogTask?.cancel()
+        watchdogTask = nil
         stopAPIPolling()
         endFocus()
         // C5: drop rate state so a later restart doesn't diff across the pause.

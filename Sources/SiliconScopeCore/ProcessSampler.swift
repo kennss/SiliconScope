@@ -1,7 +1,7 @@
 //
 //  File:      ProcessSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-22
+//  Updated:   2026-10-29
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Builds the process table sudolessly via libproc. Stateful: each
 //             sample() diffs cumulative CPU time against the previous call to derive
@@ -216,21 +216,21 @@ public final class ProcessSampler {
         let args: String
     }
 
+    /// ps over a handful of pids takes milliseconds; one still running after this is killed.
+    static let psTimeout: TimeInterval = 2
+
     /// Reads memory, CPU time and argv for `pids` through /bin/ps (setuid root, so it reads other
     /// users' processes, which libproc refuses). A pid that exited in between is simply absent.
+    /// Bounded because it runs inside a sampling tick (#86): a ps that has not answered within
+    /// `psTimeout` is killed, and this sample simply lacks the other users' rows.
     static func readThroughPS(_ pids: [pid_t]) -> [pid_t: PSRead] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
         // -ww: never cut argv to a width; `=` drops the header; C locale keeps "0:01.23" in time.
-        process.arguments = ["-ww", "-o", "pid=,rss=,time=,args=",
-                             "-p", pids.map { String($0) }.joined(separator: ",")]
-        process.environment = ["LC_ALL": "C"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return [:] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        guard let data = BoundedCommand.run(
+            "/bin/ps",
+            ["-ww", "-o", "pid=,rss=,time=,args=", "-p", pids.map { String($0) }.joined(separator: ",")],
+            environment: ["LC_ALL": "C"],
+            timeout: psTimeout)
+        else { return [:] }
         // A listed pid that is gone is left out and the rest still print. A pid above the kernel's
         // limit (99,999) makes ps refuse the whole list; these come from proc_listallpids, never are.
         return parsePS(String(decoding: data, as: UTF8.self))

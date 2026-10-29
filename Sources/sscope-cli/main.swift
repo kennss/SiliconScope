@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-22
+//  Updated:   2026-10-29
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -328,7 +328,7 @@ if CommandLine.arguments.contains("--bandwidth") {
 // Connected-peripheral battery levels (Apple Magic Mouse/Trackpad/Keyboard etc., sudoless via
 // IORegistry BatteryPercent). Run: sscope-cli --peripherals
 if CommandLine.arguments.contains("--peripherals") {
-    let devices = PeripheralBatterySampler().sample()
+    let devices = PeripheralBatterySampler().sample(bluetooth: .fresh)
     print("\n=== peripheral battery (\(devices.count)) — sudoless (IORegistry + system_profiler) ===")
     if devices.isEmpty {
         print("  (none — no connected device reports a battery value via IORegistry / system_profiler)")

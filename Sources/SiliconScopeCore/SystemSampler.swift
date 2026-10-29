@@ -1,7 +1,7 @@
 //
 //  File:      SystemSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-22
+//  Updated:   2026-10-29
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Aggregates every SiliconScopeCore sampler into one SystemSnapshot. Intended
 //             to run on a single background thread driven by the UI's refresh loop.
@@ -9,6 +9,9 @@
 //             handles, but SiliconScope only ever calls sample() from one serial background
 //             task, so this is safe. Do not call sample() concurrently. The four delta/sleep
 //             samplers (power/CPU/GPU/bandwidth) run in parallel within a single sample() call.
+//             ⚠️ One sample() that never returns stops every reading in the app (#86): the caller
+//             measures one tick at a time. Each stage is tracked in `inFlight`, so a watchdog on
+//             another thread can name the one that is stuck (`stalledStages`).
 //
 import Foundation
 import os
@@ -64,6 +67,10 @@ public final class SystemSampler: @unchecked Sendable {
     /// Whole-machine CPU usage for hosts without IOReport. Nil on Apple Silicon, where `cpu` serves.
     private let tickCPU: TickCPUSampler?
 
+    /// Stages of the running sample() that have started and not finished, with their start time
+    /// (uptime ns). Read from another thread by `stalledStages`.
+    private let inFlight = OSAllocatedUnfairLock(initialState: [String: UInt64]())
+
     public init() {
         gpu = cpu.flatMap { GPUSampler(topology: $0.topology) }
         temperature = TemperatureSampler(
@@ -98,25 +105,27 @@ public final class SystemSampler: @unchecked Sendable {
             group.enter(); queue.async { work(); group.leave() }
         }
         if demand.contains(.power) {
-            parallel { let r = self.power?.sample(interval: interval) ?? PowerSample(); io.withLock { $0.power = r } }
+            parallel { let r = self.stage("power") { self.power?.sample(interval: interval) ?? PowerSample() }; io.withLock { $0.power = r } }
         }
         if demand.contains(.cpu) {
             parallel {
-                var sample = self.cpu?.sample(interval: interval) ?? CPUSample()
-                // No cluster split on Intel; mac() weights the P slot by core count.
-                if let tick = self.tickCPU { sample.pUsage = tick.sampleUsage() }
-                let r = sample
+                let r = self.stage("cpu") {
+                    var sample = self.cpu?.sample(interval: interval) ?? CPUSample()
+                    // No cluster split on Intel; mac() weights the P slot by core count.
+                    if let tick = self.tickCPU { sample.pUsage = tick.sampleUsage() }
+                    return sample
+                }
                 io.withLock { $0.cpu = r }
             }
         }
         if demand.contains(.gpu) {
-            parallel { let r = self.gpu?.sample(interval: interval) ?? GPUSample(); io.withLock { $0.gpu = r } }
+            parallel { let r = self.stage("gpu") { self.gpu?.sample(interval: interval) ?? GPUSample() }; io.withLock { $0.gpu = r } }
         }
         if demand.contains(.bandwidth) {
-            parallel { let r = self.bandwidth?.sample(interval: interval) ?? BandwidthSample(); io.withLock { $0.bandwidth = r } }
+            parallel { let r = self.stage("bandwidth") { self.bandwidth?.sample(interval: interval) ?? BandwidthSample() }; io.withLock { $0.bandwidth = r } }
         }
         if demand.contains(.ane) {
-            parallel { let r = self.aneSampler?.sample(interval: interval); io.withLock { $0.ane = r } }
+            parallel { let r = self.stage("ane") { self.aneSampler?.sample(interval: interval) }; io.withLock { $0.ane = r } }
         }
         group.wait()
         let r = io.withLock { $0 }
@@ -129,15 +138,16 @@ public final class SystemSampler: @unchecked Sendable {
         // The instant reads. Skipping one costs nothing to resume: the two that derive a RATE
         // (network, disk) divide by the ACTUAL elapsed nanoseconds since their last call, so a
         // wider gap widens the averaging window instead of inventing a spike.
-        if demand.contains(.memory)      { snapshot.memory = memory.sample() }
-        if demand.contains(.thermal)     { snapshot.thermal = thermal.sample() }
-        if demand.contains(.temperature) { snapshot.temperature = temperature.sample() }
-        if demand.contains(.network)     { snapshot.network = network.sample() }
-        if demand.contains(.disk)        { snapshot.disk = disk.sample() }
-        if demand.contains(.battery)     { snapshot.battery = battery.sample() }
-        if demand.contains(.peripherals) { snapshot.peripherals = sampledPeripherals() }
+        if demand.contains(.memory)      { snapshot.memory = stage("memory") { memory.sample() } }
+        if demand.contains(.thermal)     { snapshot.thermal = stage("thermal") { thermal.sample() } }
+        if demand.contains(.temperature) { snapshot.temperature = stage("temperature") { temperature.sample() } }
+        if demand.contains(.network)     { snapshot.network = stage("network") { network.sample() } }
+        if demand.contains(.disk)        { snapshot.disk = stage("disk") { disk.sample() } }
+        if demand.contains(.battery)     { snapshot.battery = stage("battery") { battery.sample() } }
+        if demand.contains(.peripherals) { snapshot.peripherals = stage("peripherals") { sampledPeripherals() } }
         if demand.contains(.processes) {
-            let procs = sampledProcesses()        // cached ~2.5 s (full set; UI sorts/filters/limits)
+            // cached ~2.5 s (full set; UI sorts/filters/limits)
+            let procs = stage("processes") { sampledProcesses() }
             snapshot.processes = procs.rows
             snapshot.aiRuntime = procs.aiRuntime
         } else {
@@ -154,6 +164,26 @@ public final class SystemSampler: @unchecked Sendable {
             )
         }
         return snapshot
+    }
+
+    /// Runs one stage of sample(), recording it in `inFlight` while it runs.
+    private func stage<T>(_ name: String, _ work: () -> T) -> T {
+        let started = DispatchTime.now().uptimeNanoseconds
+        inFlight.withLock { $0[name] = started }
+        defer { inFlight.withLock { $0[name] = nil } }
+        return work()
+    }
+
+    /// Stages of the running sample() that have been going for longer than `seconds`, with their
+    /// start time (uptime ns), so a caller can report each stuck stage once. Every stage normally
+    /// ends within a fraction of a second; safe to call from any thread.
+    public func stalledStages(longerThan seconds: Double) -> [(stage: String, startedNs: UInt64)] {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let limit = UInt64(seconds * 1_000_000_000)
+        return inFlight.withLock { $0 }
+            .filter { now &- $0.value > limit }
+            .map { (stage: $0.key, startedNs: $0.value) }
+            .sorted { $0.startedNs < $1.startedNs }
     }
 
     /// Peripheral battery on a slow cadence (re-sampled every `peripheralInterval`s, reused
