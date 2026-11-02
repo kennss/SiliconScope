@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarMetric.swift
 //  Created:   2026-06-19
-//  Updated:   2026-10-16
+//  Updated:   2026-11-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style menu-bar glyph renderers and the per-metric dropdown panels. Glyphs are
 //             drawn to NSImage (the only reliable way to render a live status-item label) and adapt
@@ -668,7 +668,10 @@ struct MEMMenuDropdown: View {
             MenuKV(label: "Page-outs", value: pagesRate(monitor.memoryPageOutRate))
             MenuKV(label: "Swap-ins", value: pagesRate(monitor.memorySwapInRate))
             MenuKV(label: "Swap-outs", value: pagesRate(monitor.memorySwapOutRate),
-                   color: monitor.memorySwapOutRate > 0 ? Theme.heat(1) : Theme.text)
+                   // Heat only above the floor the swapping verdict uses (#88): a page or two
+                   // evicted is a reading, not something that needs attention.
+                   color: monitor.memorySwapOutRate > MetricsEngine.swapOutRatePagesPerSec
+                       ? Theme.heat(1) : Theme.text)
 
             Divider()
             MenuSectionHeader("Top by Memory")

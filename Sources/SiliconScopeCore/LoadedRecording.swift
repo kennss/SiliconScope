@@ -1,7 +1,7 @@
 //
 //  File:      LoadedRecording.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-11-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  An in-memory, parsed .ssrec ready for replay: the meta, the frames, and a per-frame
 //             table of the PATH-DEPENDENT derived scalars (the four decaying peaks + memory rates)
@@ -25,6 +25,9 @@ public struct DerivedScalars: Sendable, Equatable {
     public var memorySwapInRate = 0.0
     public var memorySwapOutRate = 0.0
     public var memoryCompressionRate = 0.0
+    /// The engine's own "swap-out held above the floor" judgement at this frame (#88), stored
+    /// rather than re-derived so replay reads exactly the verdict live would have shown.
+    public var memorySwapOutSustained = false
     public init() {}
 }
 

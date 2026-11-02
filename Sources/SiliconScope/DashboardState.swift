@@ -1,7 +1,7 @@
 //
 //  File:      DashboardState.swift
 //  Created:   2026-06-25
-//  Updated:   2026-10-31
+//  Updated:   2026-11-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The exact set of values DashboardView renders — built either from the live monitor
 //             or from a replayed recording frame. Making it one value struct (rather than a
@@ -77,16 +77,9 @@ struct DashboardState {
         cpuClockDropFraction = MetricsEngine.cpuClockDropFraction(latest: s, topology: rec.meta.topology)
         bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: rec.meta.topology, bandwidthPeakGBs: d.bandwidthPeakGBs)
         bottleneck = MetricsEngine.bottleneck(latest: s, history: h, bandwidthPeakGBs: d.bandwidthPeakGBs, throttling: throttling)
-        // The swap-out rate is read the same way the live engine reads it: a sustained mean over
-        // the last few frames, so replay shows the same verdict the live dashboard showed.
-        let recentSwapOutRates: [Double] = {
-            guard !rec.derived.isEmpty else { return [] }
-            let last = min(i, rec.derived.count - 1)
-            let first = max(0, last - (MetricsEngine.swapOutRateWindowSize - 1))
-            return rec.derived[first...last].map(\.memorySwapOutRate)
-        }()
-        memoryRisk = MetricsEngine.memoryRisk(latest: s,
-                                              swapOutRate: MetricsEngine.sustainedSwapOutRate(recentSwapOutRates),
+        // "Sustained" is a judgement over the frames before this one, made by the same engine at
+        // load time, so replay shows the verdict the live dashboard showed.
+        memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutSustained: d.memorySwapOutSustained,
                                               compressionRate: d.memoryCompressionRate)
         // Replayed frames are a real time series, so the latch is run over them — the same window
         // the live engine would have seen, which keeps replay honest against live.
@@ -138,7 +131,7 @@ struct DashboardState {
         cpuClockDropFraction = MetricsEngine.cpuClockDropFraction(latest: s, topology: topo)
         bandwidthCeilingGBs = MetricsEngine.bandwidthCeiling(topology: topo, bandwidthPeakGBs: bandwidthPeakGBs)
         bottleneck = MetricsEngine.bottleneck(latest: s, history: history, bandwidthPeakGBs: bandwidthPeakGBs, throttling: throttling)
-        memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutRate: 0, compressionRate: 0)
+        memoryRisk = MetricsEngine.memoryRisk(latest: s, swapOutSustained: false, compressionRate: 0)
         // No time series over the wire yet, so there is nothing to latch over — seed from the
         // sample instead of pretending to a history this surface does not have.
         activity = EngineActivity(instant: s)

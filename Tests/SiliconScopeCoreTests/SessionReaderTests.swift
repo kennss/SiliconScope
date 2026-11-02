@@ -1,7 +1,7 @@
 //
 //  File:      SessionReaderTests.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-11-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Tests for SessionReader / LoadedRecording — load + per-frame derived precompute
 //             (peak fold via MetricsEngine), index(forTime:) binary search, historyWindow trailing
@@ -45,6 +45,27 @@ final class SessionReaderTests: XCTestCase {
         XCTAssertGreaterThan(rec.derived[2].bandwidthPeakGBs, 199)             // slow decay
         XCTAssertEqual(rec.meta.chip, "Apple M1 Max")
         XCTAssertEqual(rec.meta.formatVersion, recordingFormatVersion)
+    }
+
+    // Live and replay read the same "sustained swap-out" verdict (#88): the load-time fold stores
+    // the engine's own judgement per frame instead of re-deriving it from the rates.
+    func testReplayCarriesSustainedSwapOut() throws {
+        let frames = (0..<4).map { k -> RecordedFrame in
+            var s = SystemSnapshot(); s.memory.swapouts = UInt64(k * 1000)   // 1000 pages/s
+            return RecordedFrame(t: Double(k), snapshot: s)
+        }
+        let live = MetricsEngine(topology: nil)
+        var verdicts: [Bool] = []
+        for (k, f) in frames.enumerated() {
+            live.ingest(f.snapshot, dt: k == 0 ? 0 : 1)
+            verdicts.append(live.swapOutSustained)
+        }
+        XCTAssertEqual(verdicts, [false, false, true, true])   // 0 s, 1 s, then 2 of 3 s
+
+        let url = tempURL()
+        try writeLines([try enc.encode(meta())] + frames.map { try enc.encode($0) }, to: url)
+        let rec = try SessionReader.load(url)
+        XCTAssertEqual(rec.derived.map(\.memorySwapOutSustained), verdicts)
     }
 
     func testIndexForTime() throws {

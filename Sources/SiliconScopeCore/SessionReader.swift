@@ -1,7 +1,7 @@
 //
 //  File:      SessionReader.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-11-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Loads a .ssrec (JSONL) into a LoadedRecording for replay: parses the meta line and
 //             the frame lines, validates the format version, and runs the SAME MetricsEngine the
@@ -70,6 +70,7 @@ public enum SessionReader {
             d.memorySwapInRate = engine.memorySwapInRate
             d.memorySwapOutRate = engine.memorySwapOutRate
             d.memoryCompressionRate = engine.memoryCompressionRate
+            d.memorySwapOutSustained = engine.swapOutSustained
             out.append(d)
         }
         return out

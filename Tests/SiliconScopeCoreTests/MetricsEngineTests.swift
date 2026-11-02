@@ -1,7 +1,7 @@
 //
 //  File:      MetricsEngineTests.swift
 //  Created:   2026-06-25
-//  Updated:   2026-10-31
+//  Updated:   2026-11-02
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Locks the behavior of MetricsEngine — the derivation extracted from
 //             SiliconScopeMonitor so live and replay share identical logic. Verifies the
@@ -109,11 +109,14 @@ final class MetricsEngineTests: XCTestCase {
         XCTAssertFalse(e.gpuThrottling)
     }
 
-    // Active swap-out → memory risk escalates to .swapping.
+    // Swap-out that keeps going → memory risk escalates to .swapping once it has held for more
+    // than half of the window (two of three seconds at a 1 s refresh), not on the first second.
     func testMemoryRiskSwapping() {
         let e = MetricsEngine(topology: nil)
         e.ingest(snap(swapouts: 0), dt: 1)
-        e.ingest(snap(swapouts: 5000), dt: 1)                 // swapouts rising → rate > 0
+        e.ingest(snap(swapouts: 5000), dt: 1)                 // 1 s above the floor: not yet
+        XCTAssertNotEqual(e.memoryRisk, .swapping)
+        e.ingest(snap(swapouts: 10000), dt: 1)                // 2 s of 3: sustained
         XCTAssertEqual(e.memoryRisk, .swapping)
     }
 
@@ -143,11 +146,41 @@ final class MetricsEngineTests: XCTestCase {
         XCTAssertEqual(e.memoryRisk, .swapping)
     }
 
-    // The sustained rate is the mean over the window, so one noisy sample is diluted by its
-    // neighbours and only the last few samples count.
-    func testSustainedSwapOutRateAveragesWindow() {
-        XCTAssertEqual(MetricsEngine.sustainedSwapOutRate([]), 0)
-        XCTAssertEqual(MetricsEngine.sustainedSwapOutRate([0, 0, 100]), 100.0 / 3.0, accuracy: 0.001)
-        XCTAssertEqual(MetricsEngine.sustainedSwapOutRate([100, 100, 100, 100]), 100, accuracy: 0.001)
+    // One big burst is not a stream. A mean would let it through — 200 pages in one second
+    // averages to 67/s over three seconds and clears the 64 floor — but it held for one second
+    // of three, so it does not read as swapping, and it does not linger once it has passed.
+    func testMemoryRiskSingleBurstIsNotSwapping() {
+        let e = MetricsEngine(topology: nil)
+        e.ingest(snap(swapouts: 0), dt: 1)
+        e.ingest(snap(swapouts: 0), dt: 1)
+        e.ingest(snap(swapouts: 0), dt: 1)
+        e.ingest(snap(swapouts: 200), dt: 1)                  // one second at 200 pages/s
+        XCTAssertNotEqual(e.memoryRisk, .swapping)
+        e.ingest(snap(swapouts: 200), dt: 1)
+        XCTAssertNotEqual(e.memoryRisk, .swapping)
+    }
+
+    // The window is seconds, not samples, so the verdict means the same thing at any refresh.
+    func testSwapOutSustainedIsMeasuredInSeconds() {
+        typealias S = MetricsEngine.SwapOutSpan
+        let hot = 1000.0, cold = 0.0
+        // 1 s refresh: 2 of the last 3 seconds above the floor → sustained; 1 of 3 → not.
+        XCTAssertTrue(MetricsEngine.swapOutSustained([S(pagesPerSec: cold, seconds: 1),
+                                                      S(pagesPerSec: hot, seconds: 1),
+                                                      S(pagesPerSec: hot, seconds: 1)]))
+        XCTAssertFalse(MetricsEngine.swapOutSustained([S(pagesPerSec: cold, seconds: 1),
+                                                       S(pagesPerSec: cold, seconds: 1),
+                                                       S(pagesPerSec: hot, seconds: 1)]))
+        // 0.5 s refresh: three hot samples are only 1.5 s — exactly half, not more than half.
+        let halfHot = Array(repeating: S(pagesPerSec: cold, seconds: 0.5), count: 3)
+            + Array(repeating: S(pagesPerSec: hot, seconds: 0.5), count: 3)
+        XCTAssertFalse(MetricsEngine.swapOutSustained(halfHot))
+        XCTAssertTrue(MetricsEngine.swapOutSustained(halfHot + [S(pagesPerSec: hot, seconds: 0.5)]))
+        // 5 s refresh: one span is itself a 5 s average and covers the whole window.
+        XCTAssertTrue(MetricsEngine.swapOutSustained([S(pagesPerSec: hot, seconds: 5)]))
+        XCTAssertFalse(MetricsEngine.swapOutSustained([S(pagesPerSec: hot, seconds: 5),
+                                                       S(pagesPerSec: cold, seconds: 5)]))
+        // Nothing seen yet is not evidence of swapping.
+        XCTAssertFalse(MetricsEngine.swapOutSustained([]))
     }
 }
