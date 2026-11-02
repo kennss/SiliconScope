@@ -1,5 +1,19 @@
 # Changelog
 
+## v4.8.1 — 2026-11-02
+
+**Fixes**
+- The "Memory swapping" warning — the banner, the red menu-bar icon and the
+  notification — no longer fires when a single page is swapped out on a machine with
+  plenty of free memory. It now needs swap-out above 64 pages/s (about 1 MB/s) for
+  more than half of the last 3 seconds, at any refresh interval. A replayed recording
+  shows the same verdict the live dashboard showed, and the menu bar's Swap-outs row
+  turns red only above the same rate.
+  ([#88](https://github.com/kennss/SiliconScope/issues/88),
+  [#89](https://github.com/kennss/SiliconScope/pull/89), @iSaddam)
+
+Agents unchanged: Linux **1.5.3**, Mac **1.4.2**.
+
 ## v4.8.0 — 2026-10-29
 
 **🧑‍💻 AI runtimes run by another account.** When Ollama, oMLX or another runtime runs
