@@ -1,7 +1,7 @@
 //
 //  File:      MetricsEngine.swift
 //  Created:   2026-06-25
-//  Updated:   2026-09-24
+//  Updated:   2026-10-31
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The path-dependent derivation that turns a stream of SystemSnapshots into the
 //             values the dashboard reads beyond the raw snapshot: rolling sparkline History,
@@ -119,6 +119,17 @@ public final class MetricsEngine {
     private struct MemCounters { let pageins, pageouts, swapins, swapouts, compressions: UInt64 }
     private var previousMem: MemCounters?
 
+    /// Swap-out rates of the last few samples, so the "swapping" verdict can ask for SUSTAINED
+    /// pressure instead of a single evicted page.
+    private var swapOutRateWindow: [Double] = []
+    /// How many samples the sustained rate averages over. At the default 1 s refresh that is a
+    /// ~3 s window; the rate itself is per-second, so the verdict does not change with the
+    /// refresh interval.
+    public static let swapOutRateWindowSize = 3
+    /// Floor for "the machine is actually swapping out": 64 pages/s ≈ 1 MB/s on a 16 KB page.
+    /// Below that the machine is evicting a trickle of pages, which is not "unified memory full".
+    public static let swapOutRatePagesPerSec = 64.0
+
     private let topology: CPUTopology?
 
     public init(topology: CPUTopology?) { self.topology = topology }
@@ -162,6 +173,7 @@ public final class MetricsEngine {
         previousMem = nil
         memoryPageInRate = 0; memoryPageOutRate = 0
         memorySwapInRate = 0; memorySwapOutRate = 0; memoryCompressionRate = 0
+        swapOutRateWindow.removeAll()
     }
 
     // MARK: - Computed verdicts (snapshot + path-dependent state)
@@ -178,7 +190,9 @@ public final class MetricsEngine {
         Self.bottleneck(latest: latest, history: history, bandwidthPeakGBs: bandwidthPeakGBs, throttling: gpuThrottling)
     }
     public var memoryRisk: MemoryBudget.Risk {
-        Self.memoryRisk(latest: latest, swapOutRate: memorySwapOutRate, compressionRate: memoryCompressionRate)
+        Self.memoryRisk(latest: latest,
+                        swapOutRate: Self.sustainedSwapOutRate(swapOutRateWindow),
+                        compressionRate: memoryCompressionRate)
     }
 
     /// True when the GPU clock is held well below its rolling peak while the GPU is active and
@@ -276,14 +290,32 @@ public final class MetricsEngine {
     }
 
     /// Refined memory risk: the static budget baseline plus swap/compression rates.
+    ///
+    /// `swapOutRate` is the SUSTAINED swap-out rate in pages/sec (see `sustainedSwapOutRate`).
+    /// A machine evicts single pages all the time — one anonymous page pushed out to swap during
+    /// a burst of activity is not "unified memory full", and a verdict that fires on it trains
+    /// the reader to ignore the banner. So the rate has to clear a real floor AND hold across
+    /// the window. The static baseline (the kernel's own pressure level) still decides on its own.
     public static func memoryRisk(latest: SystemSnapshot, swapOutRate: Double,
                                   compressionRate: Double) -> MemoryBudget.Risk {
         let base = latest.memoryBudget.risk
-        if base == .swapping || swapOutRate > 0 { return .swapping }
+        if base == .swapping { return .swapping }
+        if swapOutRate > swapOutRatePagesPerSec { return .swapping }
         if compressionRate > compressionRatePagesPerSec && latest.memoryBudget.headroomNowBytes < (1 << 30) {
             return .tight
         }
         return base
+    }
+
+    /// Mean swap-out rate over the last few samples. One evicted page in one sample (or a single
+    /// noisy tick) is diluted by the samples around it, so the verdict describes pressure that
+    /// persisted instead of a moment that happened once. Empty input reads as 0 — no evidence of
+    /// swapping, which is not the same as a measurement of "no swapping", but is the only honest
+    /// reading before the first sample.
+    public static func sustainedSwapOutRate(_ rates: [Double]) -> Double {
+        guard !rates.isEmpty else { return 0 }
+        let window = rates.suffix(swapOutRateWindowSize)
+        return window.reduce(0, +) / Double(window.count)
     }
 
     /// Mean of the last `count` REAL samples. Gaps are dropped rather than averaged: one `.nan`
@@ -298,7 +330,7 @@ public final class MetricsEngine {
         let cur = MemCounters(pageins: m.pageins, pageouts: m.pageouts, swapins: m.swapins,
                               swapouts: m.swapouts, compressions: m.compressions)
         defer { previousMem = cur }
-        guard let prev = previousMem, dt > 0 else { resetRatesOnly(); return }
+        guard let prev = previousMem, dt > 0 else { resetRatesOnly(); recordSwapOutRate(); return }
         func delta(_ now: UInt64, _ was: UInt64) -> Double { now >= was ? Double(now - was) : 0 }
         memoryPageInRate = delta(cur.pageins, prev.pageins) / dt
         memoryPageOutRate = delta(cur.pageouts, prev.pageouts) / dt
@@ -307,6 +339,13 @@ public final class MetricsEngine {
         // of pages swapped earlier and must NOT trip the "swapping" warning.
         memorySwapOutRate = delta(cur.swapouts, prev.swapouts) / dt
         memoryCompressionRate = delta(cur.compressions, prev.compressions) / dt
+        recordSwapOutRate()
+    }
+
+    /// Keeps the rolling window of swap-out rates the verdict reads.
+    private func recordSwapOutRate() {
+        swapOutRateWindow.append(memorySwapOutRate)
+        if swapOutRateWindow.count > Self.swapOutRateWindowSize { swapOutRateWindow.removeFirst() }
     }
 
     /// Zeros the rates without touching previousMem (the caller's defer sets it).

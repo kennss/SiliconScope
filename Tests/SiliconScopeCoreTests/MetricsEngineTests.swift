@@ -1,7 +1,7 @@
 //
 //  File:      MetricsEngineTests.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-10-31
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Locks the behavior of MetricsEngine — the derivation extracted from
 //             SiliconScopeMonitor so live and replay share identical logic. Verifies the
@@ -115,5 +115,39 @@ final class MetricsEngineTests: XCTestCase {
         e.ingest(snap(swapouts: 0), dt: 1)
         e.ingest(snap(swapouts: 5000), dt: 1)                 // swapouts rising → rate > 0
         XCTAssertEqual(e.memoryRisk, .swapping)
+    }
+
+    // One evicted page in one sample is not "unified memory full" — it happens on a busy machine
+    // all the time, and a verdict that fires on it trains the reader to ignore the banner.
+    func testMemoryRiskSingleEvictedPageIsNotSwapping() {
+        let e = MetricsEngine(topology: nil)
+        e.ingest(snap(swapouts: 0), dt: 1)
+        e.ingest(snap(swapouts: 1), dt: 1)                    // a single 16 KB page pushed out
+        XCTAssertNotEqual(e.memoryRisk, .swapping)
+    }
+
+    // A trickle of eviction — sustained, but below the floor (64 pages/s ≈ 1 MB/s) — is not a
+    // full machine either.
+    func testMemoryRiskTrickleSwapOutIsNotSwapping() {
+        let e = MetricsEngine(topology: nil)
+        e.ingest(snap(swapouts: 0), dt: 1)
+        for i in 1...5 { e.ingest(snap(swapouts: UInt64(i * 10)), dt: 1) }   // 10 pages/s, sustained
+        XCTAssertNotEqual(e.memoryRisk, .swapping)
+    }
+
+    // Sustained eviction above the floor does read as swapping.
+    func testMemoryRiskSustainedSwapOutIsSwapping() {
+        let e = MetricsEngine(topology: nil)
+        e.ingest(snap(swapouts: 0), dt: 1)
+        for i in 1...4 { e.ingest(snap(swapouts: UInt64(i * 1000)), dt: 1) } // 1000 pages/s, sustained
+        XCTAssertEqual(e.memoryRisk, .swapping)
+    }
+
+    // The sustained rate is the mean over the window, so one noisy sample is diluted by its
+    // neighbours and only the last few samples count.
+    func testSustainedSwapOutRateAveragesWindow() {
+        XCTAssertEqual(MetricsEngine.sustainedSwapOutRate([]), 0)
+        XCTAssertEqual(MetricsEngine.sustainedSwapOutRate([0, 0, 100]), 100.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(MetricsEngine.sustainedSwapOutRate([100, 100, 100, 100]), 100, accuracy: 0.001)
     }
 }
