@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-29
+//  Updated:   2026-11-11
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -130,6 +130,12 @@ final class SiliconScopeMonitor {
     /// everything and a hidden one demands only what the menu bar and alerts still read.
     var windowVisible = true
 
+    /// UserDefaults key for the opt-in "Keep measuring while the window is hidden" setting (#90).
+    /// Off by default: a hidden window then demands only what the menu bar and alerts read, and
+    /// the window's charts show a gap for the time it was covered (#13). On, a hidden window still
+    /// demands everything, so its charts stay continuous at the cost of a full tick every refresh.
+    static let measureWhileHiddenKey = "measureWhileHidden"
+
     /// The groups this tick must measure — the union of everything currently reading a snapshot.
     ///
     /// ⚠️ Anything that consumes `snapshot` has to be represented here. A consumer left out gets
@@ -139,6 +145,8 @@ final class SiliconScopeMonitor {
         // Whole-snapshot consumers. Recording and share mode both republish the snapshot as a
         // record of the machine, so neither may contain a group we chose not to look at.
         if windowVisible || isRecording || focusedPID != nil { return .all }
+        // Opt-in (#90): the user chose continuous charts over the energy a hidden window saves.
+        if UserDefaults.standard.bool(forKey: Self.measureWhileHiddenKey) { return .all }
         if MacAgentController.shared.isRunning { return .all }
         if MetricBarController.shared.isShowingDropdown { return .all }
 

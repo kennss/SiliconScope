@@ -1,15 +1,16 @@
 //
 //  File:      SettingsView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-07-27
+//  Updated:   2026-11-11
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Preferences window (Cmd+,). Refresh cadence, temperature unit, menu-bar
 //             compact GPU mode, launch-at-login, threshold alerts, and the AI runtime API
 //             — persisted in UserDefaults via @AppStorage.
-//  Notes:     Keys: "refreshInterval" (s), "temperatureFahrenheit" (Bool),
-//             "compactGPUMode" (Bool), "notificationsEnabled" (Bool). Launch-at-login is
+//  Notes:     Keys: "refreshInterval" (s), "measureWhileHidden" (Bool, #90), "temperatureFahrenheit"
+//             (Bool), "compactGPUMode" (Bool), "notificationsEnabled" (Bool). Launch-at-login is
 //             owned by SMAppService (LoginItem), not UserDefaults. SiliconScopeMonitor
-//             reads refreshInterval + notificationsEnabled each loop. All update live.
+//             reads refreshInterval, measureWhileHidden and notificationsEnabled each loop.
+//             All update live.
 //
 import SwiftUI
 import AppKit
@@ -22,6 +23,7 @@ struct SettingsView: View {
     @AppStorage(UIScale.zoomKey) private var uiZoom = 1.0
     @AppStorage(UIScale.densityKey) private var uiDensity = Density.standard.rawValue
     @AppStorage("refreshInterval") private var refreshInterval = 1.0
+    @AppStorage(SiliconScopeMonitor.measureWhileHiddenKey) private var measureWhileHidden = false
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     @AppStorage("compactGPUMode") private var compactGPU = false
     @AppStorage("showDockIcon") private var showDockIcon = true
@@ -46,6 +48,12 @@ struct SettingsView: View {
                     Text("2 s").tag(2.0)
                     Text("3 s").tag(3.0)
                 }
+                Toggle("Keep measuring while the window is hidden", isOn: $measureWhileHidden)
+            } footer: {
+                Text("While the window is covered, minimized or closed, SiliconScope measures only what the menu bar and alerts show, and the window's charts have a gap for that time. Turn this on to keep every chart continuous; it uses more energy while the window is hidden. Recording always measures everything.")
+            }
+
+            Section {
                 Picker("Temperature unit", selection: $fahrenheit) {
                     Text("Celsius (°C)").tag(false)
                     Text("Fahrenheit (°F)").tag(true)
