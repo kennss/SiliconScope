@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.8.2 — 2026-11-11
+
+**New setting: keep measuring while the window is hidden.** To save energy,
+SiliconScope measures only what the menu bar and alerts show while its window is
+covered, minimized or closed, so the window's charts have a gap for that time. Turn
+on **Settings → Keep measuring while the window is hidden** to keep every chart
+continuous. It is off by default; on, a hidden window uses about one percent more of a
+CPU core. ([#90](https://github.com/kennss/SiliconScope/issues/90), @Borda)
+
+Agents unchanged: Linux **1.5.3**, Mac **1.4.2**.
+
 ## v4.8.1 — 2026-11-02
 
 **Fixes**
