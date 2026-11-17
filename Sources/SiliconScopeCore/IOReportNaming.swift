@@ -1,7 +1,7 @@
 //
 //  File:      IOReportNaming.swift
 //  Created:   2026-08-10
-//  Updated:   2026-08-10
+//  Updated:   2026-11-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The IOReport conventions every sampler shares — how it spells its names, and the
 //             sentinel value of its "Simple" format. Apple prefixes group and channel names with a
@@ -17,6 +17,9 @@
 //             is the only shape Apple has used. This deliberately does NOT try to recognise which
 //             tokens are die ids: enumerating them would be guessing at names we have never seen,
 //             and the anchor (a leading space) is what makes the match safe without that guess.
+//             Both also accept the name behind an exact `DIE_<digits>_` prefix, which M3 Ultra on
+//             macOS 27 uses for one set of channels per die with no bare spelling beside them
+//             ("DIE_0_CPU Energy", "DIE_1_EACC_CPU", "DIE_1_ANE0", "DIE_1_PCPU1").
 //             `sanitizeSimpleValue` is the OTHER shared convention: an IOReport "Simple" channel
 //             it has no reading for this period is filled with `INT64_MIN`, which summed as a real
 //             value swamps the whole rail (one dead lane yields `Double(Int.min)` ≈ -9.2e18). The
@@ -31,14 +34,26 @@ public enum IOReportNaming {
     /// True when `name` is exactly `unit`, or is `unit` preceded by a chip-id/die token.
     /// `isUnit("DIE0 CPU Energy", "CPU Energy")` → true; `isUnit("GPU Energy", "CPU Energy")` → false.
     public static func isUnit(_ name: String, _ unit: String) -> Bool {
-        name == unit || name.hasSuffix(" " + unit)
+        name == unit || name.hasSuffix(" " + unit) || droppingDiePrefix(name) == unit
     }
 
     /// True when `name` begins with `unitPrefix`, or carries it immediately after a chip-id/die
     /// token. `hasUnitPrefix("DIE0 GPU0", "GPU")` → true; `hasUnitPrefix("AGPU", "GPU")` → false
     /// (no separator, so it is a different unit, not a prefixed one).
     public static func hasUnitPrefix(_ name: String, _ unitPrefix: String) -> Bool {
-        name.hasPrefix(unitPrefix) || name.range(of: " " + unitPrefix) != nil
+        name.hasPrefix(unitPrefix)
+            || name.range(of: " " + unitPrefix) != nil
+            || droppingDiePrefix(name).hasPrefix(unitPrefix)
+    }
+
+    /// The name with an exact `DIE_<ASCII digits>_` prefix removed, or unchanged when it has none.
+    /// `droppingDiePrefix("DIE_1_PCPU1")` → "PCPU1"; `droppingDiePrefix("DIE_ECPU")` → "DIE_ECPU".
+    public static func droppingDiePrefix(_ name: String) -> String {
+        guard name.hasPrefix("DIE_") else { return name }
+        let rest = name.dropFirst("DIE_".count)
+        let digits = rest.prefix { $0.isASCII && $0.isNumber }
+        guard !digits.isEmpty, rest.dropFirst(digits.count).first == "_" else { return name }
+        return String(rest.dropFirst(digits.count + 1))
     }
 
     /// The trailing space-separated token — the unit itself, with any leading chip-id token

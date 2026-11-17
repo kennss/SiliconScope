@@ -1,7 +1,7 @@
 //
 //  File:      CPUSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-06-08
+//  Updated:   2026-11-16
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads per-cluster CPU usage and average clock (E vs P) sudolessly.
 //             Usage uses host_processor_info CPU ticks (busy / total per core, averaged
@@ -136,7 +136,9 @@ public final class CPUSampler {
                 return Int32(kKtopIOReportIterOk)
             }
 
-            let name = nameRef as String
+            // M3 Ultra on macOS 27 names each die's clusters `DIE_0_ECPU`, `DIE_1_PCPU1`, …; both
+            // dies feed the same residency-weighted average.
+            let name = IOReportNaming.droppingDiePrefix(nameRef as String)
             // Residency channels are named per CLUSTER, and the names differ by generation:
             // `ECPU` / `PCPU` / `PCPU1` on M1–M4, and on M5 Max `PCPU` (perflevel 0, "Super") with
             // `MCPU0` / `MCPU1` (perflevel 1, "Performance"). Matching only `ECPU` left the M5
