@@ -36,6 +36,14 @@ because people measured on their own hardware carefully enough that nothing had 
   project has ever had readings from. His two fans and 47 sensors confirmed the Intel fan and `sp78`
   temperature path, and his suggestions for naming Intel's SMC keys were checked against VirtualSMC's
   key list and adopted where every model agrees ([#69](https://github.com/kennss/SiliconScope/issues/69)).
+- **[@SpencerCurtis](https://github.com/SpencerCurtis)** — M3 Ultra, **diagnosed and fixed**. On
+  macOS 27 its two dies name every channel with a `DIE_0_`/`DIE_1_` prefix and no bare spelling
+  beside it, so CPU clocks read 0 MHz, CPU power 0 W and the ANE row stayed blank. He taught the
+  shared naming rule that prefix and nothing looser, with tests built from the rail names read off
+  his Studio, including the per-core, SRAM and fabric rails that must stay out of the sums
+  ([#92](https://github.com/kennss/SiliconScope/pull/92)). Then the first M3 sensor readings: idle,
+  all-CPU and GPU-only loads per key group, which confirmed the table's CPU/GPU split and set out
+  exactly what it can't yet tell ([#93](https://github.com/kennss/SiliconScope/issues/93)).
 
 ## Wrote parts of the app
 

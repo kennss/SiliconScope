@@ -73,12 +73,12 @@ been checked on real hardware since:
 |---|---|---|---|
 | M1 | M1 Max | the whole table | — |
 | M2 | M2 Max ([#57](https://github.com/kennss/SiliconScope/issues/57)) | CPU keys present and following load; GPU keys plausible in ten of ten runs | CPU keys intermittently read a constant 6.7 °C (now rejected); GPU not loaded; memory keys unchecked |
-| M3 | — | nothing yet | **every M3 chip** |
+| M3 | M3 Ultra ([#93](https://github.com/kennss/SiliconScope/issues/93)) | 22 of 24 keys read; under load the GPU keys rise about 7× more for the GPU than for the CPU, so the CPU/GPU split holds | E vs P cores, and which key is which core; `Tf0D`/`Tf4D` absent (10 P cores per die); the second die's sensors aren't in the table; base M3, M3 Pro, M3 Max unchecked |
 | M4 | M4 Max ([#6](https://github.com/kennss/SiliconScope/issues/6)), base M4 ([#58](https://github.com/kennss/SiliconScope/pull/58)) | M4 Pro/Max GPU 1–2 keys; base-M4 CPU keys read and rise under load | base M4: the table has 8 P-core keys, the chip has 4 P cores, so the labels are wrong |
 | M5 | M5 Max ([#58](https://github.com/kennss/SiliconScope/pull/58)) | all 18 CPU keys under load; memory key | GPU keys read but were not loaded; `Tg1g` absent |
 | A18 Pro | — | recognised, no curated keys ([#12](https://github.com/kennss/SiliconScope/issues/12)) | the whole table |
 
-If you have one of the open chips — especially any M3, a base M4, or a GPU load on an M5 — please
+If you have one of the open chips — especially a base M3, M3 Pro or M3 Max, a base M4, or a GPU load on an M5 — please
 confirm or correct them.
 
 ### How to verify your chip (one command)
