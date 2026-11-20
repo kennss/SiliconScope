@@ -1,14 +1,14 @@
 //
 //  File:      LoadedRecording.swift
 //  Created:   2026-06-25
-//  Updated:   2026-11-02
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  An in-memory, parsed .ssrec ready for replay: the meta, the frames, and a per-frame
 //             table of the PATH-DEPENDENT derived scalars (the four decaying peaks + memory rates)
 //             that can't be recovered from a trailing window. Precomputed once at load via the
-//             shared MetricsEngine, so seeking to any frame is O(1) for scalars and O(60) to rebuild
-//             the sparkline history window — smooth even on multi-hour recordings.
-//  Notes:     The 60-sample sparkline History is NOT stored per frame (would be huge); it is rebuilt
+//             shared MetricsEngine, so seeking to any frame is O(1) for scalars and O(History.capacity) to
+//             rebuild the chart history window — smooth even on multi-hour recordings.
+//  Notes:     The rolling chart History is NOT stored per frame (would be huge); it is rebuilt
 //             on demand from the trailing frames via historyWindow(upTo:). index(forTime:) binary-
 //             searches the frame timestamps. Pure value type.
 //
@@ -54,13 +54,13 @@ public struct LoadedRecording: Sendable {
         return result
     }
 
-    /// Rebuilds the rolling sparkline history (≤60 samples) as it stood at `index` by replaying
-    /// only the trailing window through a fresh History — O(60), independent of recording length.
+    /// Rebuilds the rolling chart history (≤ `History.capacity` samples) as it stood at `index` by
+    /// replaying only the trailing window through a fresh History — independent of recording length.
     public func historyWindow(upTo index: Int) -> MetricsEngine.History {
         var h = MetricsEngine.History()
         guard !frames.isEmpty else { return h }
         let end = min(max(index, 0), frames.count - 1)
-        let start = max(0, end - 59)
+        let start = max(0, end - (MetricsEngine.History.capacity - 1))
         for i in start...end { h.push(frames[i].snapshot) }
         return h
     }

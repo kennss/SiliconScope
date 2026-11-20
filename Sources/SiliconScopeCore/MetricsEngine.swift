@@ -17,8 +17,16 @@
 import Foundation
 
 public final class MetricsEngine {
-    /// Rolling time-series for sparklines (last ~60 samples per series).
+    /// Rolling time-series for the charts: the last `capacity` samples per series.
     public struct History: Sendable {
+        /// Samples kept per series. Bar charts draw as many of the most recent as fit their width
+        /// at a fixed bar pitch, so a wide chart needs more than a line chart's minute.
+        public static let capacity = 150
+        /// Samples a LINE chart draws: the last minute at the default 1 s refresh. Line charts
+        /// stretch whatever they are given across their width, so they take a fixed window
+        /// rather than the whole buffer — which keeps their time span, and the "· 60s" captions,
+        /// unchanged by `capacity`.
+        public static let lineWindow = 60
         public var soc: [Double] = []
         public var pCPU: [Double] = []         // 0...1
         public var eCPU: [Double] = []         // 0...1
@@ -91,7 +99,7 @@ public final class MetricsEngine {
         }
         private func roll(_ series: inout [Double], _ value: Double) {
             series.append(value)
-            if series.count > 60 { series.removeFirst(series.count - 60) }
+            if series.count > Self.capacity { series.removeFirst(series.count - Self.capacity) }
         }
     }
 

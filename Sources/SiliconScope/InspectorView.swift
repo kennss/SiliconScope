@@ -71,7 +71,7 @@ struct InspectorView: View {
                     .font(Theme.font(.headline, .strong))
                 if let d {
                     HStack(spacing: Space.row) {
-                        Text("pid \(d.pid)").font(Theme.font(.detail)).foregroundStyle(Theme.dim)
+                        Text(verbatim: "pid \(d.pid)").font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                         if d.uptime > 0 {
                             Text("· up \(uptime(d.uptime))").font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                         }

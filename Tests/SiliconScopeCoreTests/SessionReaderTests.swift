@@ -1,7 +1,7 @@
 //
 //  File:      SessionReaderTests.swift
 //  Created:   2026-06-25
-//  Updated:   2026-11-02
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Tests for SessionReader / LoadedRecording — load + per-frame derived precompute
 //             (peak fold via MetricsEngine), index(forTime:) binary search, historyWindow trailing
@@ -84,10 +84,12 @@ final class SessionReaderTests: XCTestCase {
     func testHistoryWindow() throws {
         let url = tempURL()
         var datas = [try enc.encode(meta())]
-        for i in 0..<70 { datas.append(try enc.encode(frame(t: Double(i), bandwidth: 0))) }
+        let cap = MetricsEngine.History.capacity
+        for i in 0..<(cap + 10) { datas.append(try enc.encode(frame(t: Double(i), bandwidth: 0))) }
         try writeLines(datas, to: url)
         let rec = try SessionReader.load(url)
-        XCTAssertEqual(rec.historyWindow(upTo: 69).bandwidth.count, 60)   // trailing 60
+        // Replay rebuilds the same window live keeps, so its bar charts show the same past.
+        XCTAssertEqual(rec.historyWindow(upTo: cap + 9).bandwidth.count, cap)
         XCTAssertEqual(rec.historyWindow(upTo: 5).bandwidth.count, 6)     // frames 0...5
     }
 

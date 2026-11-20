@@ -1,11 +1,11 @@
 //
 //  File:      MetricsEngineTests.swift
 //  Created:   2026-06-25
-//  Updated:   2026-11-02
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Locks the behavior of MetricsEngine — the derivation extracted from
 //             SiliconScopeMonitor so live and replay share identical logic. Verifies the
-//             decaying-peak fold (+ floors), GPU-clock peak (no floor), history roll-to-60,
+//             decaying-peak fold (+ floors), GPU-clock peak (no floor), history roll-to-capacity,
 //             memory-rate deltas over dt (and first-frame/dt=0/reset = 0), and the throttle /
 //             memory-risk verdicts. These are the parity guarantees the live↔replay split rests on.
 //
@@ -49,10 +49,11 @@ final class MetricsEngineTests: XCTestCase {
         XCTAssertEqual(e.gpuClockPeakMHz, 999, accuracy: 0.01)
     }
 
-    func testHistoryRollsTo60() {
+    func testHistoryRollsToCapacity() {
         let e = MetricsEngine(topology: nil)
-        for _ in 0..<70 { e.ingest(snap(gpuUsage: 0.5), dt: 1) }
-        XCTAssertEqual(e.history.gpu.count, 60)
+        let cap = MetricsEngine.History.capacity
+        for _ in 0..<(cap + 10) { e.ingest(snap(gpuUsage: 0.5), dt: 1) }
+        XCTAssertEqual(e.history.gpu.count, cap)
     }
 
     // First frame has no predecessor → rate 0; second computes delta / dt.

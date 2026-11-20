@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarMetric.swift
 //  Created:   2026-06-19
-//  Updated:   2026-11-02
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  iStat-style menu-bar glyph renderers and the per-metric dropdown panels. Glyphs are
 //             drawn to NSImage (the only reliable way to render a live status-item label) and adapt
@@ -55,50 +55,66 @@ enum MenuBarGlyph {
         return colW
     }
 
-    /// Stacked label + a line-and-area trace of the recent window, ONE LINE PER SERIES. Values are
-    /// already normalised to 0...1 by the caller.
+    /// How a `barGraph` lays out its series.
+    enum BarGraphLayout {
+        /// One band per series, stacked top to bottom in the order given.
+        case bands
+        /// Exactly two series around a centre baseline: the first rises above it, the second hangs
+        /// below — upload/download, write/read, as the dashboard draws them.
+        case mirrored
+    }
+
+    /// Stacked label + dense bars of the recent window, one bar per sample, newest at the right.
+    /// Values are already normalised to 0...1 by the caller.
     ///
-    /// Replaces the bar histogram this mode used to draw. Line + area is SiliconScope's chart form
-    /// on every other surface (docs/design-system.md §5.3 keeps it deliberately, and rejects
-    /// iStat's histogram), and — the reason it matters here — **lines compose**: ↓ and ↑ read
-    /// clearly in ONE glyph, where two bar charts would have to be two menu-bar items.
-    static func line(label: String, series: [(values: [Double], color: NSColor)], dark: Bool) -> NSImage {
+    /// Bars, as on the dashboard and in the dropdowns (docs/design-system.md §5.3, revised
+    /// 2026-11-20): a bar is one sample, where a line drew a slope through values never read.
+    /// Bars cannot overlap without hiding each other, so several series get a band each, and a
+    /// rate pair shares one baseline instead. A gap (`.nan`, a tick not measured) draws nothing;
+    /// a measured value never draws less than one pixel, so "zero" and "not measured" differ.
+    static func barGraph(label: String, series: [(values: [Double], color: NSColor)],
+                         layout: BarGraphLayout, dark: Bool) -> NSImage {
         let ink = dark ? NSColor.white : NSColor.black
         let labelW = stackedLabelWidth(label)
-        let gap: CGFloat = 2.5, chartW: CGFloat = 30, inset: CGFloat = 1.5
+        let gap: CGFloat = 2.5, chartW: CGFloat = 30
         let width = ceil(labelW + gap + chartW) + 1
         let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             let w = drawStackedLabel(label, ink: ink)
             let originX = w + gap
-            // Baseline: an idle machine draws a flat line ON something, so an empty chart reads as
-            // "nothing happening" rather than as a rendering failure.
-            ink.withAlphaComponent(0.16).setFill()
-            NSBezierPath(rect: NSRect(x: originX, y: 0, width: chartW, height: 0.75)).fill()
+            // Pixel grid of the context being drawn into (2 on Retina), so bars stay crisp.
+            let scale = NSGraphicsContext.current?.cgContext.userSpaceToDeviceSpaceTransform.a ?? 2
+            let px = 1 / max(scale, 1)
+            let barW = max(px, (1.0 * scale).rounded() / scale)          // ~1 pt
+            let pitch = barW + max(px, (0.5 * scale).rounded() / scale)  // + ~0.5 pt gap
+            let fit = max(1, Int((chartW + pitch - barW) / pitch))
 
-            for s in series {
-                let vals = Array(s.values.suffix(30))
-                guard vals.count > 1 else { continue }
-                let stepX = chartW / CGFloat(vals.count - 1)
-                func point(_ i: Int) -> NSPoint {
-                    let v = min(1, max(0, vals[i]))
-                    return NSPoint(x: originX + CGFloat(i) * stepX,
-                                   y: inset + CGFloat(v) * (height - inset * 2))
+            func drawBars(_ values: [Double], _ color: NSColor, baseline: CGFloat, extent: CGFloat) {
+                // A faint baseline, so an idle band reads as "nothing happening", not as missing.
+                ink.withAlphaComponent(0.16).setFill()
+                NSBezierPath(rect: NSRect(x: originX, y: extent < 0 ? baseline - px : baseline,
+                                          width: chartW, height: px)).fill()
+                color.setFill()
+                for (k, v) in values.suffix(fit).reversed().enumerated() where v.isFinite {
+                    let x = originX + chartW - barW - CGFloat(k) * pitch
+                    let h = max(px, (CGFloat(min(1, max(0, v))) * abs(extent) * scale).rounded() / scale)
+                    NSBezierPath(rect: NSRect(x: x, y: extent < 0 ? baseline - h : baseline,
+                                              width: barW, height: h)).fill()
                 }
-                let trace = NSBezierPath()
-                trace.move(to: point(0))
-                for i in 1..<vals.count { trace.line(to: point(i)) }
-                // Area first, then the line over it: at 18 pt a bare 1 pt stroke is too thin to
-                // read at a glance, and the fill is what gives the glyph its weight.
-                let area = trace.copy() as! NSBezierPath
-                area.line(to: NSPoint(x: originX + chartW, y: 0))
-                area.line(to: NSPoint(x: originX, y: 0))
-                area.close()
-                s.color.withAlphaComponent(0.24).setFill()
-                area.fill()
-                s.color.setStroke()
-                trace.lineWidth = 1
-                trace.lineJoinStyle = .round
-                trace.stroke()
+            }
+
+            switch layout {
+            case .mirrored where series.count == 2:
+                let mid = (height / 2 * scale).rounded() / scale
+                drawBars(series[0].values, series[0].color, baseline: mid, extent: height - mid)
+                drawBars(series[1].values, series[1].color, baseline: mid, extent: -mid)
+            default:
+                let n = max(1, series.count)
+                let bandGap: CGFloat = n > 1 ? 1 : 0
+                let band = (height - bandGap * CGFloat(n - 1)) / CGFloat(n)
+                for (i, s) in series.enumerated() {
+                    let bottom = height - CGFloat(i + 1) * band - CGFloat(i) * bandGap
+                    drawBars(s.values, s.color, baseline: bottom, extent: band)
+                }
             }
             return true
         }
@@ -323,21 +339,22 @@ func tempGlyphValue(_ celsius: Double, _ fahrenheit: Bool) -> String {
     return String(format: "%.0f°", fahrenheit ? celsius * 9.0 / 5.0 + 32.0 : celsius)
 }
 
+/// The kernel's memory pressure level in the words the dashboard uses ("Elevated", as its Mem row
+/// and the warning banner say).
+func pressureLevel(_ level: MemorySample.Pressure) -> String {
+    switch level {
+    case .normal:   return "Normal"
+    case .warning:  return "Elevated"
+    case .critical: return "Critical"
+    }
+}
+
 /// VM page rate for the PAGES panel ("0/s", "1.2K/s").
 func pagesRate(_ pagesPerSec: Double) -> String {
     pagesPerSec >= 1000 ? String(format: "%.1fK/s", pagesPerSec / 1000) : String(format: "%.0f/s", pagesPerSec)
 }
 
 // MARK: - Shared dropdown components
-
-/// Small faint caption above a history sparkline so it's not a mystery line.
-struct GraphCaption: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text).font(Theme.font(.caption)).foregroundStyle(Theme.faint)
-    }
-}
 
 struct MenuKV: View {
     let label: String, value: String
@@ -432,6 +449,45 @@ struct MenuMeterRow: View {
     NotificationCenter.default.post(name: .openSiliconScopeSettings, object: nil)
 }
 
+/// The top of the process table for a dropdown, folded by app (ProcessGrouping): a summary of
+/// what is busy, so Chrome's helpers are one "Google Chrome ×5" row instead of the whole list.
+/// One list for every dropdown, so names cut the same way everywhere — at the end, with the full
+/// name on hover.
+struct TopAppsList: View {
+    enum Measure { case cpu, memory }
+    let processes: [ProcessRow]
+    let measure: Measure
+    var limit = 5
+
+    var body: some View {
+        let groups = ProcessGrouping.groups(processes)   // busiest by CPU first
+        let ranked = measure == .cpu ? groups : groups.sorted { $0.memoryBytes > $1.memoryBytes }
+        if ranked.isEmpty {
+            Text("—").font(Theme.font(.body)).foregroundStyle(Theme.dim)
+        }
+        ForEach(Array(ranked.prefix(limit))) { g in
+            HStack(spacing: Space.row) {
+                Text(g.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
+                    .lineLimit(1).truncationMode(.tail)
+                if g.count > 1 {
+                    Text(verbatim: "×\(g.count)").font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+                }
+                Spacer(minLength: 0)
+                switch measure {
+                case .cpu:
+                    Text(String(format: "%.0f%%", g.cpuPercent))
+                        .font(Theme.font(.body, .strong))
+                        .foregroundStyle(Theme.heat(min(1, g.cpuPercent / 100)))
+                case .memory:
+                    Text(memSize(g.memoryBytes))
+                        .font(Theme.font(.body, .strong)).foregroundStyle(Theme.dim)
+                }
+            }
+            .help(g.count > 1 ? "\(g.name) — \(g.count) processes" : g.name)
+        }
+    }
+}
+
 /// Centered accent section header, iStat-style.
 struct MenuSectionHeader: View {
     let title: String
@@ -461,48 +517,24 @@ struct CPUMenuDropdown: View {
         let p = Color(nsColor: MetricPalette.pCPU)
         VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("CPU")
-            coreRow("E-cores", s.cpu.eUsage, s.cpu.eUsagePercent, s.cpu.eFreqMHz, e)
-            coreRow("P-cores", s.cpu.pUsage, s.cpu.pUsagePercent, s.cpu.pFreqMHz, p)
-            GraphCaption("E (amber) / P (blue) usage · 60s")
-            Sparkline([Trace(monitor.history.eCPU, e), Trace(monitor.history.pCPU, p)],
-                      role: .inline(height: Layout.Meter.sparklineDropdown, axis: .fraction))
+            // The same wells as the dashboard's CPU card: one per cluster, its reading in the
+            // label strip and its newest bar as the meter.
+            WellChart(values: monitor.history.eCPU, color: e, label: "E-cores",
+                      value: String(format: "%.0f%%  %.0f MHz", s.cpu.eUsagePercent, s.cpu.eFreqMHz))
+                .frame(height: Layout.Meter.wellDropdown)
+            WellChart(values: monitor.history.pCPU, color: p, label: "P-cores",
+                      value: String(format: "%.0f%%  %.0f MHz", s.cpu.pUsagePercent, s.cpu.pFreqMHz))
+                .frame(height: Layout.Meter.wellDropdown)
             kv("Temperature", formatTemperature(s.temperature.cpuCelsius, fahrenheit: fahrenheit))
             kv("Load avg", SystemInfo.loadAverageString())
             kv("Uptime", SystemInfo.uptimeString())
             Divider()
-            MenuSectionHeader("Top Processes")
-            ForEach(Array(s.processes.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5))) { proc in
-                HStack(spacing: Space.row) {
-                    Text(proc.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
-                        .lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 0)
-                    Text(String(format: "%.0f%%", proc.cpuPercent))
-                        .font(Theme.font(.body, .strong))
-                        .foregroundStyle(Theme.heat(min(1, proc.cpuPercent / 100)))
-                }
-            }
+            MenuSectionHeader("Top by CPU")
+            TopAppsList(processes: s.processes, measure: .cpu)
             Divider()
             MenuActionsFooter()
         }
         .padding(.horizontal, Space.section).padding(.vertical, Space.card).frame(width: Layout.Surface.dropdownWidth).background(Theme.bg).foregroundStyle(Theme.text)
-    }
-
-    private func coreRow(_ label: String, _ v: Double, _ pct: Double, _ mhz: Double, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: Space.hair) {
-            HStack(spacing: Space.row) {
-                Text(label).font(Theme.font(.body)).foregroundStyle(Theme.text)
-                Spacer(minLength: 0)
-                Text(String(format: "%.0f%%", pct)).font(Theme.font(.detail)).foregroundStyle(Theme.dim)
-                Text(String(format: "%.0f MHz", mhz)).font(Theme.font(.detail))
-                    .foregroundStyle(Theme.faint).frame(width: Layout.Column.frequency, alignment: .trailing)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.06))
-                    Capsule().fill(color).frame(width: max(2, geo.size.width * min(1, max(0, v))))
-                }
-            }.frame(height: Layout.Meter.bar)
-        }
     }
 
     private func kv(_ label: String, _ value: String) -> some View {
@@ -581,26 +613,28 @@ struct GPUMenuDropdown: View {
         let s = monitor.snapshot
         VStack(alignment: .leading, spacing: Space.tight) {
             MenuSectionHeader("GPU / Media / Neural")
-            MenuMeterRow(label: "GPU",
-                         value: String(format: "%.0f%%  ", s.gpu.usagePercent) + s.power.gpuText()
-                             + String(format: "  %.0f MHz", s.gpu.freqMHz),
-                         fraction: s.gpu.usage, color: MetricPalette.gpuC)
-            MenuMeterRow(label: "GPU memory",
-                         value: String(format: "%.1f GB in use", s.gpu.inUseMemoryGB),
-                         fraction: s.gpu.inUseMemoryFraction, color: MetricPalette.gpuMemC)
-            MenuMeterRow(label: "ANE est.",
-                         value: s.aneText(),
-                         fraction: s.aneFraction(peakWatts: monitor.anePeakWatts), color: MetricPalette.aneC)
-            MenuMeterRow(label: "Media",
-                         value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs),
-                         fraction: min(1, s.bandwidth.mediaGBs / max(monitor.mediaPeakGBs, 0.5)), color: MetricPalette.mediaC)
-            GraphCaption("GPU (green) / GPU mem (cyan) / ANE (purple) / Media (orange) · 60s")
-            // All four normalized to 0...1 (each against its tracked peak) so one axis serves them.
-            Sparkline([Trace(monitor.history.gpu, MetricPalette.gpuC),
-                       Trace(monitor.history.gpuMem, MetricPalette.gpuMemC),
-                       Trace(monitor.history.aneSeries(measured: s.ane != nil, peakWatts: monitor.anePeakWatts), MetricPalette.aneC),
-                       Trace(monitor.history.media.map { $0.scaledToCeiling(max(monitor.mediaPeakGBs, 0.5)) }, MetricPalette.mediaC)],
-                      role: .inline(height: Layout.Meter.sparklineDropdown, axis: .fraction))
+            // The dashboard card's wells, stacked: a dropdown is too narrow to share one row three
+            // ways — the labels cut to "M…" and an idle engine's one-pixel bars read as missing.
+            // Tighter than the panel's own spacing: four wells of one subject read as one block,
+            // at the density of the other dropdowns.
+            VStack(spacing: Space.hair) {
+                WellChart(values: monitor.history.gpu, color: MetricPalette.gpuC, label: "GPU",
+                          value: String(format: "%.0f%%  ", s.gpu.usagePercent) + s.power.gpuText()
+                              + String(format: "  %.0f MHz", s.gpu.freqMHz))
+                    .frame(height: Layout.Meter.wellDropdown)
+                WellChart(values: monitor.history.gpuMem, color: MetricPalette.gpuMemC, label: "GPU memory",
+                          value: String(format: "%.1f GB in use", s.gpu.inUseMemoryGB))
+                    .frame(height: Layout.Meter.wellCompact)
+                // Measured residency where there is one; otherwise ANE power against its peak.
+                WellChart(values: monitor.history.aneSeries(measured: s.ane != nil, peakWatts: monitor.anePeakWatts),
+                          color: MetricPalette.aneC, label: s.ane != nil ? "Neural Engine" : "Neural Engine est.",
+                          value: s.aneText())
+                    .frame(height: Layout.Meter.wellCompact)
+                WellChart(values: monitor.history.media.map { $0.scaledToCeiling(max(monitor.mediaPeakGBs, 0.5)) },
+                          color: MetricPalette.mediaC, label: "Media Engine",
+                          value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs))
+                    .frame(height: Layout.Meter.wellCompact)
+            }
             Divider()
             MenuActionsFooter()
         }
@@ -650,7 +684,9 @@ struct MEMMenuDropdown: View {
             Divider()
             MenuSectionHeader("Pressure")
             MenuStackedBar(segments: [(m.pressurePercent / 100, pressureColor)])
-            MenuKV(label: "Pressure", value: String(format: "%.0f%%", m.pressurePercent), color: pressureColor)
+            // The row under the PRESSURE header names the kernel's level rather than repeating
+            // "Pressure": the colour is that level, and the dashboard's Mem row says the same word.
+            MenuKV(label: pressureLevel(m.pressure), value: String(format: "%.0f%%", m.pressurePercent), color: pressureColor)
             MenuKV(label: "App Memory", value: memSize(m.appMemoryBytes))
             MenuKV(label: "Cached Files", value: memSize(m.cachedFilesBytes))
 
@@ -675,19 +711,8 @@ struct MEMMenuDropdown: View {
 
             Divider()
             MenuSectionHeader("Top by Memory")
-            let topMem = Dictionary(grouping: monitor.snapshot.processes, by: \.name)
-                .map { (name: $0.key, bytes: $0.value.reduce(UInt64(0)) { $0 + $1.memoryBytes }) }
-                .sorted { $0.bytes > $1.bytes }
-                .prefix(5)
-            ForEach(Array(topMem), id: \.name) { entry in
-                HStack(spacing: Space.row) {
-                    Text(entry.name).font(Theme.font(.body)).foregroundStyle(Theme.text)
-                        .lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 0)
-                    Text(memSize(entry.bytes))
-                        .font(Theme.font(.body, .strong)).foregroundStyle(Theme.dim)
-                }
-            }
+                .help("An app's memory is the sum of its processes' resident sizes. Pages they share count once per process, so the total reads high.")
+            TopAppsList(processes: monitor.snapshot.processes, measure: .memory)
             Divider()
             MenuActionsFooter()
         }
@@ -710,16 +735,11 @@ struct NETMenuDropdown: View {
             NetworkAddressesView(network: n)
             Divider()
             MenuKV(label: "↓ Download", value: formatRate(n.downloadBytesPerSec), color: MetricPalette.downC)
-            Sparkline(monitor.history.netDown, color: MetricPalette.downC, role: .inline(height: Layout.Meter.sparklinePair))
             MenuKV(label: "↑ Upload", value: formatRate(n.uploadBytesPerSec), color: MetricPalette.upC)
-            Sparkline(monitor.history.netUp, color: MetricPalette.upC, role: .inline(height: Layout.Meter.sparklinePair))
-            HStack {
-                Text("Peak ↓ \(formatRate(monitor.history.netDown.withoutGaps.max() ?? 0))")
-                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
-                Spacer()
-                Text("Peak ↑ \(formatRate(monitor.history.netUp.withoutGaps.max() ?? 0))")
-                    .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
-            }
+            // Upload above, download below one baseline; the chart prints each side's peak.
+            MirroredWellChart(up: monitor.history.netUp, down: monitor.history.netDown,
+                              upColor: MetricPalette.upC, downColor: MetricPalette.downC)
+                .frame(height: Layout.Meter.mirrored)
             Divider()
             MenuActionsFooter(focusSettingsOnOpen: true)
         }
@@ -759,9 +779,11 @@ struct SSDMenuDropdown: View {
             Divider()
             MenuSectionHeader("Activity")
             MenuKV(label: "Read", value: formatRate(d.readBytesPerSec), color: MetricPalette.downC)
-            Sparkline(monitor.history.diskRead, color: MetricPalette.downC, role: .inline(height: Layout.Meter.sparklinePair))
             MenuKV(label: "Write", value: formatRate(d.writeBytesPerSec), color: MetricPalette.upC)
-            Sparkline(monitor.history.diskWrite, color: MetricPalette.upC, role: .inline(height: Layout.Meter.sparklinePair))
+            // Write above, read below — the same sides and colours as upload and download.
+            MirroredWellChart(up: monitor.history.diskWrite, down: monitor.history.diskRead,
+                              upColor: MetricPalette.upC, downColor: MetricPalette.downC)
+                .frame(height: Layout.Meter.mirrored)
             Divider()
             MenuActionsFooter(focusSettingsOnOpen: true)
         }
@@ -837,7 +859,8 @@ struct SensorsMenuDropdown: View {
             HStack {
                 MenuSectionHeader("Fans")
                 if thermal.hasFans {
-                    Text(thermal.pressure.rawValue.capitalized)
+                    // Labelled: a bare "Nominal" beside FANS did not say what was nominal.
+                    Text("Thermal \(thermal.pressure.rawValue)")
                         .font(Theme.font(.caption)).foregroundStyle(Theme.faint)
                 }
             }

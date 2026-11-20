@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarItemRenderer.swift
 //  Created:   2026-07-27
-//  Updated:   2026-09-24
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Turns a `MenuBarItemConfig` into the three things a status item needs: its glyph
 //             image, the cheap signature that decides whether the glyph must be re-rasterized, and
@@ -44,9 +44,13 @@ enum MenuBarItemRenderer {
                                      dark: dark)
 
         case .graph:
-            return MenuBarGlyph.line(label: config.metric.glyphLabel,
-                                     series: graphSeries(config, m).map { ($0.values, $0.color) },
-                                     dark: dark)
+            let layout = barLayout(config.channels)
+            var series = Array(zip(config.channels, graphSeries(config, m)))
+            // Mirrored: the outgoing direction goes above the baseline whatever order it was configured in.
+            if layout == .mirrored { series.sort { isOutgoing($0.0) && !isOutgoing($1.0) } }
+            return MenuBarGlyph.barGraph(label: config.metric.glyphLabel,
+                                         series: series.map { ($0.1.values, $0.1.color) },
+                                         layout: layout, dark: dark)
 
         case .twoLine:
             let rows = resolvedRows(config, m)
@@ -254,6 +258,20 @@ enum MenuBarItemRenderer {
                                         : entry.values.map { $0.isFinite ? 0.0 : .nan }
             return GraphSeries(values: scaled, color: color(entry.channel))
         }
+    }
+
+    /// A rate pair shares one baseline — the outgoing direction above, the incoming below, as on
+    /// the dashboard — and `graphSeries` already scales the pair against one shared peak, so the
+    /// two halves stay comparable. Anything else gets a band per series, in the configured order.
+    static func barLayout(_ channels: [DataChannel]) -> MenuBarGlyph.BarGraphLayout {
+        let set = Set(channels)
+        return channels.count == 2 && (set == [.networkUp, .networkDown] || set == [.diskWrite, .diskRead])
+            ? .mirrored : .bands
+    }
+
+    /// Upload and write: drawn above a mirrored chart's baseline.
+    private static func isOutgoing(_ channel: DataChannel) -> Bool {
+        channel == .networkUp || channel == .diskWrite
     }
 
     /// True when the channel has no ceiling of its own and must be scaled against the window.

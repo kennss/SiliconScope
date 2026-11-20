@@ -334,7 +334,7 @@ struct DashboardView: View {
                                 .hideable(.accelerators)
                         }
                     }
-                    .frame(height: Layout.Row.graphed)   // fixed: the fill-graph absorbs content changes (shrinks/grows) so the card size stays put
+                    .frame(height: Layout.Row.wells)   // fixed: the wells absorb content changes so the card size stays put
                 }
 
                 if shows(.memoryBandwidth, .networkDisk) {
@@ -457,6 +457,18 @@ private struct HeaderView: View {
     let topology: CPUTopology?
     let power: PowerSample
     let battery: BatteryInfo
+
+    /// SF Symbols' battery levels, nearest quarter; the bolt variant while charging.
+    private var batterySymbol: String {
+        if battery.isCharging { return "battery.100percent.bolt" }
+        switch battery.percent {
+        case 88...:   return "battery.100percent"
+        case 63..<88: return "battery.75percent"
+        case 38..<63: return "battery.50percent"
+        case 13..<38: return "battery.25percent"
+        default:      return "battery.0percent"
+        }
+    }
     // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
     @ObservedObject private var menuBarItems = MenuBarItemsModel.shared
 
@@ -483,14 +495,17 @@ private struct HeaderView: View {
                 .help(figure.help ?? "")
             if battery.hasBattery {
                 HStack(spacing: Space.tight) {
-                    if battery.isCharging {
-                        Image(systemName: "bolt.fill").font(.system(size: Icon.small)).foregroundStyle(Theme.heat(0.2))
-                    }
-                    Text("\(Int(battery.percent.rounded()))%")
+                    // The percentage needs its own sign: the square after it is the menu-bar pin,
+                    // so without a battery glyph nothing on screen said what "80%" measured.
+                    Image(systemName: batterySymbol)
+                        .font(.system(size: Icon.large))
+                        .foregroundStyle(battery.isCharging ? Theme.heat(0.2) : Theme.dim)
+                    Text(verbatim: "\(Int(battery.percent.rounded()))%")
                         .font(Theme.font(.emphasis))
                         .foregroundStyle(battery.percent < 20 ? Theme.heat(1) : Theme.text)
                     MenuBarPin(isOn: menuBarItems.pin(.battery))
                 }
+                .help(battery.isCharging ? "Battery charge — charging" : "Battery charge")
             }
         }
         .padding(.horizontal, Space.tight)
@@ -580,17 +595,21 @@ private struct AIWorkloadCard: View {
         if activity.gpu {
             return (gpuActiveColor, snapshot.bandwidth.mediaGBs > 0.5 ? "GPU active — incl. video" : "GPU active")
         }
-        return (Theme.dim, "Idle")
+        // Says what was measured. "Idle" sat above a CPU row reading "active" and read as a
+        // contradiction; "No AI workload" would claim more than this verdict knows — it reads the
+        // accelerators and loaded models, so CPU-only inference would pass unseen.
+        return (Theme.dim, "GPU · ANE idle")
     }
 
     // CPU: throttled > active > idle. The top process is rendered separately (cpuRow) as an ACTIONABLE
     // element — describe the driver, and let the user act on it if they choose (never judge/suggest).
     private var cpuState: (Color, String) {
-        if cpuThrottling { return (alertColor, "Throttled") }
+        // Lower case, like the engine rows below it ("active" / "idle" / "throttled").
+        if cpuThrottling { return (alertColor, "throttled") }
         // Thresholds and their hysteresis live in `EngineActivity.Threshold`. They were 0.5 / 0.7
         // here — high enough that E-cores at 64 % with a process burning 199 % read as "Idle",
         // directly under the top process that said otherwise.
-        return activity.cpu ? (cpuActiveColor, "Active") : (Theme.dim, "Idle")
+        return activity.cpu ? (cpuActiveColor, "active") : (Theme.dim, "idle")
     }
 
     // The accelerator cluster is shown as three EXPLICIT engine rows (GPU / ANE / Media) so each is
@@ -631,6 +650,10 @@ private struct AIWorkloadCard: View {
             return (alertColor, "Swapping", String(format: "pressure %.0f%%", snapshot.memory.pressurePercent))
         case .tight:
             return (amberColor, "Pressure", String(format: "%.0f%%", snapshot.memory.pressurePercent))
+        case .ok where snapshot.memory.pressure == .warning:
+            // The kernel's own level, which the Memory card's border and the banner already use:
+            // with this row reading "Normal" beside an amber card, the screen said two things.
+            return (amberColor, "Elevated", String(format: "pressure %.0f%%", snapshot.memory.pressurePercent))
         case .ok:
             if bwFraction > 0.7 {
                 // BandwidthSampler's PMP-histogram fallback (see its file header) clamps
@@ -823,7 +846,7 @@ private struct AIRuntimeCard: View {
                             Double(runtime.primaryMemoryBytes) / Self.gb, runtime.cpuPercent(of: kind)))
                     .font(Theme.font(.detail)).foregroundStyle(Theme.dim)
                 if let port = runtime.ollamaEmbeddedPort {
-                    Text(":\(port)").font(Theme.font(.detail)).foregroundStyle(Theme.faint)
+                    Text(verbatim: ":\(port)").font(Theme.font(.detail)).foregroundStyle(Theme.faint)   // an identifier: no grouping
                 }
                 Spacer(minLength: 0)
             }
@@ -922,6 +945,7 @@ private struct AIRuntimeCard: View {
                 .font(Theme.font(.body, .strong))
                 .foregroundStyle(Theme.text)
                 .lineLimit(1).truncationMode(.tail)
+                .help(budgetHelp)
             Spacer(minLength: 0)
             if memoryRisk != .ok {
                 Text(memoryRisk.label)
@@ -934,21 +958,10 @@ private struct AIRuntimeCard: View {
     }
 
     private var budgetText: String {
-        let nowB = budget.fitsNow.first.map { String(format: "%.0fB", $0.maxParamsBillions) } ?? "—"
-        // A resident model is taking meaningful RSS ⇒ show both scenarios; else one value.
-        let hasResidentModel = budget.loadableBytes > budget.headroomNowBytes + (1 << 30)
-        if hasResidentModel, let load = budget.fitsLoadable.first {
-            let loadB = String(format: "%.0fB", load.maxParamsBillions)
-            return "+\(nowB) alongside · ~\(loadB) if you unload \(residentModelName) (Q4_K_M)"
-        }
-        return "largest model ~\(nowB) (Q4_K_M)"
+        budget.summary(residentModel: MemoryBudget.residentModelName(api: api, runtime: runtime))
     }
 
-    private var residentModelName: String {
-        if let name = api.primaryModel?.name { return name }
-        if let kind = runtime.primaryKind { return "\(kind.displayName) model" }
-        return "current model"
-    }
+    private var budgetHelp: String { budget.basisHelp }
 }
 
 // MARK: - Compute cards
@@ -974,11 +987,9 @@ private struct CPUCard: View {
         // throttle treatment) flags it, and a dim "P ceiling" line states the fact — clock vs the chip's
         // DVFS ceiling. Border = salience, line = the instrument reading.
         Card(title: "CPU", menuBarPin: menuBarItems.pin(.cpu), alert: throttling ? alertColor : nil) {
-            Bar(label: topology?.eLabel ?? "E-cores", value: cpu.eUsage,
-                detail: String(format: "%.0f%%  %.0f MHz", cpu.eUsagePercent, cpu.eFreqMHz), encoding: .identity(eColor))
-            Bar(label: topology?.pLabel ?? "P-cores", value: cpu.pUsage,
-                detail: String(format: "%.0f%%  %.0f MHz", cpu.pUsagePercent, cpu.pFreqMHz), encoding: .identity(pColor))
-
+            // No meter rows: each cluster's well carries its reading in its label strip, and its
+            // newest bar is the meter. The P-ceiling row stays — a different reading (clock vs the
+            // chip's top DVFS step) that appears only while throttled.
             if throttling {
                 Bar(label: "P ceiling", value: pMaxMHz > 0 ? cpu.pFreqMHz / pMaxMHz : 0,
                     detail: String(format: "%.0f / %.0f MHz · −%.0f%% (thermal)",
@@ -986,7 +997,13 @@ private struct CPUCard: View {
                     encoding: .identity(Theme.dim))
             }
         } graph: {
-            Sparkline([Trace(eHistory, eColor), Trace(pHistory, pColor)], role: .trend)
+            // One well per cluster: two series overlaid on one chart hid each other.
+            VStack(spacing: Space.hair) {
+                WellChart(values: eHistory, color: eColor, label: topology?.eLabel ?? "E-cores",
+                          value: String(format: "%.0f%%  %.0f MHz", cpu.eUsagePercent, cpu.eFreqMHz))
+                WellChart(values: pHistory, color: pColor, label: topology?.pLabel ?? "P-cores",
+                          value: String(format: "%.0f%%  %.0f MHz", cpu.pUsagePercent, cpu.pFreqMHz))
+            }
         }
     }
 }
@@ -1014,34 +1031,33 @@ private struct AcceleratorCard: View {
     private let aneColor = MetricPalette.aneC       // purple
 
     var body: some View {
+        // One well per engine, the reading in each well's label strip. GPU takes the full width
+        // (its line carries load, watts and clock); the three narrower engines share the row below.
         Card(title: "GPU / Media / Neural Engine", menuBarPin: menuBarItems.pin(.gpu),
              alert: throttling ? Palette.State.critical.color : nil) {
-            Bar(label: "GPU", value: gpu.usage,
-                detail: String(format: "%.0f%%  ", gpu.usagePercent) + power.gpuText()
-                    + String(format: "  %.0f MHz", gpu.freqMHz),
-                encoding: .identity(gpuColor))
-            Bar(label: "GPU memory", value: gpu.inUseMemoryFraction,
-                detail: String(format: "%.1f GB in use", gpu.inUseMemoryGB), encoding: .identity(memColor))
-            // Measured residency where there is one: the bar is how busy the engine IS, and its
-            // memory traffic beside it says how hard (ANEText). Without residency, ANE power is the
-            // only evidence and the bar stays the power estimate it always was.
-            if let a = ane {
-                Bar(label: "ANE", value: a.activeFraction,
-                    detail: ANEText.activity(ane: a, bandwidth: bandwidth, power: power),
-                    encoding: .identity(aneColor))
-            } else {
-                Bar(label: "ANE est.", value: min(1, power.aneWatts / max(anePeak, 0.1)),
-                    detail: power.text(power.aneWatts), encoding: .identity(aneColor))
-            }
-            Bar(label: "Media", value: min(1, bandwidth.mediaGBs / max(mediaPeak, 0.5)),
-                detail: String(format: "%.1f GB/s", bandwidth.mediaGBs), encoding: .identity(mediaColor))
+            EmptyView()
         } graph: {
-            Sparkline([Trace(gpuHistory, gpuColor),
-                       Trace(gpuMemHistory, memColor),
-                       Trace(ane != nil ? aneActiveHistory
-                                        : aneHistory.map { $0.scaledToCeiling(max(anePeak, 0.1)) }, aneColor),
-                       Trace(mediaHistory.map { $0.scaledToCeiling(max(mediaPeak, 0.5)) }, mediaColor)],
-                      role: .trend)
+            VStack(spacing: Space.hair) {
+                WellChart(values: gpuHistory, color: gpuColor, label: "GPU",
+                          value: String(format: "%.0f%%  ", gpu.usagePercent) + power.gpuText()
+                              + String(format: "  %.0f MHz", gpu.freqMHz))
+                HStack(spacing: Space.hair) {
+                    WellChart(values: gpuMemHistory, color: memColor, label: "Mem",
+                              value: String(format: "%.1f GB", gpu.inUseMemoryGB))
+                    // Measured residency where there is one; otherwise ANE power against its peak,
+                    // as the meter row did.
+                    if let a = ane {
+                        WellChart(values: aneActiveHistory, color: aneColor, label: "ANE",
+                                  value: String(format: "%.0f%%", a.activeFraction * 100))
+                    } else {
+                        WellChart(values: aneHistory.map { $0.scaledToCeiling(max(anePeak, 0.1)) },
+                                  color: aneColor, label: "ANE est.", value: power.text(power.aneWatts))
+                    }
+                    WellChart(values: mediaHistory.map { $0.scaledToCeiling(max(mediaPeak, 0.5)) },
+                              color: mediaColor, label: "Media",
+                              value: String(format: "%.1f GB/s", bandwidth.mediaGBs))
+                }
+            }
         }
     }
 }
@@ -1161,38 +1177,21 @@ private struct MemoryBandwidthCard: View {
             }
             KV(key: "Other", value: String(format: "%.0f GB/s", bandwidth.otherGBs))
             Spacer(minLength: 4)
-            // #20: the dense Memory column has no room for its own trend, so the memory-used
-            // sparkline shares this (sparser) column's spare space — labelled, stacked with
-            // bandwidth-over-time (same pattern as the Network & Disk card's two graphs). Memory is
-            // scaled to total RAM (0...totalGB, a near-constant series); bandwidth auto-scales (GB/s).
+            // #20: the dense Memory column has no room for its own trend, so the memory-used trend
+            // shares this (sparser) column's spare space, under bandwidth-over-time. Bandwidth
+            // moves tick to tick, so it is bars, on the same observed-peak scale as the Total bar
+            // above; memory in use is a slow level, so it stays a line, scaled to total RAM.
             VStack(alignment: .leading, spacing: Space.card) {
-                LabeledSparkline(label: "BW", values: bwHistory, color: Self.bandwidthColor)
-                LabeledSparkline(label: "Mem", values: memHistory, color: Self.memoryTrendColor,
-                                 axis: .ceiling(max(memory.totalGB, 1)))
+                WellChart(values: bwHistory, color: Self.bandwidthColor, label: "BW",
+                          ceiling: max(bandwidthPeak, 1))
+                    .frame(height: Layout.Meter.wellCompact)
+                TrendWell(values: memHistory, color: Self.memoryTrendColor,
+                          axis: .ceiling(max(memory.totalGB, 1)),
+                          label: "Mem", value: String(format: "%.0f%%", memory.usedPercent))
+                    .frame(height: Layout.Meter.wellCompact)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-}
-
-/// A trend sparkline with a compact leading label — for columns where two series share the space
-/// and color alone doesn't identify them (Memory vs Bandwidth in the Memory & Bandwidth card).
-private struct LabeledSparkline: View {
-    let label: String
-    let values: [Double]
-    let color: Color
-    var height: CGFloat = Layout.Meter.labeledSparkline
-    var axis: ChartAxis = .auto
-    var body: some View {
-        // Label sits ABOVE the trend (not overlaid on the line) so it stays readable regardless of
-        // where the line happens to be.
-        VStack(alignment: .leading, spacing: Space.hair) {
-            Text(label)
-                .font(Theme.font(.caption, .strong))
-                .tracking(0.5)
-                .foregroundStyle(color.opacity(0.9))
-            Sparkline(values, color: color, role: .inline(height: height, axis: axis))
-        }
     }
 }
 
@@ -1228,8 +1227,9 @@ private struct NetworkDiskCard: View {
             KV(key: "↑ Upload", value: formatRate(network.uploadBytesPerSec), valueColor: upColor)
             NetworkAddressesView(network: network)
             Spacer(minLength: 4)
-            Sparkline(downHistory, color: downColor, role: .inline(height: Layout.Meter.sparklinePair))
-            Sparkline(upHistory, color: upColor, role: .inline(height: Layout.Meter.sparklinePair))
+            // Upload above, download below one baseline, each against its own printed peak.
+            MirroredWellChart(up: upHistory, down: downHistory, upColor: upColor, downColor: downColor)
+                .frame(height: Layout.Meter.mirrored)
         }
     }
 
@@ -1245,18 +1245,11 @@ private struct NetworkDiskCard: View {
             Bar(label: "Used", value: disk.usedFraction,
                 detail: formatBytesOfTotal(disk.totalBytes - disk.freeBytes, disk.totalBytes),
                 encoding: .state)
-            SubLabel("SSD since boot")
-                .help("Internal SSD host bytes from IOBlockStorageDriver counters matched at boot. — means unavailable, including an observed reset or device change. Activity includes all disks.")
-            KV(key: "Read", value: disk.ssdBootReadBytes.map(formatBytes) ?? "—", valueColor: downColor)
-            KV(key: "Write", value: disk.ssdBootWriteBytes.map(formatBytes) ?? "—", valueColor: upColor)
-            SubLabel("SSD lifetime")
-                .help("Internal SSD lifetime host bytes from NVMe SMART data units (512,000 bytes), rounded by the device. — means unavailable.")
-            KV(key: "Read", value: disk.ssdLifetimeReadBytes.map(formatBytes) ?? "—", valueColor: downColor)
-            KV(key: "Write", value: disk.ssdLifetimeWriteBytes.map(formatBytes) ?? "—", valueColor: upColor)
-            SSDSMARTDetails(samples: disk.ssdSMART)
+            SSDDetailsDisclosure(disk: disk, readColor: downColor, writeColor: upColor)
             Spacer(minLength: 4)
-            Sparkline(readHistory, color: downColor, role: .inline(height: Layout.Meter.sparklinePair))
-            Sparkline(writeHistory, color: upColor, role: .inline(height: Layout.Meter.sparklinePair))
+            // Write above, read below — the same sides and colours as upload and download.
+            MirroredWellChart(up: writeHistory, down: readHistory, upColor: upColor, downColor: downColor)
+                .frame(height: Layout.Meter.mirrored)
         }
     }
 }
@@ -1281,12 +1274,10 @@ private struct SubLabel: View {
 private struct SensorsCard: View {
     let temperature: TemperatureSample
     let thermal: ThermalSample
-    /// One temperature series per sensor group, °C. Fills the card's spare space via `Card`'s
-    /// graph slot — the sensor list is a scroller of runtime groups, so on machines that report few
-    /// sensors the card used to end in dead space. Row-height policy is untouched (#23/#25/#16).
-    ///
-    /// One line PER GROUP, not one line for the CPU: the card lists three or four groups, so a
-    /// single trace answered a question the card was not asking.
+    /// One temperature series per sensor group, °C, drawn under that group's own row. One line PER
+    /// GROUP, not one for the CPU — the card lists three or four groups — and each in its own well:
+    /// overlaid on one chart, the groups' lines sat a few degrees apart and their fills muddied
+    /// into each other.
     let groupHistory: [SensorCategory: [Double]]
     @AppStorage("temperatureFahrenheit") private var fahrenheit = false
     // Menu-bar pin: derived from the item store, not a stored Bool (#27, §4.4).
@@ -1306,7 +1297,8 @@ private struct SensorsCard: View {
             VStack(alignment: .leading, spacing: Space.tight) {
                 HStack(spacing: Space.page) {
                     HStack(spacing: Space.row) {
-                        Text("Pressure").font(Theme.font(.body)).foregroundStyle(Theme.dim)
+                        // "Thermal", not "Pressure": the Memory card's Pressure is a different reading.
+                        Text("Thermal").font(Theme.font(.body)).foregroundStyle(Theme.dim)
                         Text(thermal.pressure.rawValue)
                             .font(Theme.font(.body, .strong)).foregroundStyle(pressureColor)
                     }
@@ -1332,24 +1324,14 @@ private struct SensorsCard: View {
                     ScrollView {
                         VStack(spacing: Space.hair) {
                             ForEach(temperature.groups) { group in
-                                SensorGroupRow(group: group, fahrenheit: fahrenheit)
+                                SensorGroupRow(group: group, fahrenheit: fahrenheit,
+                                               history: groupHistory[group.category] ?? [])
                             }
                         }
                     }
                     .frame(maxHeight: .infinity)
                 }
             }
-        } graph: {
-            // Normalised against `Theme.hotCelsius` so the traces keep `.trend`'s 0…1 axis, share
-            // ONE scale — which is what makes "the GPU runs hotter than the CPU" visible — and read
-            // as thermal headroom. Auto-scaling would stretch a flat 45 °C line to fill the chart
-            // and make an idle machine look like one in trouble.
-            // Colour is identity here, not state: with several lines the reader needs to know WHICH
-            // sensor group each one is, and the row's swatch says so.
-            Sparkline(temperature.groups.compactMap { group in
-                guard let series = groupHistory[group.category], series.count > 1 else { return nil }
-                return Trace(series.map { $0.scaledToCeiling(Theme.hotCelsius) }, group.category.color)
-            }, role: .trend)
         }
     }
 }
@@ -1357,40 +1339,66 @@ private struct SensorsCard: View {
 private struct SensorGroupRow: View {
     let group: SensorGroup
     let fahrenheit: Bool
+    /// This group's maxima over time, °C.
+    let history: [Double]
     @State private var expanded = false
 
     var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            let columns = [GridItem(.adaptive(minimum: 150), spacing: Space.section)]
-            LazyVGrid(columns: columns, alignment: .leading, spacing: Space.tight) {
-                ForEach(group.sensors) { sensor in
-                    HStack(spacing: Space.row) {
-                        Text(sensor.name).font(Theme.font(.detail))
-                            .foregroundStyle(Theme.dim).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(formatTemperature(sensor.celsius, fahrenheit: fahrenheit))
-                            .font(Theme.font(.detail, .strong))
-                            .foregroundStyle(Theme.heat(celsius: sensor.celsius))
+        // Expansion is hand-built rather than a DisclosureGroup so the trend stays directly under
+        // its row: a DisclosureGroup puts everything after the label inside the folded content,
+        // which pushed the line below the sensor list whenever a group was opened.
+        VStack(alignment: .leading, spacing: 0) {
+            Button { expanded.toggle() } label: {
+                HStack {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: Icon.small, weight: .semibold))
+                        .foregroundStyle(Theme.dim)
+                        .frame(width: Icon.small)
+                    // Matches this group's line in the well below.
+                    RoundedRectangle(cornerRadius: Radius.swatch)
+                        .fill(group.category.color)
+                        .frame(width: Layout.Dot.swatch, height: Layout.Dot.swatch)
+                    Text(group.category.rawValue)
+                        .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
+                    Text("(\(group.count))").font(Theme.font(.detail)).foregroundStyle(Theme.faint)
+                    Spacer()
+                    Text("avg \(formatTemperature(group.average, fahrenheit: fahrenheit)) · max \(formatTemperature(group.maximum, fahrenheit: fahrenheit))")
+                        .font(Theme.font(.detail))
+                        .foregroundStyle(Theme.heat(celsius: group.maximum))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Show or hide this group's sensors")
+
+            // Normalised against `Theme.hotCelsius`, the same scale for every group, so a higher
+            // line is a hotter group and the height reads as thermal headroom. Auto-scaling would
+            // stretch a flat 45 °C line to fill the well and make an idle machine look troubled.
+            if history.count > 1 {
+                TrendWell(values: history.map { $0.scaledToCeiling(Theme.hotCelsius) },
+                          color: group.category.color)
+                    .padding(.top, Space.hair)
+            }
+
+            if expanded {
+                let columns = [GridItem(.adaptive(minimum: 150), spacing: Space.section)]
+                LazyVGrid(columns: columns, alignment: .leading, spacing: Space.tight) {
+                    ForEach(group.sensors) { sensor in
+                        HStack(spacing: Space.row) {
+                            Text(sensor.name).font(Theme.font(.detail))
+                                .foregroundStyle(Theme.dim).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(formatTemperature(sensor.celsius, fahrenheit: fahrenheit))
+                                .font(Theme.font(.detail, .strong))
+                                .foregroundStyle(Theme.heat(celsius: sensor.celsius))
+                        }
                     }
                 }
-            }
-            .padding(.top, Space.tight)
-        } label: {
-            HStack {
-                // Matches this group's line in the card's chart.
-                RoundedRectangle(cornerRadius: Radius.swatch)
-                    .fill(group.category.color)
-                    .frame(width: Layout.Dot.swatch, height: Layout.Dot.swatch)
-                Text(group.category.rawValue)
-                    .font(Theme.font(.body, .strong)).foregroundStyle(Theme.text)
-                Text("(\(group.count))").font(Theme.font(.detail)).foregroundStyle(Theme.faint)
-                Spacer()
-                Text("avg \(formatTemperature(group.average, fahrenheit: fahrenheit)) · max \(formatTemperature(group.maximum, fahrenheit: fahrenheit))")
-                    .font(Theme.font(.detail))
-                    .foregroundStyle(Theme.heat(celsius: group.maximum))
+                .padding(.top, Space.tight)
+                .padding(.leading, Icon.small + Space.row)
             }
         }
-        .tint(Theme.dim)
     }
 }
 
@@ -1410,20 +1418,49 @@ private struct ProcessCard: View {
     @State private var filter: String = ""
     @State private var pendingKill: ProcessRow?
     @State private var pendingForce = false
-    @State private var hoveredPID: Int32?   // row under the cursor → reveal its Quit affordance
+    @State private var hoveredID: String?   // row under the cursor → reveal its Quit affordance
+    /// Fold the table by app (ProcessGrouping): Chrome's helpers become one "Google Chrome" row.
+    @AppStorage("processes.groupByApp") private var groupByApp = false
 
-    private var rows: [ProcessRow] {
-        // `processes` already arrives sorted by CPU% desc (ProcessSampler pre-sorts; recorded
-        // .ssrec rows preserve that order), so the default CPU view skips a redundant re-sort.
-        if sortKey == .cpu, filter.isEmpty { return Array(processes.prefix(200)) }
-        let base = filter.isEmpty
-            ? processes
-            : processes.filter { $0.name.localizedCaseInsensitiveContains(filter) }
-        let sorted: [ProcessRow]
+    /// One table row: a lone process, or an app's processes folded together.
+    private struct Row: Identifiable {
+        let id: String
+        let name: String
+        let cpuPercent: Double
+        let memoryBytes: UInt64
+        /// The process itself, when the row is exactly one process — the only kind of row that
+        /// can be killed or tapped to inspect.
+        let process: ProcessRow?
+        /// Members of a folded app row, busiest first; empty for a lone process.
+        let members: [ProcessRow]
+    }
+
+    private var rows: [Row] {
+        let base: [Row]
+        if groupByApp {
+            base = ProcessGrouping.groups(processes).map { g in
+                Row(id: g.id, name: g.name, cpuPercent: g.cpuPercent, memoryBytes: g.memoryBytes,
+                    process: g.count == 1 ? g.members[0] : nil,
+                    members: g.count == 1 ? [] : g.members)
+            }
+        } else {
+            // `processes` already arrives sorted by CPU% desc (ProcessSampler pre-sorts; recorded
+            // .ssrec rows preserve that order), so the default CPU view needs no re-sort.
+            base = processes.map {
+                Row(id: "pid:\($0.pid)", name: $0.name, cpuPercent: $0.cpuPercent,
+                    memoryBytes: $0.memoryBytes, process: $0, members: [])
+            }
+        }
+        // A folded row matches when the app or any of its processes does.
+        let filtered = filter.isEmpty ? base : base.filter { row in
+            row.name.localizedCaseInsensitiveContains(filter)
+                || row.members.contains { $0.name.localizedCaseInsensitiveContains(filter) }
+        }
+        let sorted: [Row]
         switch sortKey {
-        case .cpu:    sorted = base.sorted { $0.cpuPercent > $1.cpuPercent }
-        case .memory: sorted = base.sorted { $0.memoryBytes > $1.memoryBytes }
-        case .name:   sorted = base.sorted { $0.name.lowercased() < $1.name.lowercased() }
+        case .cpu:    sorted = filtered   // both sources are already busiest-first
+        case .memory: sorted = filtered.sorted { $0.memoryBytes > $1.memoryBytes }
+        case .name:   sorted = filtered.sorted { $0.name.lowercased() < $1.name.lowercased() }
         }
         return Array(sorted.prefix(200))
     }
@@ -1451,64 +1488,32 @@ private struct ProcessCard: View {
 
                 HStack {
                     Text("PID").frame(width: Layout.Column.processPID, alignment: .leading)
+                        .foregroundStyle(Theme.faint)
                     header("CPU%", .cpu).frame(width: Layout.Column.processCPU, alignment: .trailing)
                     header("MEMORY", .memory).frame(width: Layout.Column.processMemory, alignment: .trailing)
+                        .help(groupByApp
+                              ? "An app's memory is the sum of its processes' resident sizes. Pages they share count once per process, so the total reads high."
+                              : "Resident size.")
                     header("NAME", .name).frame(maxWidth: .infinity, alignment: .leading)
+                    Button { groupByApp.toggle() } label: {
+                        Text("BY APP")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(groupByApp ? Theme.accent : Theme.faint)
+                    .help(groupByApp ? "Show every process" : "Fold each app's processes into one row")
                 }
                 .font(Theme.font(.sectionMinor))
 
                 ScrollView {
                     LazyVStack(spacing: Space.hair) {
-                        ForEach(rows) { process in
-                            HStack {
-                                Text("\(process.pid)").frame(width: Layout.Column.processPID, alignment: .leading).foregroundStyle(Theme.faint)
-                                Text(String(format: "%.1f", process.cpuPercent))
-                                    .frame(width: Layout.Column.processCPU, alignment: .trailing)
-                                    .foregroundStyle(Theme.heat(min(1, process.cpuPercent / 100)))
-                                Text(String(format: "%.0f MB", process.memoryMB))
-                                    .frame(width: Layout.Column.processMemory, alignment: .trailing).foregroundStyle(Theme.dim)
-                                Text(process.name).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
-                                // Trailing Quit affordance — reveals on row hover so the (already
-                                // existing) kill is discoverable without cluttering the table. Sends
-                                // SIGTERM via the shared confirm dialog; Force Quit stays in the menu.
-                                Group {
-                                    if allowKill && hoveredPID == process.pid {
-                                        Button { pendingKill = process; pendingForce = false } label: {
-                                            Image(systemName: "xmark.circle.fill").font(.system(size: Icon.large))
-                                                .foregroundStyle(Palette.State.critical.color)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .help("Kill \(process.name)")
-                                    }
-                                }
-                                .frame(width: Layout.Control.chevronWidth)
-                            }
-                            .font(Theme.font(.body))
-                            .contentShape(Rectangle())
-                            .onTapGesture { onInspect?(process) }
-                            .onHover { hovering in
-                                if hovering { hoveredPID = process.pid }
-                                else if hoveredPID == process.pid { hoveredPID = nil }
-                            }
-                            .contextMenu {
-                                if let onInspect {
-                                    Button("Inspect \(process.name)") { onInspect(process) }
-                                }
-                                if allowKill {
-                                    Button("Kill \(process.name)") { pendingKill = process; pendingForce = false }
-                                    Button("Force Kill \(process.name)", role: .destructive) {
-                                        pendingKill = process; pendingForce = true
-                                    }
-                                }
-                            }
-                        }
+                        ForEach(rows) { row in rowView(row) }
                     }
                 }
                 .frame(maxHeight: .infinity)
             }
         }
         .confirmationDialog(
-            pendingKill.map { "\(pendingForce ? "Force kill" : "Kill") \($0.name)  (pid \($0.pid))?" } ?? "",
+            pendingKill.map { "\(pendingForce ? "Force kill" : "Kill") \($0.name)  (pid \(String($0.pid)))?" } ?? "",
             isPresented: Binding(get: { pendingKill != nil }, set: { if !$0 { pendingKill = nil } }),
             titleVisibility: .visible
         ) {
@@ -1520,6 +1525,74 @@ private struct ProcessCard: View {
                 pendingKill = nil
             }
             Button("Cancel", role: .cancel) { pendingKill = nil }
+        }
+    }
+
+    @ViewBuilder private func rowView(_ row: Row) -> some View {
+        HStack {
+            // A PID is an identifier, not a quantity: verbatim, so no locale grouping turns 88954
+            // into "88,954" — which also could not be pasted into kill or ps. A folded row has no
+            // single PID; it shows how many processes it holds instead, beside the name.
+            Text(verbatim: row.process.map { String($0.pid) } ?? "")
+                .font(Theme.font(.caption)).monospacedDigit()
+                .frame(width: Layout.Column.processPID, alignment: .leading).foregroundStyle(Theme.faint)
+                .textSelection(.enabled)
+            Text(String(format: "%.1f", row.cpuPercent))
+                .frame(width: Layout.Column.processCPU, alignment: .trailing)
+                .foregroundStyle(Theme.heat(min(1, row.cpuPercent / 100)))
+            Text(formatProcessMemory(row.memoryBytes))
+                .frame(width: Layout.Column.processMemory, alignment: .trailing).foregroundStyle(Theme.dim)
+            HStack(spacing: Space.row) {
+                Text(row.name).lineLimit(1).truncationMode(.tail)
+                if !row.members.isEmpty {
+                    Text(verbatim: "×\(row.members.count)").font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(row.name)
+            // Trailing Quit affordance — reveals on row hover so the (already existing) kill is
+            // discoverable without cluttering the table. Only a lone process: quitting an app
+            // means ending several processes, which this table does not do in one click.
+            Group {
+                if allowKill, let process = row.process, hoveredID == row.id {
+                    Button { pendingKill = process; pendingForce = false } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: Icon.large))
+                            .foregroundStyle(Palette.State.critical.color)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Kill \(process.name)")
+                }
+            }
+            .frame(width: Layout.Control.chevronWidth)
+        }
+        .font(Theme.font(.body))
+        .contentShape(Rectangle())
+        .onTapGesture { if let process = row.process { onInspect?(process) } }
+        .onHover { hovering in
+            if hovering { hoveredID = row.id }
+            else if hoveredID == row.id { hoveredID = nil }
+        }
+        .contextMenu {
+            if let process = row.process {
+                if let onInspect {
+                    Button("Inspect \(process.name)") { onInspect(process) }
+                }
+                if allowKill {
+                    Button("Kill \(process.name)") { pendingKill = process; pendingForce = false }
+                    Button("Force Kill \(process.name)", role: .destructive) {
+                        pendingKill = process; pendingForce = true
+                    }
+                }
+            } else if let onInspect {
+                // A folded row: inspect one of its processes, busiest first.
+                Menu("Inspect") {
+                    ForEach(row.members.prefix(12)) { member in
+                        Button("\(member.name)  ·  \(String(member.pid))  ·  \(String(format: "%.1f%%", member.cpuPercent))") {
+                            onInspect(member)
+                        }
+                    }
+                }
+            }
         }
     }
 

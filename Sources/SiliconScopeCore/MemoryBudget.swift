@@ -1,16 +1,17 @@
 //
 //  File:      MemoryBudget.swift
 //  Created:   2026-06-14
-//  Updated:   2026-06-25
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Predictive unified-memory budget for local-AI users. Pure derivation from
 //             a MemorySample (no syscalls): two honest "what fits" figures and a static
 //             risk baseline. The monitor refines risk with rate deltas (see
 //             SiliconScopeMonitor). All sizing is approximate (ANE-est posture).
-//  Notes:     headroomNow = fits alongside everything resident (conservative — `used`
-//             includes evictable cache). loadable = headroomNow + the active runtime's
-//             RSS (what fits if you unload the current model; > headroom only once an AI
-//             runtime is detected). Model sizing: weights ≈ params × bytesPerParam, minus
+//  Notes:     headroomNow = total − used − reserved, i.e. the Memory card's Free less what is
+//             kept back for macOS. `used` is wired + app + compressed (MemorySample), so file
+//             cache counts as free, as Activity Monitor counts it. loadable = headroomNow +
+//             the active runtime's RSS (what fits if you unload the current model; > headroom
+//             only once an AI runtime is detected). Model sizing: weights ≈ params × bytesPerParam, minus
 //             a coarse KV(context) + runtime overhead. Everything is a "~" estimate.
 //
 import Foundation
@@ -90,13 +91,18 @@ public struct MemoryBudget: Sendable, Equatable, Codable {
     public var fitsNow: [ModelFit] { fits(headroomNowBytes) }
     public var fitsLoadable: [ModelFit] { fits(loadableBytes) }
 
+    /// What is kept back for macOS: this share of RAM, and never less than `defaultReserveFloorBytes`.
+    /// Public so the UI can state the rule it shows the result of.
+    public static let defaultReserveFraction = 0.10
+    public static let defaultReserveFloorBytes: UInt64 = 3 << 30
+
     /// Derives the budget from a memory sample. `activeRuntimeRSS` (from feature ①) lifts
     /// `loadable` above `headroomNow`; defaults to 0 until runtime detection is wired.
     public static func estimate(memory: MemorySample,
                                 activeRuntimeRSS: UInt64 = 0,
                                 contextTokens: Int = 8192,
-                                reserveFraction: Double = 0.10,
-                                reserveFloorBytes: UInt64 = 3 << 30) -> MemoryBudget {
+                                reserveFraction: Double = defaultReserveFraction,
+                                reserveFloorBytes: UInt64 = defaultReserveFloorBytes) -> MemoryBudget {
         let total = memory.totalBytes
         guard total > 0 else { return .empty }
         let used = memory.usedBytes
@@ -104,8 +110,8 @@ public struct MemoryBudget: Sendable, Equatable, Codable {
         let headroom = total > used + reserved ? total - used - reserved : 0
         let loadable = headroom + activeRuntimeRSS
 
-        // Static baseline only (one sample). usedFraction is deliberately NOT used (macOS
-        // keeps it high via evictable cache), and swapUsedBytes is NOT used either — it is
+        // Static baseline only (one sample). usedFraction is deliberately NOT used (a machine
+        // runs comfortably with most of its memory in use), and swapUsedBytes is NOT used either — it is
         // cumulative on-disk swap that persists long after pressure clears (sticky, would
         // false-positive with plenty of headroom). "Actually swapping now" is a rate signal
         // the monitor adds (memoryRisk). Static swapping = critical OS pressure only.

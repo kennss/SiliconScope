@@ -1,7 +1,7 @@
 //
 //  File:      ProcessSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-29
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Builds the process table sudolessly via libproc. Stateful: each
 //             sample() diffs cumulative CPU time against the previous call to derive
@@ -10,7 +10,9 @@
 //             (KERN_PROCARGS2) — the plumbing AIRuntimeSampler builds on. Other users'
 //             processes stay out of the table; the few that may be AI runtimes are read
 //             through /bin/ps for AI detection only (ProcessTable.otherUsers, #85).
-//  Notes:     proc_pidinfo(PROC_PIDTASKINFO) gives total_user+total_system (ns) and
+//  Notes:     Names: proc_name is capped at 32 bytes by the kernel, so a long name that the
+//             executable's file name continues is shown as the file name (displayName).
+//             proc_pidinfo(PROC_PIDTASKINFO) gives total_user+total_system (ns) and
 //             resident_size. Prime with one sample(), wait, then sample() again for
 //             meaningful CPU%. proc_pidpath across ~1k pids is ~7 ms (measured) — cheap.
 //             argv is read only for a small candidate shortlist so KERN_PROCARGS2 never
@@ -134,7 +136,8 @@ public final class ProcessSampler {
                 meta = hit
             } else {
                 let p = Self.path(pid)
-                meta = PidInfo(path: p, name: Self.name(pid), base: Self.basename(p))
+                let base = Self.basename(p)
+                meta = PidInfo(path: p, name: Self.displayName(procName: Self.name(pid), basename: base), base: base)
                 infoCache[pid] = meta
             }
 
@@ -293,6 +296,18 @@ public final class ProcessSampler {
         let size = Int32(MemoryLayout<proc_taskinfo>.size)
         let result = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, size)
         return result == size ? info : nil
+    }
+
+    /// The name to show for a process. The kernel keeps a process name in 2 × MAXCOMLEN (32)
+    /// bytes, so `proc_name` cuts long ones mid-word with no mark of it — "Google Chrome Helper
+    /// (Aperitif Renderer)" arrives as "Google Chrome Helper (Aperitif". When the executable's file
+    /// name is that same name continued, the file name is the whole of it. When the two differ, the
+    /// process named itself and its own name stands.
+    static func displayName(procName: String, basename: String) -> String {
+        guard !procName.isEmpty, basename.count > procName.count, basename.hasPrefix(procName) else {
+            return procName
+        }
+        return basename
     }
 
     private static func name(_ pid: pid_t) -> String {

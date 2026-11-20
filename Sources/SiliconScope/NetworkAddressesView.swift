@@ -1,7 +1,7 @@
 //
 //  File:      NetworkAddressesView.swift
 //  Created:   2026-10-15
-//  Updated:   2026-10-16
+//  Updated:   2026-11-20
 //  Developer: SiliconScope contributors
 //  Overview:  Snapshot interface rows with compact local addresses and expandable full details.
 //  Notes:     Never samples live interfaces from a view, including during replay.
@@ -28,13 +28,14 @@ struct NetworkAddressesView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 } label: {
                     HStack(spacing: Space.row) {
-                        CompactDisclosureTitle(iface.name).lineLimit(1)
-                        Text(network.addresses(for: iface.bsdName)?.first?.address ?? "—")
-                            .foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        // The interface name gives way, never the address: half an IP
+                        // ("192.1…8.108") is not an address anyone can use.
+                        CompactDisclosureTitle(iface.name).lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: Space.hair)
+                        headlineAddress(network.addresses(for: iface.bsdName)?.first)
                     }
                 }
-                .help("\(iface.bsdName) local addresses from getifaddrs. Default-route labels use SystemConfiguration. Expand for full copyable addresses and interface rates.")
+                .help("\(iface.name) (\(iface.bsdName)) — local addresses from getifaddrs. Default-route labels use SystemConfiguration. Expand for full copyable addresses and interface rates.")
             }
             if !otherAddresses.isEmpty {
                 DisclosureGroup(interfaces.isEmpty ? "Addresses" : "More addresses") {
@@ -52,6 +53,19 @@ struct NetworkAddressesView: View {
         .font(Theme.font(.caption)).tint(Theme.dim)
         .disclosureGroupStyle(CompactDisclosureStyle())
     }
+    /// An IPv4 address always shows whole. An IPv6 one (only when the interface has no IPv4) can
+    /// be wider than the column, so it shrinks and then cuts at the end; the expanded row below
+    /// always has it in full and copyable.
+    @ViewBuilder private func headlineAddress(_ address: NetworkAddress?) -> some View {
+        if let address, address.isIPv6 {
+            Text(verbatim: address.address).foregroundStyle(Theme.text)
+                .lineLimit(1).minimumScaleFactor(0.75).truncationMode(.tail).layoutPriority(1)
+        } else {
+            Text(verbatim: address?.address ?? "—").foregroundStyle(Theme.text)
+                .lineLimit(1).fixedSize().layoutPriority(1)
+        }
+    }
+
     private func addressDetails(_ addresses: [NetworkAddress]?) -> some View {
         VStack(alignment: .trailing, spacing: Space.hair) {
             if let addresses, !addresses.isEmpty {

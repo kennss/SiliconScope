@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarItemConfig.swift
 //  Created:   2026-07-27
-//  Updated:   2026-07-27
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The menu-bar item model for #27: a user-ordered LIST of item instances, replacing
 //             the static 8-entry Spec array in MetricBarController where each metric was welded
@@ -154,11 +154,10 @@ public enum MetricKind: String, Codable, CaseIterable, Sendable {
 public enum GlyphMode: String, Codable, CaseIterable, Sendable {
     /// Stacked label + thick value bars, one per channel.
     case bars
-    /// Stacked label + a line trace of the recent window, ONE LINE PER CHANNEL.
-    ///
-    /// Line + area is SiliconScope's chart form everywhere else (docs/design-system.md §5.3); the
-    /// menu bar was the last place drawing bars. Lines also compose: ↓ and ↑ share one glyph,
-    /// where two bar charts would have to be two menu-bar items.
+    /// Stacked label + dense bars of the recent window, one bar per sample: a band per channel,
+    /// or ↑ above and ↓ below one baseline for a rate pair (docs/design-system.md §5.3, revised
+    /// 2026-11-20 — the menu bar draws what the dashboard and dropdowns draw). The raw value stays
+    /// "graph" so existing configurations keep decoding.
     case graph
     /// Stacked label + two "prefix … value" rows.
     case twoLine
@@ -175,7 +174,7 @@ public enum GlyphMode: String, Codable, CaseIterable, Sendable {
     public var arity: ClosedRange<Int> {
         switch self {
         case .bars:      return 1...4
-        // Several lines share one chart — that is the point of a line over a bar.
+        // Several series in one glyph: a band each, or a shared baseline for a rate pair.
         case .graph:     return 1...4
         case .twoLine:   return 2...2
         case .value:     return 1...1

@@ -3,8 +3,9 @@
 //  Created:   2026-06-08
 //  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
-//  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline,
-//             PopoverButtonStyle), plus the Layout dimension tokens.
+//  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline, the
+//             WellChart / MirroredWellChart bar charts, PopoverButtonStyle), plus the Layout
+//             dimension tokens.
 //             Restrained instrument-panel look: one accent, muted heat colors, dense
 //             monospaced typography. All in-app text is English.
 //  Notes:     Theme.heat(fraction) maps 0...1 load to green/amber/red. Cards are
@@ -13,6 +14,9 @@
 //             Layout holds every fixed dimension, named by role; see docs/design-system.md.
 //             Layout.Row's fixed-vs-minHeight comments are load-bearing (#23/#25/#16), and
 //             Layout.hairline must never be scaled.
+//             Charts: bars (one per sample) for series that move tick to tick, Sparkline's line
+//             for slow levels and overlays. Line charts take MetricsEngine.History.lineWindow
+//             samples; bar charts as many of History.capacity as fit at a fixed pitch.
 //
 import SwiftUI
 import SiliconScopeCore
@@ -535,6 +539,9 @@ enum Layout {
         /// CPU + Accelerator — **fixed height**. Both cards carry a fill-graph that absorbs
         /// content changes by shrinking/growing, so the card size stays put (#24).
         static var graphed: CGFloat { UIScale.scaled(166) }
+        /// CPU + Accelerator — about 80 % of `graphed`: the readings live in the wells' label
+        /// strips, so there are no meter rows above the charts.
+        static var wells: CGFloat { UIScale.scaled(132) }
         /// Memory/Bandwidth and Network/Disk — **minHeight, never a fixed height**. These cards
         /// are graphless (trends live inside the sections), and the dense Memory column's
         /// intrinsic height (~188 pt) can exceed a fixed 176 by a few points under some macOS
@@ -571,9 +578,12 @@ enum Layout {
     /// must scale — or, better, become intrinsic. The process table is slated to move to `Grid`
     /// + `.gridColumnAlignment` in phase 2, which removes the first three entirely.
     enum Column {
-        static var processPID: CGFloat { UIScale.scaled(56) }
-        static var processCPU: CGFloat { UIScale.scaled(60) }
-        static var processMemory: CGFloat { UIScale.scaled(84) }
+        /// Five digits in the caption face: a PID is an identifier, so it is quiet and narrow and
+        /// the NAME column gets the width.
+        static var processPID: CGFloat { UIScale.scaled(44) }
+        static var processCPU: CGFloat { UIScale.scaled(54) }
+        /// "10.8 GB" / "356 MB" — sized to `formatProcessMemory`, not to raw megabytes.
+        static var processMemory: CGFloat { UIScale.scaled(64) }
         /// Engine/state label in the AI cockpit rows.
         static var stateLabel: CGFloat { UIScale.scaled(42) }
         /// Menu-bar dropdown trend rows: label column + right-aligned value column.
@@ -602,16 +612,19 @@ enum Layout {
         static var stacked: CGFloat { UIScale.scaled(9) }
         /// Inline sparkline beside a value.
         static var sparkline: CGFloat { UIScale.scaled(26) }
-        /// `LabeledSparkline`'s trace — shorter than `sparkline` because it sits under a label.
-        static var labeledSparkline: CGFloat { UIScale.scaled(18) }
-        /// Paired row traces (Network ↓/↑, Disk read/write): two stacked in one row's height, so
-        /// each is shorter than a lone `sparkline`.
-        static var sparklinePair: CGFloat { UIScale.scaled(22) }
-        /// A dropdown's chart. Taller than a dashboard row's because a popover column has the
-        /// space and the chart is the panel's main content. Normalises the retired 30/32 split.
-        static var sparklineDropdown: CGFloat { UIScale.scaled(32) }
         /// Trace inside a compact list row in the combined popover.
         static var sparklineListRow: CGFloat { UIScale.scaled(15) }
+        /// A labelled well sharing a card column with other rows (the Bandwidth bars and the
+        /// memory trend, stacked as a pair): the label strip plus a plot about 18 pt tall.
+        static var wellCompact: CGFloat { UIScale.scaled(34) }
+        /// A `TrendWell`'s line: under its row in the Sensors card, under its strip elsewhere.
+        static var trendWell: CGFloat { UIScale.scaled(14) }
+        /// A labelled well chart in a dropdown: the label strip plus a plot about 32 pt tall —
+        /// taller than a card's, because in a popover the chart is the panel's main content.
+        static var wellDropdown: CGFloat { UIScale.scaled(46) }
+        /// A mirrored rate chart (↑ above, ↓ below one baseline) with its peak line: the height
+        /// the two stacked rate traces it replaced took, plus room for both halves to read.
+        static var mirrored: CGFloat { UIScale.scaled(66) }
     }
 
     /// Status dots and legend swatches.
@@ -733,6 +746,13 @@ func formatRate(_ bytesPerSec: Double) -> String {
     if v >= 1_000_000     { return String(format: "%.1f MB/s", v / 1_000_000) }
     if v >= 1_000         { return String(format: "%.0f KB/s", v / 1_000) }
     return String(format: "%.0f B/s", v)
+}
+
+/// A process's memory in the table: MB under a gigabyte, one-decimal GB above ("10.8 GB", not
+/// "11107 MB"), so the column stays narrow enough to leave the NAME column its width.
+func formatProcessMemory(_ bytes: UInt64) -> String {
+    let mb = Double(bytes) / (1024 * 1024)
+    return mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : String(format: "%.0f MB", mb)
 }
 
 /// Human-readable byte size (MB, GB, TB).
@@ -1039,14 +1059,19 @@ enum ChartRole {
     case inline(height: CGFloat, axis: ChartAxis = .auto)
 }
 
-/// Line + area trend chart. The line-and-area form is SiliconScope's identity (btop's, not iStat's
-/// histogram) and is deliberately not configurable.
+/// Line + area trend chart, for series that change slowly and are read as a level — temperatures,
+/// memory in use — and for overlaid series, which bars could not show without hiding each other.
+/// A series that moves tick to tick (utilisation, rates) is drawn as bars in a `WellChart` or
+/// `MirroredWellChart` instead: one bar per sample, nothing drawn between ticks that was not read
+/// (docs/design-system.md §5.3).
 struct Sparkline: View {
     let traces: [Trace]
     let role: ChartRole
 
+    /// Each trace is trimmed to `History.lineWindow`: a line stretches whatever it is given across
+    /// its width, so it takes the last minute rather than the whole buffer bar charts draw from.
     init(_ traces: [Trace], role: ChartRole) {
-        self.traces = traces
+        self.traces = traces.map { Trace(Array($0.values.suffix(MetricsEngine.History.lineWindow)), $0.color) }
         self.role = role
     }
 
@@ -1099,15 +1124,7 @@ struct Sparkline: View {
                 // MetricDemand.swift. It breaks the trace into runs: each run is stroked and
                 // filled on its own, so the chart shows blank where there is no reading rather
                 // than drawing a straight line across the hole as though the value held.
-                var runs: [[Int]] = []
-                var run: [Int] = []
-                for i in trace.values.indices {
-                    if trace.values[i].isFinite { run.append(i) }
-                    else if !run.isEmpty { runs.append(run); run = [] }
-                }
-                if !run.isEmpty { runs.append(run) }
-
-                for run in runs where run.count > 1 {
+                for run in finiteRuns(trace.values) where run.count > 1 {
                     var line = Path()
                     line.move(to: point(run[0]))
                     for i in run.dropFirst() { line.addLine(to: point(i)) }
@@ -1130,6 +1147,235 @@ struct Sparkline: View {
         // Decorative trace: hide from accessibility (the numeric value is shown as text on the
         // card). Skips the per-tick SwiftUI accessibility-node recompute on every live sparkline.
         .accessibilityHidden(true)
+    }
+}
+
+/// The indices of each unbroken run of measured values. A gap (`.nan`) is a tick that was not
+/// measured (MetricDemand.swift), so every chart draws each run on its own and leaves the gap blank
+/// instead of bridging it with a line that claims the value held.
+private func finiteRuns(_ values: [Double]) -> [[Int]] {
+    var runs: [[Int]] = []
+    var run: [Int] = []
+    for i in values.indices {
+        if values[i].isFinite { run.append(i) }
+        else if !run.isEmpty { runs.append(run); run = [] }
+    }
+    if !run.isEmpty { runs.append(run) }
+    return runs
+}
+
+// MARK: - Well charts
+
+/// The recessed box a well chart sits in: darker than the card, a hairline edge, and three faint
+/// guide lines. It gives a chart a place of its own in the card, instead of floating on it.
+/// Guides are left out of a well too short for them to read as anything but texture.
+private struct ChartWell<Content: View>: View {
+    var guides = true
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .background {
+                Canvas { ctx, size in
+                    guard guides, size.height >= 30 else { return }
+                    var g = Path()
+                    for k in 1...3 {
+                        let y = (size.height * CGFloat(k) / 4).rounded()
+                        g.move(to: CGPoint(x: 0, y: y)); g.addLine(to: CGPoint(x: size.width, y: y))
+                    }
+                    ctx.stroke(g, with: .color(Color.white.opacity(0.05)), lineWidth: 0.5)
+                }
+            }
+            .background(Theme.bg.opacity(0.7), in: RoundedRectangle(cornerRadius: Radius.swatch * 2))
+            .overlay(RoundedRectangle(cornerRadius: Radius.swatch * 2).strokeBorder(Theme.border, lineWidth: 0.5))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.swatch * 2))
+            .accessibilityHidden(true)
+    }
+}
+
+/// Bar pitch for well charts, in points: a bar and the gap after it. Fixed rather than stretched,
+/// so a wider chart shows more of the past instead of fatter bars.
+private enum BarPitch {
+    static var bar: CGFloat { UIScale.scaled(3) }
+    static var gap: CGFloat { UIScale.scaled(1) }
+
+    /// Bar width and pitch on the pixel grid, never under one pixel each.
+    static func snapped(scale: CGFloat) -> (bar: CGFloat, pitch: CGFloat) {
+        func snap(_ v: CGFloat) -> CGFloat { max((v * scale).rounded(), 1) / scale }
+        let b = snap(bar)
+        return (b, b + snap(gap))
+    }
+
+    /// How many samples a chart `width` points wide shows. Anything printed about the chart (its
+    /// peak) must be taken over exactly these, not over the whole buffer.
+    static func fitting(width: CGFloat, scale: CGFloat) -> Int {
+        let (b, p) = snapped(scale: scale)
+        return max(0, Int((width + p - b) / p))
+    }
+}
+
+/// Draws one series as dense bars standing on `baseline` and growing toward `extent` (negative =
+/// upward), newest at the right edge, as many of the most recent samples as fit `width`.
+///
+/// One bar is one sample — nothing is drawn between ticks that was not read. A gap (`.nan`, a tick
+/// that was not measured — MetricDemand.swift) draws nothing, while a measured value never draws
+/// less than one pixel, so "measured zero" and "not measured" stay distinguishable.
+/// Bars are snapped to the pixel grid so they stay crisp at any zoom.
+private func drawBarSeries(_ ctx: GraphicsContext, values: [Double], color: Color, top: Double,
+                           baseline: CGFloat, extent: CGFloat, width: CGFloat, scale: CGFloat) {
+    guard top > 0, width > 0, !values.isEmpty else { return }
+    func snap(_ v: CGFloat) -> CGFloat { (v * scale).rounded() / scale }
+    let (bar, pitch) = BarPitch.snapped(scale: scale)
+    let shown = values.suffix(BarPitch.fitting(width: width, scale: scale))
+    let minHeight = 1 / scale
+    var bars = Path()
+    for (k, v) in shown.reversed().enumerated() where v.isFinite {
+        let x = snap(width - bar - CGFloat(k) * pitch)
+        let h = max(minHeight, snap(CGFloat(min(1, max(0, v / top))) * abs(extent)))
+        let y = extent < 0 ? baseline - h : baseline
+        bars.addRect(CGRect(x: x, y: y, width: bar, height: h))
+    }
+    // One gradient over the whole extent: a bar's top is as strong as its height has earned.
+    let ink = Ink(color).fill.color
+    ctx.fill(bars, with: .linearGradient(
+        Gradient(colors: [ink.opacity(0.35), color.opacity(0.95)]),
+        startPoint: CGPoint(x: 0, y: baseline), endPoint: CGPoint(x: 0, y: baseline + extent)))
+}
+
+/// One series, filled, in its own well. A utilisation series reads on 0…1 (`ceiling` 1); a rate
+/// passes nil and reads on 0…its own peak, which the chart then prints so the height means
+/// something. The label and peak sit in their own strip at the top of the well, so a reading at
+/// 100 % fills the plot without running under its own label.
+struct WellChart: View {
+    let values: [Double]
+    let color: Color
+    var label: String? = nil
+    /// The current reading, printed at the right of the label strip. The newest bar already shows
+    /// it as a height, so a chart with this needs no separate meter row above it.
+    var value: String? = nil
+    /// Fixed top of the axis, or nil to scale to the shown bars' own peak (and print it).
+    var ceiling: Double? = 1
+    var format: (Double) -> String = { String(format: "%.0f", $0) }
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        ChartWell {
+            GeometryReader { geo in
+                let shown = Array(values.suffix(BarPitch.fitting(width: geo.size.width, scale: displayScale)))
+                let peak = shown.withoutGaps.max() ?? 0
+                let top = ceiling ?? peak
+                VStack(spacing: 0) {
+                    if label != nil || value != nil || ceiling == nil {
+                        HStack(spacing: Space.tight) {
+                            if let label {
+                                Text(label).font(Theme.font(.caption, .strong)).foregroundStyle(color)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            Spacer(minLength: 0)
+                            if let value {
+                                Text(value).font(Theme.font(.detail)).foregroundStyle(Theme.text)
+                                    .minimumScaleFactor(0.7).layoutPriority(1)
+                            }
+                            if ceiling == nil, peak > 0 {
+                                Text(format(peak)).font(Theme.font(.caption)).foregroundStyle(Theme.faint)
+                            }
+                        }
+                        .lineLimit(1)
+                        .padding(.horizontal, Space.tight)
+                        .padding(.top, Space.hair)
+                    }
+                    Canvas(opaque: false, rendersAsynchronously: false) { ctx, size in
+                        guard size.width > 0, size.height > 0 else { return }
+                        drawBarSeries(ctx, values: shown, color: color, top: top,
+                                      baseline: size.height, extent: -size.height, width: size.width,
+                                      scale: displayScale)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A slow level's line in its own well. Lines, not bars: a temperature or the memory in use is read
+/// as a level and a trend, and moves too little tick to tick for one-sample bars to say more than
+/// the line does. Without a label it is a bare strip, for a row that names it above (a sensor
+/// group); with one it carries the same label strip as `WellChart`, so the two stack as a pair.
+struct TrendWell: View {
+    let values: [Double]
+    let color: Color
+    var axis: ChartAxis = .fraction
+    var label: String? = nil
+    var value: String? = nil
+
+    var body: some View {
+        ChartWell(guides: false) {
+            if label != nil || value != nil {
+                VStack(spacing: 0) {
+                    HStack(spacing: Space.tight) {
+                        if let label {
+                            Text(label).font(Theme.font(.caption, .strong)).foregroundStyle(color)
+                        }
+                        Spacer(minLength: 0)
+                        if let value {
+                            Text(value).font(Theme.font(.detail)).foregroundStyle(Theme.text)
+                        }
+                    }
+                    .lineLimit(1)
+                    .padding(.horizontal, Space.tight)
+                    .padding(.top, Space.hair)
+                    // Pinned to the well's floor under the strip.
+                    Sparkline(values, color: color, role: .inline(height: Layout.Meter.trendWell, axis: axis))
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            } else {
+                Sparkline(values, color: color, role: .inline(height: Layout.Meter.trendWell, axis: axis))
+            }
+        }
+    }
+}
+
+/// Two rates around one baseline: `up` rises above it, `down` hangs below, each on 0…its own peak.
+/// Upload and download differ by orders of magnitude, so a shared axis would flatten one of them;
+/// separate axes stay honest because each peak is printed, on a line above the well rather than
+/// over the data.
+struct MirroredWellChart: View {
+    let up: [Double]
+    let down: [Double]
+    let upColor: Color
+    let downColor: Color
+    var format: (Double) -> String = formatRate
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        GeometryReader { geo in
+            // The well spans the full width, so this is the bar count it draws.
+            let n = BarPitch.fitting(width: geo.size.width, scale: displayScale)
+            let upShown = Array(up.suffix(n)), downShown = Array(down.suffix(n))
+            let upPeak = upShown.withoutGaps.max() ?? 0
+            let downPeak = downShown.withoutGaps.max() ?? 0
+            VStack(alignment: .leading, spacing: Space.hair) {
+                HStack(spacing: Space.tight) {
+                    Text("peak").foregroundStyle(Theme.faint)
+                    Text("↑ " + format(upPeak)).foregroundStyle(upColor.opacity(0.85))
+                    Text("↓ " + format(downPeak)).foregroundStyle(downColor.opacity(0.85))
+                }
+                .font(Theme.font(.caption))
+                .lineLimit(1).minimumScaleFactor(0.8)
+                ChartWell(guides: false) {
+                    Canvas(opaque: false, rendersAsynchronously: false) { ctx, size in
+                        guard size.width > 0, size.height > 0 else { return }
+                        let mid = (size.height / 2).rounded()
+                        var axis = Path()
+                        axis.move(to: CGPoint(x: 0, y: mid)); axis.addLine(to: CGPoint(x: size.width, y: mid))
+                        ctx.stroke(axis, with: .color(Color.white.opacity(0.10)), lineWidth: 1 / displayScale)
+                        drawBarSeries(ctx, values: upShown, color: upColor, top: upPeak,
+                                      baseline: mid, extent: -(mid - 1), width: size.width, scale: displayScale)
+                        drawBarSeries(ctx, values: downShown, color: downColor, top: downPeak,
+                                      baseline: mid, extent: size.height - mid - 1, width: size.width, scale: displayScale)
+                    }
+                }
+            }
+        }
     }
 }
 

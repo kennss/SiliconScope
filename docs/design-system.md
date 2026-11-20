@@ -483,6 +483,24 @@ Five items, corrected against the source. All are hierarchy problems; none needs
    → keep line+area (btop identity; do **not** adopt iStat's histogram) and expose exactly two
    named roles, `.trend` and `.inline`. No raw `fill:`/`grid:`/`yDomain:` at call sites.
 
+   **Revised 2026-11-20 — series that move tick to tick are bars.** The premise above was wrong:
+   btop does not draw lines. Its graphs are braille cells filled up from the floor, one column per
+   sample — dense bars. And the line was the dishonest form for exactly these series: it joins two
+   samples with a slope, so a jump from 0 to 100 % reads as a climb through every value between,
+   none of which was measured. So:
+   - **Bars** (`WellChart`, `MirroredWellChart`) for utilisation and rates — CPU, GPU, ANE, Media,
+     bandwidth, network, disk. One bar per sample at a fixed pitch (3 pt + 1 pt gap); a wider
+     chart shows more of the past, not fatter bars, which is why `History.capacity` is 150. A gap
+     (an unmeasured tick) draws nothing, a measured zero draws one pixel. Each chart sits in its
+     own recessed well with its reading in a label strip, so the meter rows above it are gone —
+     the newest bar is the meter. Upload/download and write/read share one well, up above and
+     down below a baseline, each half on its own axis with its peak printed.
+   - **Lines** (`Sparkline`) stay for slow levels read as a level — temperatures, memory in use —
+     and for overlays, which bars cannot draw without hiding each other. A line takes the last
+     `History.lineWindow` (60) samples, so its time span is unchanged.
+   - Still rejected: ring/donut gauges and the light theme (§2). The bars are the btop form in
+     the existing palette, not iStat's look.
+
 4. **Colour encoding is implicit, not overloaded.** `Bar` falls through
    `color ?? Theme.heat(value)` (`Theme.swift:191`) — but only **2 of 9** call sites rely on it
    (`DashboardView.swift:962` Bandwidth Total, `:1047` Disk Used). v1's rule
