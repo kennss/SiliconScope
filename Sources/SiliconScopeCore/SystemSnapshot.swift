@@ -1,7 +1,7 @@
 //
 //  File:      SystemSnapshot.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  One unified reading of every SiliconScope metric, produced by SystemSampler
 //             and consumed by the UI. Pure value type (Sendable).
@@ -110,14 +110,15 @@ public struct SystemSnapshot: Sendable, Codable {
         case .serious:  result.append(.init(level: .warning, message: "Thermal pressure — serious"))
         default: break
         }
-        switch memory.pressure {
-        case .critical: result.append(.init(level: .critical, message: "Memory pressure: critical"))
-        case .warning:  result.append(.init(level: .warning, message: "Memory pressure: elevated"))
-        case .normal:   break
+        // Only the kernel's CRITICAL level is an alert. Its "warning" level is a state, shown as
+        // colour (the Memory card's border, the AI Workload "Elevated" row) like Activity Monitor's
+        // yellow — a banner for it went up whenever the compressor was busy, with memory to spare.
+        if memory.pressure == .critical {
+            result.append(.init(level: .critical, message: "Memory pressure: critical"))
         }
-        // Note: a predictive "swapping now" warning is rate-based and lives on the monitor
-        // (memoryRisk → Dashboard banner). swapUsedBytes is cumulative/sticky, so it is not
-        // turned into a warning here (it would false-positive long after pressure clears).
+        // Note: "swapping now" is rate-based and lives on the monitor (memoryRisk, sustained
+        // swap-out — #88); the dashboard adds it to the banner. swapUsedBytes is cumulative and
+        // sticky, so it is not turned into a warning here (it would outlast the pressure).
         return result
     }
 }

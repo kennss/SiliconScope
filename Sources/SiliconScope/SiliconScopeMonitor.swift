@@ -481,7 +481,8 @@ final class SiliconScopeMonitor {
             active.append(("swap", "Memory swapping",
                 "Unified memory is full — swapping is limiting throughput."))
         } else if snapshot.memory.pressure == .critical {
-            active.append(("mempressure", "Memory pressure: critical", "Free up memory to avoid swapping."))
+            // Describes, never instructs (CONTRIBUTING rule 5): what macOS reports, not what to do.
+            active.append(("mempressure", "Memory pressure: critical", "macOS reports critical memory pressure."))
         }
         let now = Date()
         for a in active where !notifiedConditions.contains(a.key) {

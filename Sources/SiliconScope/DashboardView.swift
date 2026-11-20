@@ -431,6 +431,11 @@ struct DashboardView: View {
         // Bandwidth-bound is no longer a banner alert — it's the AI Workload verdict
         // (AIWorkloadCard). The banner keeps only the data-level + throttle alarms.
         var warnings = s.snapshot.warnings
+        // Swapping is the memory alert: swap-out sustained over the last seconds (#88), the same
+        // verdict that sends the macOS notification — so the banner and the notification agree.
+        if s.memoryRisk == .swapping, s.snapshot.memory.pressure != .critical {
+            warnings.append(.init(level: .critical, message: "Memory swapping — unified memory is full"))
+        }
         if s.gpuThrottling {
             let level: SystemSnapshot.Warning.Level = s.snapshot.thermal.pressure == .critical ? .critical : .warning
             warnings.append(.init(level: level,
