@@ -2,7 +2,7 @@
 #
 #  File:      stamp-sdk-version.sh
 #  Created:   2026-09-24
-#  Updated:   2026-09-24
+#  Updated:   2026-11-20
 #  Developer: Kennt Kim / Calida Lab
 #  Overview:  Makes a Mach-O executable's LC_BUILD_VERSION record the SDK it was actually built
 #             against. Run on every shipped binary BEFORE it is signed (the edit invalidates a
@@ -17,15 +17,18 @@
 #             switched off. Reproduced with a one-line Swift file: swiftc without SDKROOT → sdk 14.0,
 #             with it → 27.0. The backend strips SDKROOT from its tasks, so exporting it does not help.
 #
-#             The fix restates a fact rather than inventing one: the SDK is `xcrun --show-sdk-version`,
-#             the same SDK the objects already carry; the minimum version is kept as the binary has it.
+#             The fix restates a fact rather than inventing one: the SDK is `xcrun --sdk macosx
+#             --show-sdk-version`, the same SDK the objects already carry; the minimum version is kept
+#             as the binary has it. `--sdk macosx` is required: without it xcrun can resolve the
+#             Command Line Tools SDK even while Xcode is selected, and then fails to read its
+#             version (seen 2026-11-20) — the macOS SDK of the selected Xcode is the one swift build used.
 #             Once the toolchain records it correctly, the check below finds nothing to do.
 #
 #  Usage:     scripts/stamp-sdk-version.sh <binary> [<binary> …]
 #
 set -euo pipefail
 
-SDK="$(xcrun --show-sdk-version)"
+SDK="$(xcrun --sdk macosx --show-sdk-version)"
 
 for BIN in "$@"; do
   # Every architecture's (minos, sdk) pair; a universal binary carries one per slice.
