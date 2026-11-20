@@ -186,7 +186,7 @@ enum MenuBarItemRenderer {
         case .cpuPerformance:  return percent(s.cpu.pUsage)
         case .gpuUtilisation:  return percent(s.gpu.usage)
         case .gpuMemory:       return iStatGB(s.gpu.inUseMemoryGB)
-        case .mediaThroughput: return String(format: "%.0f GB/s", s.bandwidth.mediaGBs)
+        case .mediaThroughput: return s.bandwidth.laneText(s.bandwidth.mediaGBs)
         case .anePower:        return s.aneGlyphText
         case .memoryUsed:      return iStatGB(s.memory.usedGB)
         case .memoryFree:      return iStatGB(s.memory.freeGB)

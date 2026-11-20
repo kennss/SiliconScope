@@ -1,7 +1,7 @@
 //
 //  File:      EngineActivity.swift
 //  Created:   2026-07-27
-//  Updated:   2026-09-24
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Latched "is this engine doing work" flags for the AI Workload card's CPU / GPU / ANE
 //             / Media rows. A bare threshold on a live sample flaps: a GPU hovering around the
@@ -62,7 +62,7 @@ public struct EngineActivity: Sendable, Equatable {
         gpuLatch = ActivityLatch(isOn: s.gpu.usage > Threshold.gpuUsageOn || s.power.gpuWatts > Threshold.gpuWattsOn)
         aneLatch = ActivityLatch(isOn: s.ane.map { $0.activeFraction > Threshold.aneActiveOn }
                                         ?? (s.power.aneWatts > Threshold.aneWattsOn))
-        mediaLatch = ActivityLatch(isOn: s.bandwidth.mediaGBs > Threshold.mediaGBsOn)
+        mediaLatch = ActivityLatch(isOn: s.bandwidth.hasRequestorSplit && s.bandwidth.mediaGBs > Threshold.mediaGBsOn)
     }
 
     public var cpu: Bool { cpuLatch.isOn }
@@ -121,7 +121,9 @@ public struct EngineActivity: Sendable, Equatable {
             aneLatch.update(ane ? s.power.aneWatts > Threshold.aneWattsOff
                                 : s.power.aneWatts > Threshold.aneWattsOn)
         }
-        if measured.contains(.bandwidth) {
+        // Only where the media lane is a measurement (`hasRequestorSplit`); on a chip that reads
+        // only a total the latch is left alone, and the UI says the engine is unknown.
+        if measured.contains(.bandwidth), s.bandwidth.hasRequestorSplit {
             mediaLatch.update(media ? s.bandwidth.mediaGBs > Threshold.mediaGBsOff
                                     : s.bandwidth.mediaGBs > Threshold.mediaGBsOn)
         }

@@ -632,7 +632,7 @@ struct GPUMenuDropdown: View {
                     .frame(height: Layout.Meter.wellCompact)
                 WellChart(values: monitor.history.media.map { $0.scaledToCeiling(max(monitor.mediaPeakGBs, 0.5)) },
                           color: MetricPalette.mediaC, label: "Media Engine",
-                          value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs))
+                          value: s.bandwidth.mediaText)
                     .frame(height: Layout.Meter.wellCompact)
             }
             Divider()

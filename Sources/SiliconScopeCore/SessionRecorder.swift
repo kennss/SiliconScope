@@ -131,6 +131,8 @@ public final class SessionRecorder {
     /// One CSV row for a snapshot. Metrics the chip doesn't expose render as blank cells.
     public static func csvRow(_ s: SystemSnapshot, t: Double, started: Date) -> String {
         func n(_ v: Double, _ p: Int = 2) -> String { String(format: "%.\(p)f", v) }
+        // A bandwidth lane is a reading only where the chip splits traffic by requestor.
+        func lane(_ b: BandwidthSample, _ v: Double) -> String { b.hasRequestorSplit ? n(v) : "" }
         func q(_ str: String) -> String {        // CSV-escape a free-text field
             (str.contains(",") || str.contains("\"") || str.contains("\n"))
                 ? "\"" + str.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : str
@@ -141,9 +143,11 @@ public final class SessionRecorder {
             n(s.gpu.usagePercent, 1), n(s.gpu.freqMHz, 0), n(s.gpu.inUseMemoryGB),
             n(s.power.cpuWatts), n(s.power.eCPUWatts), n(s.power.pCPUWatts), n(s.power.gpuWatts),
             n(s.power.aneWatts), n(s.power.dramWatts), n(s.power.socWatts),
-            n(s.bandwidth.cpuGBs), n(s.bandwidth.gpuGBs), n(s.bandwidth.mediaGBs),
-            // Empty, like an absent sensor, when the total was only known as a bound (#93).
-            n(s.bandwidth.otherGBs), s.bandwidth.belowGBs == nil ? n(s.bandwidth.totalGBs) : "",
+            // Lanes are empty, like an absent sensor, where only a total was read; the total is
+            // empty when it was only known as a bound (#93).
+            lane(s.bandwidth, s.bandwidth.cpuGBs), lane(s.bandwidth, s.bandwidth.gpuGBs),
+            lane(s.bandwidth, s.bandwidth.mediaGBs),
+            lane(s.bandwidth, s.bandwidth.otherGBs), s.bandwidth.belowGBs == nil ? n(s.bandwidth.totalGBs) : "",
             n(s.memory.usedGB), n(s.memory.totalGB), s.memory.pressure.rawValue, n(s.memory.swapUsedGB),
             s.temperature.hasCPU ? n(s.temperature.cpuCelsius, 1) : "",
             s.temperature.hasCPU ? n(s.temperature.cpuMaxCelsius, 1) : "",

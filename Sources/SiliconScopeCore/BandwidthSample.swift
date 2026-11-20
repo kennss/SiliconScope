@@ -18,6 +18,8 @@
 //             `belowGBs` is the one reading that is NOT a number: a histogram that held all its
 //             residency in its lowest band only says traffic was under that band (#93). Text
 //             goes through `totalText`, charts leave it out, and `totalGBs` reads 0 for math.
+//             `hasRequestorSplit` is false whenever only a total was read; the lanes are then
+//             unknown, not zero.
 //
 import Foundation
 
@@ -70,6 +72,25 @@ public struct BandwidthSample: Sendable, Equatable, Codable {
     }
 
     public var totalGBs: Double { measuredTotalGBs ?? (cpuGBs + gpuGBs + mediaGBs + (aneGBs ?? 0) + otherGBs) }
+
+    /// False when only a total was read: the aggregate histogram on M3 Max/Ultra (#46, #93), A18's
+    /// "DRAM BW", or a floor bound. The per-requestor lanes (cpu, gpu, media, ane, other) are then
+    /// not measurements — they hold their zero defaults — and must be shown as unknown ("—"), kept
+    /// out of charts and averages, and never read as "this engine moved no memory". The Media
+    /// Engine's activity comes from its lane, so on these chips it is unknown too.
+    /// Derived from fields every recording and Fleet frame already carries, so old data reads right.
+    public var hasRequestorSplit: Bool { measuredTotalGBs == nil && belowGBs == nil }
+
+    /// One requestor lane as text, or "—" where this chip reads only a total (`hasRequestorSplit`).
+    public func laneText(_ gbs: Double, decimals: Int = 0) -> String {
+        hasRequestorSplit ? String(format: "%.\(decimals)f GB/s", gbs) : "—"
+    }
+
+    /// The Media Engine's traffic — its only activity reading — or "—" where it can't be split out.
+    public var mediaText: String { laneText(mediaGBs, decimals: 1) }
+
+    /// Why the lanes read "—", for a tooltip.
+    public static let noSplitNote = "This chip reports only its total memory traffic. How that divides between CPU, GPU, media and other requestors can't be read, so those rows show — rather than 0."
 
     /// The total as text: "< 128 GB/s" when it was below the histogram's resolution.
     public var totalText: String { Self.totalText(totalGBs: totalGBs, belowGBs: belowGBs) }

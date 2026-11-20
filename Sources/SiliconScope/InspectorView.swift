@@ -163,7 +163,7 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: Space.tight) {
                 KV(key: "GPU", value: String(format: "%.0f%%", s.gpu.usage * 100))
                 KV(key: "ANE power", value: s.power.text(s.power.aneWatts))
-                KV(key: "Media engine", value: String(format: "%.1f GB/s", s.bandwidth.mediaGBs))
+                KV(key: "Media engine", value: s.bandwidth.mediaText)
                 KV(key: "Memory bandwidth", value: s.bandwidth.totalText)
                 Text("System-wide — macOS doesn't attribute these to a single process (sudoless).")
                     .font(Theme.font(.caption)).foregroundStyle(Theme.faint)

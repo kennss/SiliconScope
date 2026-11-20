@@ -70,7 +70,8 @@ public final class MetricsEngine {
             roll(&gpuMem, value(.gpu, s.gpu.inUseMemoryFraction))
             roll(&ane, value(.power, s.power.aneWatts))
             roll(&aneActive, value(.ane, s.ane?.activeFraction ?? .nan))
-            roll(&media, value(.bandwidth, s.bandwidth.mediaGBs))
+            // A chip that reads only a total has no media lane: a gap, not a run of zeros.
+            roll(&media, value(.bandwidth, s.bandwidth.hasRequestorSplit ? s.bandwidth.mediaGBs : .nan))
             // Below the histogram's resolution (#93) there is no value to draw, only a bound.
             roll(&bandwidth, value(.bandwidth, s.bandwidth.belowGBs == nil ? s.bandwidth.totalGBs : .nan))
             roll(&dieTemp, value(.temperature, s.temperature.cpuCelsius))
@@ -168,7 +169,9 @@ public final class MetricsEngine {
         latest = s
         if measured.contains(.bandwidth) {
             bandwidthPeakGBs = max(s.bandwidth.totalGBs, max(40, bandwidthPeakGBs * Self.peakDecay))
-            mediaPeakGBs = max(s.bandwidth.mediaGBs, max(1, mediaPeakGBs * Self.peakDecay))
+            if s.bandwidth.hasRequestorSplit {
+                mediaPeakGBs = max(s.bandwidth.mediaGBs, max(1, mediaPeakGBs * Self.peakDecay))
+            }
         }
         if measured.contains(.power) {
             anePeakWatts = max(s.power.aneWatts, max(1, anePeakWatts * Self.peakDecay))

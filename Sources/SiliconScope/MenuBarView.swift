@@ -73,7 +73,7 @@ struct MenuBarView: View {
             compactSeparator
             compactValue(s.power.gpuText())
             compactSeparator
-            compactValue(String(format: "%.0f GB/s", s.bandwidth.gpuGBs))
+            compactValue(s.bandwidth.laneText(s.bandwidth.gpuGBs))
             compactSeparator
             compactValue(formatTemperature(s.temperature.cpuCelsius, fahrenheit: fahrenheit),
                          color: monitor.gpuThrottling ? Theme.heat(1) : Theme.text)
@@ -118,7 +118,7 @@ struct MenuBarView: View {
         Divider()
         KV(key: "GPU", value: String(format: "%.0f%% · ", snapshot.gpu.usagePercent) + snapshot.power.gpuText())
         KV(key: "ANE", value: snapshot.aneText())
-        KV(key: "Media", value: String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs))
+        KV(key: "Media", value: snapshot.bandwidth.mediaText)
         KV(key: "Mem BW", value: snapshot.bandwidth.totalText)
         // The dashboard header's figure, not the bare SoC total: on macOS 27 the SoC counters
         // can go minutes without updating (#65), and "SoC power —" said nothing about why. The
@@ -171,7 +171,7 @@ struct MenuBarView: View {
             WellChart(values: monitor.history.aneSeries(measured: s.ane != nil, peakWatts: monitor.anePeakWatts),
                       color: c[2], ceiling: 1)
         }
-        graphRow("MED", c[3], String(format: "%.1f GB/s", s.bandwidth.mediaGBs)) {
+        graphRow("MED", c[3], s.bandwidth.mediaText) {
             WellChart(values: monitor.history.media, color: c[3], ceiling: max(monitor.mediaPeakGBs, 0.5))
         }
         graphRow("MEM", c[4], String(format: "%.0f%%", s.memory.usedPercent)) {

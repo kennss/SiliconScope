@@ -78,10 +78,12 @@ for i in 1...3 {
         format: "| CPU %.0f°C (max %.0f) batt %.0f°C thermal %@ fans %@",
         tp.cpuCelsius, tp.cpuMaxCelsius, tp.batteryCelsius, t.pressure.rawValue, fans
     )
-    let bwLine = String(
-        format: "| BW cpu %.0f gpu %.0f media %.0f ane %.0f other %.0f total %@",
-        bw.cpuGBs, bw.gpuGBs, bw.mediaGBs, bw.aneGBs ?? 0, bw.otherGBs, bw.totalText
-    )
+    // Lanes read "—" where the chip reports only a total (M3 Max/Ultra, A18): they were not
+    // measured, and "gpu 0" beside "total 737" said the GPU moved no memory. ANE reads "—" too
+    // where its lane is not split out of "other" at all.
+    func lane(_ v: Double) -> String { bw.hasRequestorSplit ? String(format: "%.0f", v) : "—" }
+    let bwLine = "| BW cpu \(lane(bw.cpuGBs)) gpu \(lane(bw.gpuGBs)) media \(lane(bw.mediaGBs)) "
+        + "ane \(bw.aneGBs.map { lane($0) } ?? "—") other \(lane(bw.otherGBs)) total \(bw.totalText)"
     // Measured ANE activity — independent of the power counters, so it reads on macOS 27 too.
     let aneLine = ane?.sample(interval: 0.3).map { a in
         "| ANE active " + a.clusters.map { String(format: "%.0f%%", $0 * 100) }.joined(separator: "/")

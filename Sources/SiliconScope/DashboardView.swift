@@ -639,6 +639,9 @@ private struct AIWorkloadCard: View {
         return activity.ane ? (aneColor, "active", reading) : (Theme.dim, "idle", reading)
     }
     private var mediaEngine: (Color, String, String) {
+        // The Media Engine's only evidence is its memory lane. On a chip that reads only a total
+        // there is none, and "idle" would be a claim nobody measured.
+        guard snapshot.bandwidth.hasRequestorSplit else { return (Theme.dim, "—", "total only") }
         let reading = String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs)
         return activity.media ? (mediaColor, "active", reading) : (Theme.dim, "idle", reading)
     }
@@ -1060,7 +1063,7 @@ private struct AcceleratorCard: View {
                     }
                     WellChart(values: mediaHistory.map { $0.scaledToCeiling(max(mediaPeak, 0.5)) },
                               color: mediaColor, label: "Media",
-                              value: String(format: "%.1f GB/s", bandwidth.mediaGBs))
+                              value: bandwidth.mediaText)
                 }
             }
         }
@@ -1172,15 +1175,19 @@ private struct MemoryBandwidthCard: View {
             Bar(label: "Total", value: min(1, bandwidth.totalGBs / max(bandwidthPeak, 1)),
                 detail: bandwidth.totalText,
                 encoding: .identity(Self.bandwidthColor))
-            KV(key: "CPU", value: String(format: "%.0f GB/s", bandwidth.cpuGBs))
-            KV(key: "GPU", value: String(format: "%.0f GB/s", bandwidth.gpuGBs))
-            KV(key: "Media", value: String(format: "%.0f GB/s", bandwidth.mediaGBs))
-            // Only where the lane was measured separately — before that, ANE traffic sat inside
-            // Other, and a 0 here would be a reading nobody took.
-            if let ane = bandwidth.aneGBs {
-                KV(key: "ANE", value: String(format: "%.0f GB/s", ane))
+            // "—" where only a total was read: the lanes there are not measurements (hasRequestorSplit).
+            Group {
+                KV(key: "CPU", value: bandwidth.laneText(bandwidth.cpuGBs))
+                KV(key: "GPU", value: bandwidth.laneText(bandwidth.gpuGBs))
+                KV(key: "Media", value: bandwidth.laneText(bandwidth.mediaGBs))
+                // Only where the lane was measured separately — before that, ANE traffic sat
+                // inside Other, and a 0 here would be a reading nobody took.
+                if let ane = bandwidth.aneGBs {
+                    KV(key: "ANE", value: String(format: "%.0f GB/s", ane))
+                }
+                KV(key: "Other", value: bandwidth.laneText(bandwidth.otherGBs))
             }
-            KV(key: "Other", value: String(format: "%.0f GB/s", bandwidth.otherGBs))
+            .help(bandwidth.hasRequestorSplit ? "" : BandwidthSample.noSplitNote)
             Spacer(minLength: 4)
             // #20: the dense Memory column has no room for its own trend, so the memory-used trend
             // shares this (sparser) column's spare space, under bandwidth-over-time. Bandwidth
