@@ -23,7 +23,7 @@
 
 *[OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)(미국), [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)(일본), [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)(독일), [MacMagazine](https://macmagazine.com.br/post/2026/09/02/monitore-todos-os-aspectos-do-seu-mac-com-o-aplicativo-siliconscope/)(브라질)에 소개됐습니다.*
 
-![온디바이스 AI 부하 상태의 SiliconScope 대시보드](docs/img/dashboard.png)
+![SiliconScope 대시보드](docs/img/dashboard.png)
 
 *macOS 27이 설치된 M1 Max에서 [Spectalo](https://spectalo.calidalab.ai/)가 Core ML 모델을 돌리고 있는 화면입니다. 워크로드 분류기는 **ANE (CoreML)**로 판정했고, Neural Engine은 **100 % 활성 상태로 16 GB/s**를 주고받고 있습니다. 이 값은 클러스터 residency를 직접 잰 것이라, 이 칩의 에너지 카운터가 30분에 한 번 정도만 갱신되는 macOS 27에서도 실시간으로 움직입니다. GPU는 100 %에 36 W, 메모리 대역폭은 칩 한계 400 GB/s 중 306 GB/s를 쓰고 있어 **대역폭 병목**으로 표시됩니다. 헤더의 **system 105 W**는 Mac 전체가 쓰는 전력입니다. 색은 눈여겨볼 곳에만 씁니다. 이 화면에서는 90 °C를 넘은 CPU·GPU 온도만 빨간색이고 나머지는 무채색입니다. 맨 아래 막대는 **Replay**(3.0에서 추가)입니다. 모든 지표가 기록되니, 지나간 순간도 DVR처럼 되감아 볼 수 있습니다.*
 

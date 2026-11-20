@@ -18,7 +18,7 @@
 
 *[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本語）、[OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（英語）、[ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（ドイツ語）、[MacMagazine](https://macmagazine.com.br/post/2026/09/02/monitore-todos-os-aspectos-do-seu-mac-com-o-aplicativo-siliconscope/)（ポルトガル語）で紹介されました。*
 
-![オンデバイス AI の負荷がかかった状態の SiliconScope ダッシュボード](docs/img/dashboard.png)
+![SiliconScope ダッシュボード](docs/img/dashboard.png)
 
 *macOS 27 の M1 Max 1 台に、実際のオンデバイス AI の負荷をかけたところです。[Spectalo](https://spectalo.calidalab.ai/) が Core ML モデルを実行しています。ワークロード分類器の判定は **ANE (CoreML)** で、Neural Engine は **100 % アクティブ、16 GB/s** です。この値はクラスタ residency の実測値なので、このチップのエネルギーカウンタが約 30 分に一度しか更新されない macOS 27 でもリアルタイムに動きます。GPU は 100 %・36 W、メモリ帯域はチップの上限 400 GB/s に対して 306 GB/s で（**帯域律速**）、ヘッダーの **system 105 W** は Mac 全体の消費電力です。色を付けるのは注意が必要な箇所だけで、ここでは 90 °C を超えた CPU と GPU の温度が赤になっています。それ以外はニュートラルな色のままです。下部のバーは 3.0 で追加した **Replay** です。すべての指標が記録されるので、レコーダーのようにセッションを巻き戻して見返せます。*
 

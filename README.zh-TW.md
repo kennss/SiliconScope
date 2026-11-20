@@ -18,7 +18,7 @@
 
 *曾獲 [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（美國）、[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）、[ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德國）與 [MacMagazine](https://macmagazine.com.br/post/2026/09/02/monitore-todos-os-aspectos-do-seu-mac-com-o-aplicativo-siliconscope/)（巴西）報導。*
 
-![SiliconScope 儀表板與底部的 Replay 時間軸](docs/img/dashboard.png)
+![SiliconScope 儀表板](docs/img/dashboard.png)
 
 *一台執行 macOS 27 的 M1 Max，正承受真實的裝置端 AI 負載：[Spectalo](https://spectalo.calidalab.ai/) 正在執行它的 Core ML 模型。工作負載分類器判定為 **ANE (CoreML)**，Neural Engine **100 % 活躍，資料流量 16 GB/s**。這是實測的叢集駐留率（cluster residency），所以即使在 macOS 27 上也能即時更新；在這個版本上，這顆晶片的能耗計數器大約每半小時才更新一次。GPU 為 100 %、36 W，記憶體頻寬 306 GB/s，晶片上限是 400 GB/s（**頻寬受限**）；頂端的 **system 105 W** 是整台 Mac 的耗電量。只有需要注意的地方才會上色，這裡是超過 90 °C 的 CPU 與 GPU 溫度標成紅色，其餘一律維持中性色。底部那一條就是 **Replay**（3.0 新增）：所有指標都會記錄下來，可以像 DVR 一樣拖曳時間軸，回頭檢視整段過程。*
 

@@ -25,7 +25,7 @@ selben Dashboard. Entfernte Macs werden dabei vollständig dargestellt, **Neural
 
 *Darüber berichtet haben [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE), [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/) (US), [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP) und [MacMagazine](https://macmagazine.com.br/post/2026/09/02/monitore-todos-os-aspectos-do-seu-mac-com-o-aplicativo-siliconscope/) (BR).*
 
-![SiliconScope-Dashboard unter On-Device-KI-Last](docs/img/dashboard.png)
+![SiliconScope-Dashboard](docs/img/dashboard.png)
 
 *Ein M1 Max unter macOS 27 bei echter On-Device-KI-Last: [Spectalo](https://spectalo.calidalab.ai/) führt seine Core-ML-Modelle aus. Der Workload-Klassifikator meldet **ANE (CoreML)**, die Neural Engine ist **zu 100 % aktiv und bewegt 16 GB/s**. Dieser Wert beruht auf der gemessenen Aktivzeit der Cluster (Residency) und bleibt deshalb auch unter macOS 27 aktuell, wo die Energiezähler dieses Chips nur etwa alle halbe Stunde aktualisiert werden. Die GPU läuft mit 100 % bei 36 W, die Speicherbandbreite liegt bei 306 GB/s, die Obergrenze des Chips bei 400 GB/s (**bandbreitenlimitiert**). **system 105 W** in der Kopfzeile ist die Leistungsaufnahme des gesamten Macs. Farbe setzt das Dashboard nur dort ein, wo etwas Aufmerksamkeit verlangt, hier Rot für CPU- und GPU-Temperaturen über 90 °C; alles andere bleibt neutral. Die Leiste am unteren Rand ist **Replay** (seit 3.0): Jede Metrik wird aufgezeichnet, sodass du eine Sitzung wie mit einem Festplattenrekorder zurückspulen kannst.*
 

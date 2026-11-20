@@ -23,7 +23,7 @@ encrypted, paired connection. Remote Macs keep the full treatment, **Neural Engi
 
 *Featured on [OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/) (US), [AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html) (JP), [ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/) (DE) and [MacMagazine](https://macmagazine.com.br/post/2026/09/02/monitore-todos-os-aspectos-do-seu-mac-com-o-aplicativo-siliconscope/) (BR).*
 
-![SiliconScope dashboard with the Replay scrubber](docs/img/dashboard.png)
+![SiliconScope dashboard](docs/img/dashboard.png)
 
 *One M1 Max on macOS 27 under a real on-device AI load — [Spectalo](https://spectalo.calidalab.ai/) running its Core ML models. The workload classifier reads **ANE (CoreML)**, and the Neural Engine is **100 % active, moving 16 GB/s** — measured cluster residency, so it stays live even on macOS 27, where this chip's energy counters update only about every half hour. The GPU is at 100 % and 36 W, memory bandwidth is 306 GB/s against the chip's 400 GB/s ceiling (**bandwidth-bound**), and the header's **system 105 W** is the whole Mac's draw. Colour is spent only where something needs attention — here, red on CPU and GPU temperatures above 90 °C — and neutral everywhere else. The bar along the bottom is **Replay** (new in 3.0): every metric is recorded, so you can scrub back through a session like a DVR.*
 

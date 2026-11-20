@@ -15,7 +15,7 @@
 
 *媒体报道：[OWC Rocket Yard](https://eshop.macsales.com/blog/99094-siliconscope-improves-upon-macos-activity-monitor-with-apple-silicon-insights/)（美国）、[AAPL Ch.](https://applech2.com/archives/20260620-siliconscope-apple-silicon-mac-system-monitor.html)（日本）、[ifun.de](https://www.ifun.de/siliconscope-ueberwacht-apple-ki-neural-engine-und-speicher-in-echtzeit-282222/)（德国）、[MacMagazine](https://macmagazine.com.br/post/2026/09/02/monitore-todos-os-aspectos-do-seu-mac-com-o-aplicativo-siliconscope/)（巴西）。*
 
-![端侧 AI 负载下的 SiliconScope 仪表盘](docs/img/dashboard.png)
+![SiliconScope 仪表盘](docs/img/dashboard.png)
 
 *一台 M1 Max，系统为 macOS 27，正在跑真实的端侧 AI 任务：[Spectalo](https://spectalo.calidalab.ai/) 在运行它的 Core ML 模型。负载分类器给出的判断是 **ANE (CoreML)**，Neural Engine **100 % 活跃，数据吞吐 16 GB/s**。这个数值来自实测的簇驻留率，所以即使在 macOS 27 上也是实时的（在这个系统上，这颗芯片的能耗计数器大约半小时才更新一次）。GPU 占用 100 %，功耗 36 W；内存带宽 306 GB/s，而芯片上限是 400 GB/s（**带宽受限**）；顶栏的 **system 105 W** 是整台 Mac 的功耗。只有需要留意的地方才会上色，比如这里 CPU 和 GPU 温度超过 90 °C，显示为红色，其余一律用中性色。底部那一条就是 **Replay**（3.0 新增）：所有指标都有记录，可以像录像机一样拖动进度，回看整段过程。*
 
