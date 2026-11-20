@@ -294,7 +294,6 @@ enum MenuBarItemRenderer {
         case .mediaThroughput: return h.media.map { $0.scaledToCeiling(max(m.mediaPeakGBs, 0.5)) }
         case .anePower:        return h.aneSeries(measured: m.snapshot.ane != nil, peakWatts: m.anePeakWatts)
         case .memoryUsed:      return h.memFraction
-        case .memoryFree:      return h.memFraction.map { 1 - $0 }
         // `dieTemp` is fed from `temperature.cpuCelsius` — the CPU sensor, which is this channel.
         // Scaled against the app's own hot reference rather than the window, so the line means
         // thermal headroom and a machine idling at 45 °C does not look like one at its limit.
@@ -306,8 +305,9 @@ enum MenuBarItemRenderer {
         case .diskWrite:       return h.diskWrite
         case .socPower:        return h.soc
         // No series exists for disk space, the second sensor reading, memory pressure or battery %
-        // — `DataChannel.hasHistory` says so, and `channels(for: .graph)` filters them out.
-        case .memoryPressure, .diskUsed, .diskFree, .sensorSecondaryTemp, .batteryPercent:
+        // — `DataChannel.hasHistory` says so — and free memory is not charted, being used memory
+        // upside down (`mirrorsAnotherSeries`). `channels(for: .graph)` filters all of them out.
+        case .memoryPressure, .memoryFree, .diskUsed, .diskFree, .sensorSecondaryTemp, .batteryPercent:
             return []
         }
     }

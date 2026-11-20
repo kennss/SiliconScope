@@ -87,7 +87,7 @@ public enum MetricKind: String, Codable, CaseIterable, Sendable {
     /// records read/write over time but not used/free, so offering `graph` for the Disk item
     /// while still listing "Used" would let the user pick a chart with no series behind it.
     public func channels(for mode: GlyphMode) -> [DataChannel] {
-        mode == .graph ? channels.filter(\.hasHistory) : channels
+        mode == .graph ? channels.filter { $0.hasHistory && !$0.mirrorsAnotherSeries } : channels
     }
 
     /// The two-letter-ish stacked label drawn before the glyph ("C/P/U").
@@ -323,6 +323,11 @@ public enum DataChannel: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// True when a chart of this channel would be another channel's chart upside down: free memory
+    /// is 1 − used. As text ("Free 16 GB") it says something the used figure does not; as a series
+    /// it adds a second band carrying the same reading, so a graph does not offer it.
+    public var mirrorsAnotherSeries: Bool { self == .memoryFree }
+
     /// True when the channel's prefix and source are decided at sample time rather than by the
     /// model — see `sensorSecondaryTemp`.
     public var resolvesAtSampleTime: Bool { self == .sensorSecondaryTemp }
@@ -356,10 +361,22 @@ public struct MenuBarItemConfig: Codable, Identifiable, Equatable, Sendable {
         return mode.arity.contains(channels.count)
     }
 
-    /// Repairs an invalid config to the metric's defaults instead of dropping the item — a user's
-    /// menu bar should never silently lose an entry because a stored mode was retired.
+    /// Repairs an invalid config instead of dropping the item — a user's menu bar should never
+    /// silently lose an entry because a stored mode or channel was retired.
+    ///
+    /// The least change that makes it valid: when only some channels stopped being offered for
+    /// this mode, they are dropped and the user's mode is kept (a Memory graph of Used + Free
+    /// becomes a graph of Used, not a reset to the two-line text it started as). Anything else
+    /// falls back to the metric's defaults.
     public func repaired() -> MenuBarItemConfig {
-        isValid ? self : MenuBarItemConfig(id: id, metric: metric)
+        if isValid { return self }
+        if metric.supportedModes.contains(mode) {
+            let kept = channels.filter(metric.channels(for: mode).contains)
+            if mode.arity.contains(kept.count) {
+                return MenuBarItemConfig(id: id, metric: metric, mode: mode, channels: kept)
+            }
+        }
+        return MenuBarItemConfig(id: id, metric: metric)
     }
 
     /// Stable per-instance autosave name. macOS owns status-item POSITION (users ⌘-drag them and

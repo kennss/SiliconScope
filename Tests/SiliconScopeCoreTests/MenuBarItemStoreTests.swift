@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarItemStoreTests.swift
 //  Created:   2026-07-27
-//  Updated:   2026-07-27
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins the #27 phase-4a migration off the legacy per-metric `menubar.*` Bools, plus the
 //             1:N pin semantics and the model's validation/repair rules. This is the only part of
@@ -259,7 +259,9 @@ final class MenuBarItemStoreTests: XCTestCase {
         XCTAssertEqual(MetricKind.disk.channels(for: .graph), [.diskRead, .diskWrite])
         XCTAssertEqual(MetricKind.disk.channels(for: .twoLine), MetricKind.disk.channels)
         XCTAssertEqual(MetricKind.sensors.channels(for: .graph), [.sensorPrimaryTemp])
-        XCTAssertEqual(MetricKind.memory.channels(for: .graph), [.memoryUsed, .memoryFree])
+        // Free memory is used memory upside down: text, not a second chart band.
+        XCTAssertEqual(MetricKind.memory.channels(for: .graph), [.memoryUsed])
+        XCTAssertEqual(MetricKind.memory.channels(for: .twoLine), MetricKind.memory.channels)
         for metric in MetricKind.allCases where metric.supportedModes.contains(.graph) {
             XCTAssertFalse(metric.channels(for: .graph).isEmpty,
                            "\(metric) offers a graph but has no graphable channel")
@@ -303,6 +305,17 @@ final class MenuBarItemStoreTests: XCTestCase {
         let item = MenuBarItemConfig(metric: .cpu, mode: .value, channels: [.batteryPercent])
         XCTAssertFalse(item.isValid)
         XCTAssertTrue(item.repaired().isValid)
+    }
+
+    /// A graph saved with a channel the mode no longer offers keeps its mode and drops only that
+    /// channel — it must not snap back to the metric's two-line default.
+    func testRepairDropsOnlyTheChannelThatLeft() {
+        let stored = MenuBarItemConfig(metric: .memory, mode: .graph, channels: [.memoryUsed, .memoryFree])
+        XCTAssertFalse(stored.isValid)
+        let fixed = stored.repaired()
+        XCTAssertEqual(fixed.mode, .graph)
+        XCTAssertEqual(fixed.channels, [.memoryUsed])
+        XCTAssertEqual(fixed.id, stored.id)
     }
 
     /// Repair keeps identity — a repaired item must not lose its macOS status-item slot.
