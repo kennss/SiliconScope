@@ -43,7 +43,10 @@ because people measured on their own hardware carefully enough that nothing had 
   his Studio, including the per-core, SRAM and fabric rails that must stay out of the sums
   ([#92](https://github.com/kennss/SiliconScope/pull/92)). Then the first M3 sensor readings: idle,
   all-CPU and GPU-only loads per key group, which confirmed the table's CPU/GPU split and set out
-  exactly what it can't yet tell ([#93](https://github.com/kennss/SiliconScope/issues/93)).
+  exactly what it can't yet tell ([#93](https://github.com/kennss/SiliconScope/issues/93)). And
+  the memory-bandwidth fix on two dies: a GPU kernel timing its own traffic beside what SiliconScope
+  read, until the missing half was found. **The procedure he built by hand for all of this is now
+  `sscope-cli --chip-report`**, so the next person measures a Mac with one command.
 
 ## Wrote parts of the app
 

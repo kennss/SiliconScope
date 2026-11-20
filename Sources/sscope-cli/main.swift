@@ -7,9 +7,17 @@
 //             so we can confirm the data layer works in a real SwiftPM build.
 //  Notes:     Run with `xcrun swift run -q sscope-cli`. Sanity ranges: idle CPU power
 //             well under load; P-cores should climb toward max DVFS MHz under load.
+//             --chip-report runs the full contribution measurement (ChipReport.swift);
+//             --no-processes leaves the process list out of any dump.
 //
 import Foundation
 import SiliconScopeCore
+
+// One command that measures this Mac under standard loads and saves one zip for a contribution
+// issue (ChipReport.swift). Runs before the probe below, which it re-runs per phase itself.
+if CommandLine.arguments.contains("--chip-report") {
+    exit(await ChipReport.run(arguments: CommandLine.arguments))
+}
 
 // A storage-only probe avoids initializing unrelated sensor samplers.
 if CommandLine.arguments.contains("--disk") {
@@ -103,24 +111,31 @@ _ = processes.sample(top: 1)            // prime CPU% baseline
 try? await Task.sleep(for: .seconds(0.5))
 let table = processes.sample(top: .max)
 let allRows = table.rows
-print("\ntop processes by CPU (no sudo):")
-for p in allRows.prefix(8) {
-    print(String(format: "  %6d  %6.1f%%  %8.1f MB   %@", p.pid, p.cpuPercent, p.memoryMB, p.name))
+// --no-processes leaves the process list and AI runtimes out of a dump meant for sharing
+// (--chip-report passes it): what someone is running is not part of a chip measurement.
+let showProcesses = !CommandLine.arguments.contains("--no-processes")
+if showProcesses {
+    print("\ntop processes by CPU (no sudo):")
+    for p in allRows.prefix(8) {
+        print(String(format: "  %6d  %6.1f%%  %8.1f MB   %@", p.pid, p.cpuPercent, p.memoryMB, p.name))
+    }
 }
 let ai = AIRuntimeSampler().sample(from: table.forAIDetection)
 let otherUserPIDs = Set(table.otherUsers.map(\.pid))
-print("\nAI runtimes detected: \(ai.isActive ? "" : "none")")
-for p in ai.processes {
-    let port = p.embeddedPort.map { " :\($0)" } ?? ""
-    // Another user's runtime is read through /bin/ps, not libproc (#85): say so, so a report
-    // shows which path found it.
-    let owner = otherUserPIDs.contains(p.pid) ? "  (another user's, via ps)" : ""
-    print(String(format: "  %@%@  pid %d  %.0f%% CPU  %.1f GB%@",
-                 p.displayName, port, p.pid, p.cpuPercent, Double(p.memoryBytes) / 1e9, owner as NSString))
-}
-if let kind = ai.primaryKind {
-    print(String(format: "  primary: %@ (RSS %.1f GB) → budget loadable %.1f GB",
-                 kind.displayName, Double(ai.primaryMemoryBytes) / 1e9, budget.loadableGB))
+if showProcesses {
+    print("\nAI runtimes detected: \(ai.isActive ? "" : "none")")
+    for p in ai.processes {
+        let port = p.embeddedPort.map { " :\($0)" } ?? ""
+        // Another user's runtime is read through /bin/ps, not libproc (#85): say so, so a report
+        // shows which path found it.
+        let owner = otherUserPIDs.contains(p.pid) ? "  (another user's, via ps)" : ""
+        print(String(format: "  %@%@  pid %d  %.0f%% CPU  %.1f GB%@",
+                     p.displayName, port, p.pid, p.cpuPercent, Double(p.memoryBytes) / 1e9, owner as NSString))
+    }
+    if let kind = ai.primaryKind {
+        print(String(format: "  primary: %@ (RSS %.1f GB) → budget loadable %.1f GB",
+                     kind.displayName, Double(ai.primaryMemoryBytes) / 1e9, budget.loadableGB))
+    }
 }
 
 // Opt-in runtime API probe (one shot). Run: sscope-cli --ai

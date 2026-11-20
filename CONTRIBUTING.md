@@ -84,6 +84,22 @@ confirm or correct them.
 ### How to verify your chip (one command)
 
 ```bash
+/Applications/SiliconScope.app/Contents/MacOS/sscope-cli --chip-report
+# or, from a checkout:  xcrun swift run -q sscope-cli --chip-report
+```
+
+It measures your Mac the way a contribution needs it: at rest, then E-cores only, every core, the
+GPU only, and a GPU kernel streaming memory, each for a minute after a cool-down (about twelve
+minutes; the fans will spin up, so close busy apps first). It saves one zip on your Desktop — attach
+that to an issue. `summary.txt` inside sets out how much each SMC temperature key rose under each
+load, and the memory bandwidth SiliconScope read beside what the GPU timed itself moving. Nothing is
+uploaded, and the zip has no host name, IP address, serial number or process list. The procedure is
+the one [@SpencerCurtis](https://github.com/SpencerCurtis) worked out by hand for the M3 Ultra
+([#93](https://github.com/kennss/SiliconScope/issues/93)).
+
+For a quick look without loading the machine:
+
+```bash
 xcrun swift run -q sscope-cli --sensors
 sysctl hw.model machdep.cpu.brand_string
 ```
@@ -107,7 +123,8 @@ back (or `— (not present)`), then the raw HID sensor list. Example on an M1 Ma
 
 ### How to fix the table
 
-Open an issue (or PR) titled e.g. **"Sensor keys: M3 Pro"** and paste:
+Open an issue (or PR) titled e.g. **"Sensor keys: M3 Pro"** and attach the `--chip-report` zip.
+Without it, paste:
 1. the full `--sensors` output, and
 2. the `sysctl` line (your exact model + brand string).
 
