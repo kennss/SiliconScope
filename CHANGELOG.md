@@ -1,5 +1,46 @@
 # Changelog
 
+## v4.9.0 — 2026-11-20
+
+**📊 Bar charts.** Every chart that moves second to second (CPU, GPU, Neural Engine,
+Media, memory bandwidth, network, disk) is now dense bars, one per sample, each in its
+own panel with its reading beside its name. A line drew a slope between two samples
+through values that were never measured; a bar is one reading. Upload and download,
+and disk write and read, share one panel: out above, in below. Temperatures and memory
+in use stay lines. The dashboard, the dropdowns, the popover and the menu-bar graph
+items all draw the same way.
+
+**🙈 Hide dashboard cards.** Use **Settings → Dashboard**, or right-click a card's
+title. A hidden card is also not measured, unless another card, the menu bar or an
+alert still needs the same reading.
+
+**Clearer readings**
+- PIDs and ports have no thousands separator (88954, not 88,954).
+- Process names that macOS cuts at 32 characters are shown in full.
+- **BY APP** folds the process table by app. The dropdowns' top lists always do.
+- The model budget reads "~16B in 11 GB usable" in both the popover and the dashboard.
+  Its tooltip shows the arithmetic.
+- The memory banner appears only on critical pressure or sustained swapping, the same
+  conditions as the notification. macOS's "warning" level shows as colour only: the
+  Memory card's border, and "Elevated" in AI Workload, which now agrees with it.
+- The popover shows the whole Mac's power when the SoC counters are stale, instead of
+  "SoC power —".
+- SSD details fold into one "SSD health" line. Critical SMART warnings stay visible.
+- Smaller fixes: "Thermal" labels thermal pressure in Sensors; AI Workload says "GPU ·
+  ANE idle" instead of "Idle"; the header battery has an icon; IP addresses are no
+  longer cut in the middle.
+
+**M3 Ultra on macOS 27**
+- CPU clocks, CPU power and the Neural Engine now read. The two dies prefix every
+  channel name with `DIE_0_` or `DIE_1_`
+  ([#92](https://github.com/kennss/SiliconScope/pull/92), @SpencerCurtis).
+- Memory bandwidth now reads both dies; it read about half. An idle reading below the
+  histogram's resolution shows as "< 128 GB/s" instead of a number. This was built
+  from channel dumps of a Mac Studio and is not yet confirmed on one
+  ([#93](https://github.com/kennss/SiliconScope/issues/93), @SpencerCurtis).
+
+Agents: Mac **1.4.3** (the M3 Ultra readings). Linux unchanged at **1.5.3**.
+
 ## v4.8.2 — 2026-11-11
 
 **New setting: keep measuring while the window is hidden.** To save energy,
