@@ -1,5 +1,25 @@
 # Changelog
 
+## v4.9.1 — 2026-11-20
+
+**No zeros where nothing was measured.** M3 Max and M3 Ultra (and A18) report only total
+memory traffic, not how it divides between CPU, GPU, media and the rest. Those rows used
+to read 0 GB/s, so a GPU at 100 % looked like it moved no memory. They now read "—", and
+the Media Engine shows "— total only" instead of "idle", because its activity can't be
+measured on these chips either. The total is still shown and charted.
+
+**For contributors: `sscope-cli --chip-report`.** One command measures your Mac the way a
+sensor, power or bandwidth contribution needs it, and saves one zip on your Desktop. It
+measures at rest, then E-cores only, every core, the GPU only, and a GPU kernel streaming
+memory, each for a minute after a cool-down. It takes about 12 minutes and asks first.
+The summary inside shows how much each temperature key rose under each load, and the
+memory bandwidth SiliconScope read beside what the GPU timed itself moving. Nothing is
+uploaded. The zip has no host name, IP address, serial number or process list. The
+procedure is the one @SpencerCurtis worked out by hand for the M3 Ultra
+([#93](https://github.com/kennss/SiliconScope/issues/93)).
+
+Agents unchanged: Mac **1.4.3**, Linux **1.5.3**.
+
 ## v4.9.0 — 2026-11-20
 
 **📊 Bar charts.** Every chart that moves second to second (CPU, GPU, Neural Engine,
