@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeRootView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-10-19
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The single-window shell: a NavigationSplitView with a "Devices" sidebar (This Mac +
 //             every discovered fleet agent) and a detail pane that shows the selected device's
@@ -52,6 +52,11 @@ struct SiliconScopeRootView: View {
         if columnVisibility != .detailOnly { return true }
         if case .thisMac = selection ?? .thisMac { return false }
         return true
+    }
+
+    private var showsThisMac: Bool {
+        if case .thisMac = selection ?? .thisMac { return true }
+        return false
     }
 
     var body: some View {
@@ -165,6 +170,13 @@ struct SiliconScopeRootView: View {
             windowVisible = visible
         })
         .onChange(of: fleetOnScreen, initial: true) { _, onScreen in fleet.watching = onScreen }
+        // This Mac's dashboard demands only what its shown cards read; the other panes demand
+        // everything. Waking the loop on a switch means the pane opens on a fresh tick rather than
+        // on values carried forward from before the switch.
+        .onChange(of: showsThisMac, initial: true) { _, onThisMac in
+            monitor.windowShowsThisMac = onThisMac
+            monitor.wakeSamplingLoop()
+        }
     }
 }
 

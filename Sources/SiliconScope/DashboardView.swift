@@ -10,6 +10,8 @@
 //             in the Sensors card. Combined cards split left/right with a Divider.
 //             allWarnings() adds context-aware banners (bandwidth-bound, GPU throttle)
 //             on top of the snapshot's own data-level warnings.
+//             Any card can be hidden (DashboardCardVisibility, key "dashboard.hiddenCards");
+//             the monitor then stops measuring what only hidden cards read.
 //
 import SwiftUI
 import AppKit
@@ -92,6 +94,7 @@ struct DashboardContainer: View {
     @State private var loadError: String?
     @State private var dashVisible = true        // false when the window is occluded or minimized
     @State private var frozen: DashboardState?   // last live frame, shown (not re-rendered) while hidden
+    @AppStorage(DashboardCardVisibility.key) private var hiddenCards = ""
 
     var body: some View {
         content
@@ -104,6 +107,9 @@ struct DashboardContainer: View {
                 if let url = note.userInfo?["url"] as? URL { open(url) }
             }
             .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
+            // A card brought back must open on a fresh reading, not on a value carried forward
+            // from when it was hidden — the next tick widens demand to cover it.
+            .onChange(of: hiddenCards) { _, _ in monitor.wakeSamplingLoop() }
             .alert("Couldn't open recording",
                    isPresented: Binding(get: { loadError != nil }, set: { if !$0 { loadError = nil } })) {
                 Button("OK") { loadError = nil }
@@ -171,6 +177,12 @@ struct DashboardView: View {
     @State private var shownWarnings: [SystemSnapshot.Warning] = []   // DEBOUNCED (lingering) set actually displayed
     @State private var warningClearTask: Task<Void, Never>? = nil     // pending "hide after linger" task
     @AppStorage("showWarningBanner") private var showWarningBanner = true   // #18: let sysmon users opt out of the banner
+    @AppStorage(DashboardCardVisibility.key) private var hiddenCards = ""
+
+    private var cards: DashboardCardVisibility { DashboardCardVisibility(storage: hiddenCards) }
+
+    /// Whether a row has anything to show.
+    private func shows(_ a: DashboardCard, _ b: DashboardCard) -> Bool { cards.isShown(a) || cards.isShown(b) }
 
     var body: some View {
         let s = state
@@ -183,7 +195,17 @@ struct DashboardView: View {
             VStack(spacing: Space.tight) {
                 HeaderView(topology: s.topology, power: snapshot.power, battery: snapshot.battery)
 
-                if mode == .remote && !s.remoteReportsEverything {
+                // Every card can be hidden (Settings › Dashboard, or its header's context menu). A
+                // row keeps its pairing: when one card of a pair is hidden the other takes the full
+                // width, and a row whose cards are both hidden is left out. Each card sits under
+                // the same `if` that DashboardCardVisibility.demand reads, so what is drawn and
+                // what is measured are decided by one list.
+                if cards.allHidden {
+                    Text("Every card is hidden. Show them again in Settings › Dashboard, or right-click a card's title to hide it.")
+                        .font(Theme.font(.body)).foregroundStyle(Theme.dim)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Space.card)
+                } else if mode == .remote && !s.remoteReportsEverything {
                     // Remote Mac on an agent that predates runtime/process reporting: only the cards
                     // it can fill, re-paired into 3 rows. A current agent reports everything and takes
                     // the full layout below, read-only (#56).
@@ -193,41 +215,64 @@ struct DashboardView: View {
                     // AI Runtime card is a live poll of a runtime we can reach, and a remote agent's
                     // last-finished-prediction is a different claim that must not borrow its frame.
                     if let r = s.remoteTokenRate { RemoteGenerationStrip(rate: r) }
-                    HStack(alignment: .top, spacing: Space.row) {
-                        AIWorkloadCard(snapshot: snapshot, bottleneck: s.bottleneck, ceilingGBs: s.bandwidthCeilingGBs,
-                                       cpuThrottling: s.cpuThrottling, cpuClockDrop: s.cpuClockDropFraction,
-                                       gpuThrottling: s.gpuThrottling, gpuClockDrop: s.gpuClockDropFraction,
-                                       memoryRisk: s.memoryRisk, activity: s.activity,
-                                       onInspect: nil, allowKill: false)
-                        AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth, ane: snapshot.ane,
-                                        anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
-                                        gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
-                                        mediaHistory: s.history.media, aneHistory: s.history.ane,
-                                        aneActiveHistory: s.history.aneActive,
-                                        throttling: s.gpuThrottling)
+                    if shows(.aiWorkload, .accelerators) {
+                        HStack(alignment: .top, spacing: Space.row) {
+                            if cards.isShown(.aiWorkload) {
+                                AIWorkloadCard(snapshot: snapshot, bottleneck: s.bottleneck, ceilingGBs: s.bandwidthCeilingGBs,
+                                               cpuThrottling: s.cpuThrottling, cpuClockDrop: s.cpuClockDropFraction,
+                                               gpuThrottling: s.gpuThrottling, gpuClockDrop: s.gpuClockDropFraction,
+                                               memoryRisk: s.memoryRisk, activity: s.activity,
+                                               onInspect: nil, allowKill: false)
+                                    .hideable(.aiWorkload)
+                            }
+                            if cards.isShown(.accelerators) {
+                                AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth, ane: snapshot.ane,
+                                                anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
+                                                gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
+                                                mediaHistory: s.history.media, aneHistory: s.history.ane,
+                                                aneActiveHistory: s.history.aneActive,
+                                                throttling: s.gpuThrottling)
+                                    .hideable(.accelerators)
+                            }
+                        }
+                        .frame(height: Layout.Row.graphed)
                     }
-                    .frame(height: Layout.Row.graphed)
-                    HStack(alignment: .top, spacing: Space.row) {
-                        CPUCard(cpu: snapshot.cpu, topology: s.topology,
-                                eHistory: s.history.eCPU, pHistory: s.history.pCPU,
-                                throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
-                        MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
-                                            bandwidthPeak: s.bandwidthPeakGBs,
-                                            memHistory: s.history.memory, bwHistory: s.history.bandwidth)
+                    if shows(.cpu, .memoryBandwidth) {
+                        HStack(alignment: .top, spacing: Space.row) {
+                            if cards.isShown(.cpu) {
+                                CPUCard(cpu: snapshot.cpu, topology: s.topology,
+                                        eHistory: s.history.eCPU, pHistory: s.history.pCPU,
+                                        throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
+                                    .hideable(.cpu)
+                            }
+                            if cards.isShown(.memoryBandwidth) {
+                                MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
+                                                    bandwidthPeak: s.bandwidthPeakGBs,
+                                                    memHistory: s.history.memory, bwHistory: s.history.bandwidth)
+                                    .hideable(.memoryBandwidth)
+                            }
+                        }
+                        .frame(minHeight: Layout.Row.dense)
                     }
-                    .frame(minHeight: Layout.Row.dense)
                     // Network & Disk appears only when the agent sent throughput — an older agent
                     // did not, and a card of zeros would say the machine was idle (#56).
-                    HStack(alignment: .top, spacing: Space.row) {
-                        SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
-                                    groupHistory: s.history.sensorGroups)
-                        if s.remoteHasIO {
-                            NetworkDiskCard(network: snapshot.network, disk: snapshot.disk,
-                                            downHistory: s.history.netDown, upHistory: s.history.netUp,
-                                            readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
+                    let showsIO = s.remoteHasIO && cards.isShown(.networkDisk)
+                    if cards.isShown(.sensors) || showsIO {
+                        HStack(alignment: .top, spacing: Space.row) {
+                            if cards.isShown(.sensors) {
+                                SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
+                                            groupHistory: s.history.sensorGroups)
+                                    .hideable(.sensors)
+                            }
+                            if showsIO {
+                                NetworkDiskCard(network: snapshot.network, disk: snapshot.disk,
+                                                downHistory: s.history.netDown, upHistory: s.history.netUp,
+                                                readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
+                                    .hideable(.networkDisk)
+                            }
                         }
+                        .frame(minHeight: Layout.Row.sensorsNarrow)
                     }
-                    .frame(minHeight: Layout.Row.sensorsNarrow)
                 } else {
 
                 // A remote machine's decode rate is its agent's last finished prediction — a
@@ -236,71 +281,103 @@ struct DashboardView: View {
 
                 // AI cockpit pair, side by side (matches the rest of the 2-column grid and
                 // saves a stacked row of vertical space).
-                HStack(alignment: .top, spacing: Space.row) {
-                    AIWorkloadCard(snapshot: snapshot,
-                                   bottleneck: s.bottleneck,
-                                   ceilingGBs: s.bandwidthCeilingGBs,
-                                   cpuThrottling: s.cpuThrottling,
-                                   cpuClockDrop: s.cpuClockDropFraction,
-                                   gpuThrottling: s.gpuThrottling,
-                                   gpuClockDrop: s.gpuClockDropFraction,
-                                   memoryRisk: s.memoryRisk,
-                                   activity: s.activity,
-                                   onInspect: onInspect,
-                                   allowKill: onBenchmark != nil)
-                    AIRuntimeCard(runtime: snapshot.aiRuntime,
-                                  api: snapshot.runtimeAPI,
-                                  budget: snapshot.memoryBudget,
-                                  memoryRisk: s.memoryRisk,
-                                  cpuOffloadLikely: snapshot.aiCPUOffloadLikely,
-                                  likelyEngine: snapshot.likelyAIEngine,
-                                  isBenchmarking: s.isBenchmarking,
-                                  benchmark: s.benchmark,
-                                  benchmarkError: s.benchmarkError,
-                                  onBenchmark: onBenchmark ?? {},
-                                  allowBenchmark: onBenchmark != nil,
-                                  isRemote: mode == .remote)
+                if shows(.aiWorkload, .aiRuntime) {
+                    HStack(alignment: .top, spacing: Space.row) {
+                        if cards.isShown(.aiWorkload) {
+                            AIWorkloadCard(snapshot: snapshot,
+                                           bottleneck: s.bottleneck,
+                                           ceilingGBs: s.bandwidthCeilingGBs,
+                                           cpuThrottling: s.cpuThrottling,
+                                           cpuClockDrop: s.cpuClockDropFraction,
+                                           gpuThrottling: s.gpuThrottling,
+                                           gpuClockDrop: s.gpuClockDropFraction,
+                                           memoryRisk: s.memoryRisk,
+                                           activity: s.activity,
+                                           onInspect: onInspect,
+                                           allowKill: onBenchmark != nil)
+                                .hideable(.aiWorkload)
+                        }
+                        if cards.isShown(.aiRuntime) {
+                            AIRuntimeCard(runtime: snapshot.aiRuntime,
+                                          api: snapshot.runtimeAPI,
+                                          budget: snapshot.memoryBudget,
+                                          memoryRisk: s.memoryRisk,
+                                          cpuOffloadLikely: snapshot.aiCPUOffloadLikely,
+                                          likelyEngine: snapshot.likelyAIEngine,
+                                          isBenchmarking: s.isBenchmarking,
+                                          benchmark: s.benchmark,
+                                          benchmarkError: s.benchmarkError,
+                                          onBenchmark: onBenchmark ?? {},
+                                          allowBenchmark: onBenchmark != nil,
+                                          isRemote: mode == .remote)
+                                .hideable(.aiRuntime)
+                        }
+                    }
+                    .frame(minHeight: Layout.Row.aiCockpit)
                 }
-                .frame(minHeight: Layout.Row.aiCockpit)
 
-                HStack(spacing: Space.row) {
-                    CPUCard(cpu: snapshot.cpu, topology: s.topology,
-                            eHistory: s.history.eCPU, pHistory: s.history.pCPU,
-                            throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
-                    AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth, ane: snapshot.ane,
-                                    anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
-                                    gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
-                                    mediaHistory: s.history.media, aneHistory: s.history.ane,
-                                        aneActiveHistory: s.history.aneActive,
-                                    throttling: s.gpuThrottling)
+                if shows(.cpu, .accelerators) {
+                    HStack(spacing: Space.row) {
+                        if cards.isShown(.cpu) {
+                            CPUCard(cpu: snapshot.cpu, topology: s.topology,
+                                    eHistory: s.history.eCPU, pHistory: s.history.pCPU,
+                                    throttling: s.cpuThrottling, clockDrop: s.cpuClockDropFraction)
+                                .hideable(.cpu)
+                        }
+                        if cards.isShown(.accelerators) {
+                            AcceleratorCard(gpu: snapshot.gpu, power: snapshot.power, bandwidth: snapshot.bandwidth, ane: snapshot.ane,
+                                            anePeak: s.anePeakWatts, mediaPeak: s.mediaPeakGBs,
+                                            gpuHistory: s.history.gpu, gpuMemHistory: s.history.gpuMem,
+                                            mediaHistory: s.history.media, aneHistory: s.history.ane,
+                                            aneActiveHistory: s.history.aneActive,
+                                            throttling: s.gpuThrottling)
+                                .hideable(.accelerators)
+                        }
+                    }
+                    .frame(height: Layout.Row.graphed)   // fixed: the fill-graph absorbs content changes (shrinks/grows) so the card size stays put
                 }
-                .frame(height: Layout.Row.graphed)   // fixed: the fill-graph absorbs content changes (shrinks/grows) so the card size stays put
 
-                HStack(alignment: .top, spacing: Space.row) {
-                    MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
-                                        bandwidthPeak: s.bandwidthPeakGBs,
-                                        memHistory: s.history.memory, bwHistory: s.history.bandwidth)
-                    NetworkDiskCard(network: snapshot.network, disk: snapshot.disk,
-                                    downHistory: s.history.netDown, upHistory: s.history.netUp,
-                                    readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
+                if shows(.memoryBandwidth, .networkDisk) {
+                    HStack(alignment: .top, spacing: Space.row) {
+                        if cards.isShown(.memoryBandwidth) {
+                            MemoryBandwidthCard(memory: snapshot.memory, bandwidth: snapshot.bandwidth,
+                                                bandwidthPeak: s.bandwidthPeakGBs,
+                                                memHistory: s.history.memory, bwHistory: s.history.bandwidth)
+                                .hideable(.memoryBandwidth)
+                        }
+                        if cards.isShown(.networkDisk) {
+                            NetworkDiskCard(network: snapshot.network, disk: snapshot.disk,
+                                            downHistory: s.history.netDown, upHistory: s.history.netUp,
+                                            readHistory: s.history.diskRead, writeHistory: s.history.diskWrite)
+                                .hideable(.networkDisk)
+                        }
+                    }
+                    // minHeight (not fixed height): both cards here are graphless — their trends live
+                    // INSIDE the sections (Spacer-pinned), so unlike the CPU/GPU fill-graph row above they
+                    // don't need a bounded height. The dense Memory column's intrinsic height (~188pt, a
+                    // constant row set) can exceed a fixed 176 by a few points under some macOS versions'
+                    // text metrics and spill into the CPU card (#25, a re-run of #23). Growing to fit the
+                    // content makes the overflow structurally impossible — same pattern as the row-1 pair.
+                    .frame(minHeight: Layout.Row.dense)
                 }
-                // minHeight (not fixed height): both cards here are graphless — their trends live
-                // INSIDE the sections (Spacer-pinned), so unlike the CPU/GPU fill-graph row above they
-                // don't need a bounded height. The dense Memory column's intrinsic height (~188pt, a
-                // constant row set) can exceed a fixed 176 by a few points under some macOS versions'
-                // text metrics and spill into the CPU card (#25, a re-run of #23). Growing to fit the
-                // content makes the overflow structurally impossible — same pattern as the row-1 pair.
-                .frame(minHeight: Layout.Row.dense)
 
-                HStack(spacing: Space.row) {
-                    SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
-                                groupHistory: s.history.sensorGroups)
-                    ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect,
-                                note: mode == .remote ? "top processes on that machine" : nil)
+                if shows(.sensors, .processes) {
+                    HStack(spacing: Space.row) {
+                        if cards.isShown(.sensors) {
+                            SensorsCard(temperature: snapshot.temperature, thermal: snapshot.thermal,
+                                        groupHistory: s.history.sensorGroups)
+                                .hideable(.sensors)
+                        }
+                        if cards.isShown(.processes) {
+                            ProcessCard(processes: snapshot.processes, allowKill: onBenchmark != nil, onInspect: onInspect,
+                                        note: mode == .remote ? "top processes on that machine" : nil)
+                                .hideable(.processes)
+                        }
+                    }
+                    // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
+                    // needs a bounded height — minHeight lets the whole list expand and balloons the window.
+                    .frame(height: Layout.Row.scrolling)
                 }
-                // FIXED height (not minHeight): the Processes card scrolls its list INTERNALLY, so it
-                // needs a bounded height — minHeight lets the whole list expand and balloons the window.
-                .frame(height: Layout.Row.scrolling)
                 }
             }
             .padding(Space.card)
@@ -361,6 +438,16 @@ struct DashboardView: View {
                                                    s.snapshot.gpu.freqMHz, s.gpuClockDropFraction * 100)))
         }
         return warnings
+    }
+}
+
+/// Gives a dashboard card its header's "Hide" item. Writes the stored set directly, so the change
+/// reaches every @AppStorage reader (this view, Settings, the container that wakes the monitor).
+private extension View {
+    func hideable(_ card: DashboardCard) -> some View {
+        environment(\.cardHideAction, CardHideAction {
+            DashboardCardVisibility.setShown(card, false, in: .standard)
+        })
     }
 }
 

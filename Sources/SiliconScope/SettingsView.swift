@@ -1,19 +1,21 @@
 //
 //  File:      SettingsView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-11-11
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Preferences window (Cmd+,). Refresh cadence, temperature unit, menu-bar
-//             compact GPU mode, launch-at-login, threshold alerts, and the AI runtime API
-//             — persisted in UserDefaults via @AppStorage.
+//             compact GPU mode, which dashboard cards are shown, launch-at-login, threshold
+//             alerts, and the AI runtime API — persisted in UserDefaults via @AppStorage.
 //  Notes:     Keys: "refreshInterval" (s), "measureWhileHidden" (Bool, #90), "temperatureFahrenheit"
-//             (Bool), "compactGPUMode" (Bool), "notificationsEnabled" (Bool). Launch-at-login is
-//             owned by SMAppService (LoginItem), not UserDefaults. SiliconScopeMonitor
-//             reads refreshInterval, measureWhileHidden and notificationsEnabled each loop.
+//             (Bool), "compactGPUMode" (Bool), "notificationsEnabled" (Bool), "dashboard.hiddenCards"
+//             (DashboardCardVisibility's stored set). Launch-at-login is
+//             owned by SMAppService (LoginItem), not UserDefaults. SiliconScopeMonitor reads
+//             refreshInterval, measureWhileHidden, notificationsEnabled and the hidden cards each loop.
 //             All update live.
 //
 import SwiftUI
 import AppKit
+import SiliconScopeCore
 
 struct SettingsView: View {
     // Each of these is its own SwiftUI root (an NSHostingController popover, a sibling
@@ -35,9 +37,19 @@ struct SettingsView: View {
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("showWarningBanner") private var showWarningBanner = true
     @AppStorage("shareThisMac") private var shareThisMac = false
+    @AppStorage(DashboardCardVisibility.key) private var hiddenCards = ""
     @State private var autoUpdate = false
     @State private var launchAtLogin = LoginItem.isEnabled
     @State private var agentToken: String?
+
+    private func shown(_ card: DashboardCard) -> Binding<Bool> {
+        Binding(get: { DashboardCardVisibility(storage: hiddenCards).isShown(card) },
+                set: { on in
+                    var v = DashboardCardVisibility(storage: hiddenCards)
+                    v.set(card, shown: on)
+                    hiddenCards = v.storage
+                })
+    }
 
     var body: some View {
         Form {
@@ -83,6 +95,16 @@ struct SettingsView: View {
                 Text("Display")
             } footer: {
                 Text("Zoom scales text and layout together (also ⌘+ / ⌘− / ⌘0). Density adjusts spacing only, leaving text size alone. SiliconScope does not follow the system \"Larger Text\" setting — this dense layout needs a range the app can guarantee.")
+            }
+
+            Section {
+                ForEach(DashboardCard.allCases, id: \.self) { card in
+                    Toggle(card.title, isOn: shown(card))
+                }
+            } header: {
+                Text("Dashboard")
+            } footer: {
+                Text("A hidden card is also not measured, unless another card, the menu bar or alerts still need the same reading. Its charts have a gap for the time it was hidden. You can also hide a card by right-clicking its title.")
             }
 
             MenuBarItemsSettings()

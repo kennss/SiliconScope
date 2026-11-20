@@ -1,7 +1,7 @@
 //
 //  File:      SiliconScopeMonitor.swift
 //  Created:   2026-06-08
-//  Updated:   2026-11-11
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Observable view-model that drives the UI. Polls SystemSampler on a
 //             background task ~once per second and publishes the latest snapshot plus
@@ -125,15 +125,21 @@ final class SiliconScopeMonitor {
     func wakeSamplingLoop() { tickSleep?.cancel() }
 
     /// Whether the main window is on screen, whichever pane it shows. Set by the observer at the
-    /// window root (SiliconScopeRootView) — every pane either reads every metric (This Mac) or
-    /// shows this Mac beside the fleet (the overview's local tile), so a visible window demands
-    /// everything and a hidden one demands only what the menu bar and alerts still read.
+    /// window root (SiliconScopeRootView). A hidden window demands only what the menu bar and
+    /// alerts still read.
     var windowVisible = true
+
+    /// Whether the window's pane is This Mac's dashboard. Set by SiliconScopeRootView from the
+    /// sidebar selection. On This Mac the window demands what its shown cards read (see
+    /// DashboardCardVisibility); any other pane demands everything, because the Fleet overview
+    /// shows this Mac beside the fleet.
+    var windowShowsThisMac = true
 
     /// UserDefaults key for the opt-in "Keep measuring while the window is hidden" setting (#90).
     /// Off by default: a hidden window then demands only what the menu bar and alerts read, and
     /// the window's charts show a gap for the time it was covered (#13). On, a hidden window still
-    /// demands everything, so its charts stay continuous at the cost of a full tick every refresh.
+    /// demands what it would show (every shown card), so its charts stay continuous at the cost
+    /// of that tick every refresh.
     static let measureWhileHiddenKey = "measureWhileHidden"
 
     /// The groups this tick must measure — the union of everything currently reading a snapshot.
@@ -143,14 +149,22 @@ final class SiliconScopeMonitor {
     /// live reading that stopped changing. See MetricDemand.swift.
     private func currentDemand() -> MetricGroup {
         // Whole-snapshot consumers. Recording and share mode both republish the snapshot as a
-        // record of the machine, so neither may contain a group we chose not to look at.
-        if windowVisible || isRecording || focusedPID != nil { return .all }
-        // Opt-in (#90): the user chose continuous charts over the energy a hidden window saves.
-        if UserDefaults.standard.bool(forKey: Self.measureWhileHiddenKey) { return .all }
+        // record of the machine, so neither may contain a group we chose not to look at. The
+        // Process Inspector sheet reads the system-wide accelerators as well as its process.
+        if isRecording || focusedPID != nil { return .all }
         if MacAgentController.shared.isRunning { return .all }
         if MetricBarController.shared.isShowingDropdown { return .all }
 
         var demand = MetricGroup.essential
+        // The window. Opt-in (#90): a hidden window keeps measuring what it would show, so its
+        // charts stay continuous at the cost of the energy hiding it would save.
+        if windowVisible || UserDefaults.standard.bool(forKey: Self.measureWhileHiddenKey) {
+            guard windowShowsThisMac else { return .all }
+            let defaults = UserDefaults.standard
+            let cards = DashboardCardVisibility(storage: defaults.string(forKey: DashboardCardVisibility.key) ?? "")
+            let banner = defaults.object(forKey: "showWarningBanner") as? Bool ?? true
+            demand.formUnion(cards.demand(warningBanner: banner))
+        }
         for item in MenuBarItemsModel.shared.items {
             demand.formUnion(MenuBarItemRenderer.demand(for: item))
         }

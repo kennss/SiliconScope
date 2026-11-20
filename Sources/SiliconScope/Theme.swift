@@ -1,7 +1,7 @@
 //
 //  File:      Theme.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-29
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline,
 //             PopoverButtonStyle), plus the Layout dimension tokens.
@@ -759,7 +759,33 @@ func formatBytesOfTotal(_ part: UInt64, _ total: UInt64) -> String {
     return String(format: "%.\(decimals)f / %.\(decimals)f %@", Double(part) / scale, t / scale, unit)
 }
 
+/// How a dashboard card hides itself. The dashboard sets one on each of its cards; anywhere else
+/// (the Process Inspector) it is nil and the card has no Hide item.
+struct CardHideAction: Sendable {
+    let perform: @MainActor @Sendable () -> Void
+}
+
+extension EnvironmentValues {
+    @Entry var cardHideAction: CardHideAction? = nil
+}
+
+/// The card header's "Hide" context menu — absent, not empty, when the card cannot be hidden.
+private struct CardHideMenu: ViewModifier {
+    let title: String
+    let action: CardHideAction?
+    func body(content: Content) -> some View {
+        if let action {
+            content
+                .contentShape(Rectangle())
+                .contextMenu { Button("Hide \(title)") { action.perform() } }
+        } else {
+            content
+        }
+    }
+}
+
 struct Card<Content: View, Graph: View>: View {
+    @Environment(\.cardHideAction) private var hideAction
     let title: String
     var menuBarPin: Binding<Bool>? = nil   // when set, a switch in the title promotes the card to the menu bar
     var alert: Color? = nil                // non-nil → warning state: colored border (memory pressure / GPU throttle)
@@ -797,6 +823,9 @@ struct Card<Content: View, Graph: View>: View {
                 Spacer(minLength: 0)
                 if let pin = menuBarPin { MenuBarPin(isOn: pin) }
             }
+            // The header only: AI Workload and Processes rows carry context menus of their own.
+            // Settings › Dashboard lists every card, hidden ones included, to bring one back.
+            .modifier(CardHideMenu(title: title, action: hideAction))
             // Rows flow top-down at natural height, then the graph (when present) fills the space
             // BELOW them — so a card with few Bars (e.g. CPU) uses its full lower area instead of
             // leaving a gap above a short bottom-pinned chart (#24). Graphless cards pass EmptyView,
