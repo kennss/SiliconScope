@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics.swift
 //  Created:   2026-07-21
-//  Updated:   2026-10-21
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The source-agnostic fleet metric schema — the boundary the Mac aggregator consumes
 //             for every remote machine, regardless of how the data arrives. Mirrors the Go Linux
@@ -636,11 +636,17 @@ public struct FleetBandwidth: Codable, Sendable, Equatable {
     public let isEstimated: Bool
     public let totalPeakGBs: Double?   // engine's decaying observed peak, for 0…1 scaling (nil on skew)
     public let aneGBs: Double?         // Neural Engine lane; nil = not split (still inside otherGBs)
+    /// Total only known to be under this (GB/s); `totalGBs` is 0 then. See BandwidthSample.belowGBs.
+    /// nil from agents that predate it, which sent the lowest band as if it were a reading.
+    public let belowGBs: Double?
 
     public init(cpuGBs: Double, gpuGBs: Double, mediaGBs: Double, otherGBs: Double,
-                totalGBs: Double, isEstimated: Bool, totalPeakGBs: Double? = nil, aneGBs: Double? = nil) {
+                totalGBs: Double, isEstimated: Bool, totalPeakGBs: Double? = nil, aneGBs: Double? = nil,
+                belowGBs: Double? = nil) {
         self.cpuGBs = cpuGBs; self.gpuGBs = gpuGBs; self.mediaGBs = mediaGBs
         self.otherGBs = otherGBs; self.totalGBs = totalGBs; self.isEstimated = isEstimated
-        self.totalPeakGBs = totalPeakGBs; self.aneGBs = aneGBs
+        self.totalPeakGBs = totalPeakGBs; self.aneGBs = aneGBs; self.belowGBs = belowGBs
     }
+
+    public var totalText: String { BandwidthSample.totalText(totalGBs: totalGBs, belowGBs: belowGBs) }
 }

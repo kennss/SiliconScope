@@ -1,7 +1,7 @@
 //
 //  File:      main.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-29
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Verification CLI for SiliconScopeCore. Prints sudoless power + CPU samples
 //             so we can confirm the data layer works in a real SwiftPM build.
@@ -79,8 +79,8 @@ for i in 1...3 {
         tp.cpuCelsius, tp.cpuMaxCelsius, tp.batteryCelsius, t.pressure.rawValue, fans
     )
     let bwLine = String(
-        format: "| BW cpu %.0f gpu %.0f media %.0f ane %.0f other %.0f total %.0f GB/s",
-        bw.cpuGBs, bw.gpuGBs, bw.mediaGBs, bw.aneGBs ?? 0, bw.otherGBs, bw.totalGBs
+        format: "| BW cpu %.0f gpu %.0f media %.0f ane %.0f other %.0f total %@",
+        bw.cpuGBs, bw.gpuGBs, bw.mediaGBs, bw.aneGBs ?? 0, bw.otherGBs, bw.totalText
     )
     // Measured ANE activity — independent of the power counters, so it reads on macOS 27 too.
     let aneLine = ane?.sample(interval: 0.3).map { a in

@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly. Three read strategies,
 //             tried in order at init and locked in for the sampler's lifetime:
@@ -16,6 +16,8 @@
 //                 RD+WR"). M3 Max on macOS 27 build 26A5388g exposes only one wider
 //                 chip-wide "AMCC RD+WR" histogram under PMP0 (#46); that aggregate supplies
 //                 measuredTotalGBs while the unavailable CPU/GPU/Media split stays zero.
+//                 M3 Ultra on macOS 27 has one such group per die, "AMCC0" under PMP0 and
+//                 "AMCC1" under PMP1 (#93); both are read and summed.
 //  Notes:     Requestor map (classic path): ECPU/PCPU* -> CPU, GFX -> GPU,
 //             ISP/VENC/VDEC/PRORES/CODEC/JPEG -> Media, "DCS" is the chip-wide aggregate
 //             (= total); other = total - the above. MSR is intentionally NOT media (matches
@@ -30,6 +32,10 @@
 //             M3 Max/macOS 27 instead exposes only AMCC, a wider chip-wide aggregate, so
 //             that value is used only when no additive requestor channels exist. Every
 //             histogram reading remains an estimate, surfaced via `isEstimated`.
+//             An AMCC histogram's lowest band is a floor, not a reading: residency held there
+//             only says traffic was under it (32 GB/s on M3 Max, 64 per die on M3 Ultra). When
+//             every aggregate sits wholly in its lowest band the sample carries `belowGBs`
+//             instead of a total, so an idle Ultra reads "< 128 GB/s", not 128.
 //             `channelDump()` (raw inventory dump, both paths) exists to diagnose chip/OS
 //             combinations neither path handles yet.
 //
@@ -76,7 +82,8 @@ public final class BandwidthSampler {
         // naming/classification issue, the group is simply not subscribable). Fall back to the
         // PMP "DCS BW" histogram, which carries the same per-requestor byte-traffic information
         // in a different (State/residency) shape. The PMP group is name-versioned across chips
-        // ("PMP" → "PMP0" on M5 Max/macOS 26.5.2, #30), so resolve it across the PMP family.
+        // ("PMP" → "PMP0" on M5 Max/macOS 26.5.2, #30), and a multi-die chip has one numbered
+        // group per die (PMP0 + PMP1 on M3 Ultra, #93), so resolve it across the PMP family.
         if let (sub, subscribed, _) = Self.subscribePMPHistogram() {
             mode = .pmpHistogram
             subscription = sub
@@ -95,24 +102,39 @@ public final class BandwidthSampler {
         return (sub, subscribed)
     }
 
-    /// PMP group-name family for the "DCS BW" residency-histogram fallback. Apple renames this
-    /// group across chip generations: "PMP" (Apple Silicon through M4) → "PMP0" (M5 Max, macOS
-    /// 26.5.2 — github.com/kennss/SiliconScope#30). "PMP1" covers a hypothetical second die on a
-    /// future multi-die part. Mirrors the reporter's suggested `^PMP\d*$` intent without
-    /// enumerating every channel; the first subscribable one wins. (Simultaneous multi-die
-    /// aggregation across PMP0+PMP1 is a documented future refinement, not needed for M5 Max.)
-    private static let pmpGroupCandidates = ["PMP", "PMP0", "PMP1"]
-
-    /// Finds the first PMP-family group whose "DCS BW" histogram subgroup is subscribable.
-    /// Returns the subscription, its channel dictionary, and the group name that worked.
-    private static func subscribePMPHistogram() -> (IOReportSubscriptionRef, CFMutableDictionary, String)? {
-        for group in pmpGroupCandidates {
-            if let channels = IOReportCopyChannelsInGroup(group as CFString, "DCS BW" as CFString, 0, 0, 0)?.takeRetainedValue(),
-               let (sub, subscribed) = subscribe(to: channels) {
-                return (sub, subscribed, group)
-            }
+    /// Subscribes the PMP-family "DCS BW" histograms. Apple renames the group across chips:
+    /// "PMP" (Apple Silicon through M4) → "PMP0" (M5 Max, macOS 26.5.2 — #30), and a multi-die
+    /// chip numbers one group per die: M3 Ultra on macOS 27 has "PMP0" and "PMP1", each with
+    /// its own die's AMCC histogram, while bare "PMP" is present but not subscribable (#93).
+    /// So bare "PMP" is used alone when it subscribes; otherwise every numbered group from
+    /// PMP0 up to the first missing index is merged into one subscription. Reading only the
+    /// first numbered group showed an Ultra half its traffic (~370 of 733 GB/s).
+    /// Returns the subscription, its channel dictionary, and the group names it covers.
+    private static func subscribePMPHistogram() -> (IOReportSubscriptionRef, CFMutableDictionary, [String])? {
+        if let channels = dcsBWChannels(inGroup: "PMP"), let (sub, subscribed) = subscribe(to: channels) {
+            return (sub, subscribed, ["PMP"])
         }
-        return nil
+        var merged: CFMutableDictionary?
+        var groups: [String] = []
+        var index = 0
+        while let channels = dcsBWChannels(inGroup: "PMP\(index)") {
+            if let merged { IOReportMergeChannels(merged, channels, nil) } else { merged = channels }
+            groups.append("PMP\(index)")
+            index += 1
+        }
+        guard let merged, let (sub, subscribed) = subscribe(to: merged) else { return nil }
+        return (sub, subscribed, groups)
+    }
+
+    /// The group's "DCS BW" channels, or nil when it has none. ⚠️ `IOReportCopyChannelsInGroup`
+    /// does not return nil for a group that doesn't exist: it returns a dictionary without an
+    /// `IOReportChannels` list (checked on M1 Max for "PMP7" and a made-up name). Testing for
+    /// nil alone would never find the end of the PMP0, PMP1, … run.
+    private static func dcsBWChannels(inGroup group: String) -> CFMutableDictionary? {
+        guard let channels = IOReportCopyChannelsInGroup(group as CFString, "DCS BW" as CFString, 0, 0, 0)?.takeRetainedValue(),
+              let list = (channels as NSDictionary)["IOReportChannels"] as? [Any], !list.isEmpty
+        else { return nil }
+        return channels
     }
 
     public func sample(interval: TimeInterval = 0.2) -> BandwidthSample {
@@ -249,6 +271,22 @@ public final class BandwidthSampler {
         return weighted / totalResidency
     }
 
+    /// One histogram channel read out: its residency-weighted GB/s, its lowest labelled band,
+    /// and whether every bit of residency sat in that band — in which case `gbs` equals the
+    /// band's label but the real traffic is only known to be below it.
+    struct HistogramReading: Equatable {
+        var gbs: Double
+        var lowestBandGBs: Double
+        var wholeInLowestBand: Bool
+    }
+
+    static func histogramReading(_ buckets: [(gbs: Double, residency: UInt64)]) -> HistogramReading {
+        let lowest = buckets.map(\.gbs).min() ?? 0
+        let held = buckets.filter { $0.residency > 0 }
+        let whole = lowest > 0 && !held.isEmpty && held.allSatisfy { $0.gbs == lowest }
+        return HistogramReading(gbs: weightedAverageGBs(buckets), lowestBandGBs: lowest, wholeInLowestBand: whole)
+    }
+
     /// Parses an IOReport bandwidth-histogram state name like "   1GB/s" (whitespace-padded)
     /// into its GB/s value. Returns nil for anything that doesn't match "<number>GB/s".
     static func parseHistogramBucketGBs(_ stateName: String) -> Double? {
@@ -287,21 +325,28 @@ public final class BandwidthSampler {
         requestor.uppercased().hasPrefix("AMCC")
     }
 
-    /// Use AMCC as the measured total only for the aggregate-only PMP layout observed on M3
-    /// Max/macOS 27. If any additive requestor lane exists, preserve the M4/M5 behavior: ignore
-    /// AMCC and sum the classified lanes. More than one aggregate is ambiguous, so report no
-    /// aggregate total rather than guessing how multiple memory-controller channels compose.
-    static func pmpMeasuredTotalGBs(aggregateGBs: Double?,
-                                    aggregateChannelCount: Int,
-                                    perRequestorChannelCount: Int) -> Double? {
-        guard aggregateChannelCount == 1, perRequestorChannelCount == 0 else { return nil }
-        return aggregateGBs
+    /// The total from AMCC aggregates, used only for the aggregate-only layout: one AMCC per
+    /// PMP group, no additive requestor lanes (M3 Max/macOS 27 has one group, #46; M3 Ultra one
+    /// per die, #93). Each die's controller carries only its own traffic, so the dies add: on an
+    /// Ultra under a 733 GB/s GPU stream, AMCC0 + AMCC1 read 370.8 + 367.6. If any requestor
+    /// lane exists (M4/M5), AMCC is ignored and the lanes are summed, as before. Two aggregates
+    /// in ONE group are ambiguous, so neither a total nor a bound is reported for them.
+    /// When every aggregate sat wholly in its lowest band, the result is a bound (`below`), the
+    /// sum of those bands, never a total: the bands are floors, not readings.
+    static func pmpAggregateTotal(_ aggregates: [(group: String, reading: HistogramReading)],
+                                  perRequestorChannelCount: Int) -> (total: Double?, below: Double?) {
+        guard !aggregates.isEmpty, perRequestorChannelCount == 0,
+              Set(aggregates.map(\.group)).count == aggregates.count
+        else { return (nil, nil) }
+        if aggregates.allSatisfy(\.reading.wholeInLowestBand) {
+            return (nil, aggregates.reduce(0) { $0 + $1.reading.lowestBandGBs })
+        }
+        return (aggregates.reduce(0) { $0 + $1.reading.gbs }, nil)
     }
 
     private static func samplePMPHistogram(delta: CFDictionary) -> BandwidthSample {
         var cpu = 0.0, gpu = 0.0, media = 0.0, ane = 0.0, other = 0.0
-        var aggregateGBs: Double?
-        var aggregateChannelCount = 0
+        var aggregates: [(group: String, reading: HistogramReading)] = []
         var perRequestorChannelCount = 0
 
         IOReportIterate(delta) { channel in
@@ -327,11 +372,12 @@ public final class BandwidthSampler {
                 guard let gbs = Self.parseHistogramBucketGBs(stateName) else { continue }
                 buckets.append((gbs, IOReportStateGetResidency(channel, Int32(i))))
             }
-            let value = Self.weightedAverageGBs(buckets)
+            let reading = Self.histogramReading(buckets)
+            let value = reading.gbs
 
             if Self.isPMPHistogramAggregate(requestor) {
-                aggregateGBs = value
-                aggregateChannelCount += 1
+                let group = (IOReportChannelGetGroup(channel)?.takeUnretainedValue() as String?) ?? ""
+                aggregates.append((group, reading))
                 return Int32(kKtopIOReportIterOk)
             }
             perRequestorChannelCount += 1
@@ -352,11 +398,9 @@ public final class BandwidthSampler {
         result.mediaGBs = media
         result.aneGBs = ane
         result.otherGBs = other
-        result.measuredTotalGBs = Self.pmpMeasuredTotalGBs(
-            aggregateGBs: aggregateGBs,
-            aggregateChannelCount: aggregateChannelCount,
-            perRequestorChannelCount: perRequestorChannelCount
-        )
+        let aggregate = Self.pmpAggregateTotal(aggregates, perRequestorChannelCount: perRequestorChannelCount)
+        result.measuredTotalGBs = aggregate.total
+        result.belowGBs = aggregate.below
         result.isEstimated = true
         return result
     }
@@ -415,12 +459,12 @@ public final class BandwidthSampler {
         }
 
         // Classic path unavailable — fall back to the PMP "DCS BW" histogram (see samplePMPHistogram),
-        // resolving the group across the "PMP"/"PMP0"/"PMP1" family like sample() does (#30).
-        guard let (pmpSub, pmpChannels, pmpGroup) = subscribePMPHistogram() else {
+        // resolving the groups across the PMP family exactly like sample() does (#30, #93).
+        guard let (pmpSub, pmpChannels, pmpGroups) = subscribePMPHistogram() else {
             return ["\"\(groupName)\" subscription unavailable — and no subscribable "
-                    + "\"DCS BW\" histogram in the PMP family (\(pmpGroupCandidates.joined(separator: "/"))) on this machine"]
+                    + "\"DCS BW\" histogram in the PMP family (PMP, PMP0, PMP1, …) on this machine"]
         }
-        var out = ["\"\(groupName)\" subscription unavailable — falling back to \(pmpGroup) \"DCS BW\" histogram dump:"]
+        var out = ["\"\(groupName)\" subscription unavailable — falling back to \(pmpGroups.joined(separator: " + ")) \"DCS BW\" histogram dump:"]
         let first = IOReportCreateSamples(pmpSub, pmpChannels, nil)
         Thread.sleep(forTimeInterval: interval)
         let second = IOReportCreateSamples(pmpSub, pmpChannels, nil)
@@ -447,9 +491,13 @@ public final class BandwidthSampler {
                 if let gbs = parseHistogramBucketGBs(stateName) { buckets.append((gbs, residency)) }
                 if residency > 0 { nonZero.append("\(stateName.trimmingCharacters(in: .whitespaces))=\(residency)") }
             }
-            let weighted = weightedAverageGBs(buckets)
+            let reading = histogramReading(buckets)
             let bucket = String(name.dropLast(6))
-            lines.append("PMP (DCS BW) \(bucket) -> \(String(format: "%.3f", weighted)) GB/s  (states: \(nonZero.joined(separator: ", ")))")
+            let group = (IOReportChannelGetGroup(channel)?.takeUnretainedValue() as String?) ?? "PMP"
+            let value = reading.wholeInLowestBand
+                ? String(format: "< %.0f", reading.lowestBandGBs)
+                : String(format: "%.3f", reading.gbs)
+            lines.append("\(group) (DCS BW) \(bucket) -> \(value) GB/s  (states: \(nonZero.joined(separator: ", ")))")
             return Int32(kKtopIOReportIterOk)
         }
         out.append("=== PMP \"DCS BW\" histogram — \(lines.count) requestors ===")

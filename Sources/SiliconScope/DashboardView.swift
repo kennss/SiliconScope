@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-10-16
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -1062,7 +1062,7 @@ private struct MemoryBandwidthCard: View {
             // its own recent maximum — regardless of how much of the chip's real bandwidth that
             // is. That is a normalisation limit, not a warning (§5.4). Matches the "BW" trace.
             Bar(label: "Total", value: min(1, bandwidth.totalGBs / max(bandwidthPeak, 1)),
-                detail: String(format: "%.0f GB/s", bandwidth.totalGBs),
+                detail: bandwidth.totalText,
                 encoding: .identity(Self.bandwidthColor))
             KV(key: "CPU", value: String(format: "%.0f GB/s", bandwidth.cpuGBs))
             KV(key: "GPU", value: String(format: "%.0f GB/s", bandwidth.gpuGBs))

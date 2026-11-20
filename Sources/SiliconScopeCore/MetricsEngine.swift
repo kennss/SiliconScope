@@ -1,7 +1,7 @@
 //
 //  File:      MetricsEngine.swift
 //  Created:   2026-06-25
-//  Updated:   2026-11-02
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The path-dependent derivation that turns a stream of SystemSnapshots into the
 //             values the dashboard reads beyond the raw snapshot: rolling sparkline History,
@@ -63,7 +63,8 @@ public final class MetricsEngine {
             roll(&ane, value(.power, s.power.aneWatts))
             roll(&aneActive, value(.ane, s.ane?.activeFraction ?? .nan))
             roll(&media, value(.bandwidth, s.bandwidth.mediaGBs))
-            roll(&bandwidth, value(.bandwidth, s.bandwidth.totalGBs))
+            // Below the histogram's resolution (#93) there is no value to draw, only a bound.
+            roll(&bandwidth, value(.bandwidth, s.bandwidth.belowGBs == nil ? s.bandwidth.totalGBs : .nan))
             roll(&dieTemp, value(.temperature, s.temperature.cpuCelsius))
             // The card lists one row per group; this gives each row a series to be drawn from.
             // On a gap the machine reports no groups, so advance the ones already known instead

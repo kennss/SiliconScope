@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics+Snapshot.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-29
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reverse mapping: synthesize a local-style SystemSnapshot (+ CPUTopology) from a remote
 //             MachineMetrics, so the SAME DashboardView renders a remote Mac exactly like This Mac.
@@ -60,7 +60,8 @@ public extension MachineMetrics {
             s.bandwidth.gpuGBs = ap.bandwidth.gpuGBs
             s.bandwidth.mediaGBs = ap.bandwidth.mediaGBs
             s.bandwidth.otherGBs = ap.bandwidth.otherGBs
-            s.bandwidth.measuredTotalGBs = ap.bandwidth.totalGBs
+            s.bandwidth.measuredTotalGBs = ap.bandwidth.belowGBs == nil ? ap.bandwidth.totalGBs : nil
+            s.bandwidth.belowGBs = ap.bandwidth.belowGBs
             s.bandwidth.isEstimated = ap.bandwidth.isEstimated
             s.bandwidth.aneGBs = ap.bandwidth.aneGBs
             s.ane = ap.aneActiveFraction.map { ANESample(activeFraction: $0, clusters: [$0]) }

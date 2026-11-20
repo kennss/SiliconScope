@@ -1,7 +1,7 @@
 //
 //  File:      SessionRecorder.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Records a session of SystemSnapshots to a JSONL file (one snapshot per line) for
 //             later trend analysis and Phase-2 replay. Streams to a temp file as it records
@@ -142,7 +142,8 @@ public final class SessionRecorder {
             n(s.power.cpuWatts), n(s.power.eCPUWatts), n(s.power.pCPUWatts), n(s.power.gpuWatts),
             n(s.power.aneWatts), n(s.power.dramWatts), n(s.power.socWatts),
             n(s.bandwidth.cpuGBs), n(s.bandwidth.gpuGBs), n(s.bandwidth.mediaGBs),
-            n(s.bandwidth.otherGBs), n(s.bandwidth.totalGBs),
+            // Empty, like an absent sensor, when the total was only known as a bound (#93).
+            n(s.bandwidth.otherGBs), s.bandwidth.belowGBs == nil ? n(s.bandwidth.totalGBs) : "",
             n(s.memory.usedGB), n(s.memory.totalGB), s.memory.pressure.rawValue, n(s.memory.swapUsedGB),
             s.temperature.hasCPU ? n(s.temperature.cpuCelsius, 1) : "",
             s.temperature.hasCPU ? n(s.temperature.cpuMaxCelsius, 1) : "",

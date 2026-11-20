@@ -109,6 +109,31 @@ sole aggregate and no per-requestor channels exist. CPU/GPU/Media remain zero be
 does not expose a defensible split, and `isEstimated` remains true because the source is a coarse
 residency histogram rather than byte deltas.
 
+### macOS 27 / M3 Ultra — one AMCC histogram per die, in `PMP0` and `PMP1`
+
+On macOS 27.2.1 (26B131), Mac Studio M3 Ultra (Mac15,14), measured by
+[@SpencerCurtis](https://github.com/SpencerCurtis) in
+[issue #93](https://github.com/kennss/SiliconScope/issues/93), 2026-11-19:
+
+- `AMC Stats` is unsubscribable, as on M3 Max. Bare `PMP` is present but not subscribable.
+- Each die has its own group: `PMP0` / `DCS BW` carries `AMCC0 RD+WR` and `PMP1` / `DCS BW`
+  carries `AMCC1 RD+WR`. No per-requestor histograms.
+- Under a Metal kernel the GPU timed at **733 GB/s** (read + write), the two read 370.8 and
+  367.6 GB/s by their band labels — **738.4 GB/s** together. Reading only `PMP0`, as the sampler
+  did, showed half the traffic.
+- The bands run 64, 128, … 384 GB/s. Idle, every bit of residency sat in the 64 GB/s band, so
+  the reading was a flat 64 whatever the load below that.
+
+So `BandwidthSampler` subscribes bare `PMP` alone when it works, and otherwise every numbered
+`PMP<n>` group from `PMP0` up to the first missing index, merged into one subscription, adding one
+AMCC per group. Two AMCC channels inside one group would still be ambiguous and give no total.
+
+**The lowest band is a floor, not a reading.** When every aggregate held all its residency in its
+lowest band, the sample carries `belowGBs` (the sum of those bands) and no total: the app shows
+"< 128 GB/s" for an idle Ultra, leaves the chart point out, and does arithmetic with 0. M3 Max gets
+the same treatment with its 32 GB/s band. One busy die beside an idle one is still a reading; the
+idle die then counts at its band label, an overestimate of at most that band.
+
 ### M4 Max / macOS 26.5.2 — "AMC Stats" subscription fails outright; data relocated to `PMP`/"DCS BW"
 
 Verified on this project's own hardware (Apple M4 Max, macOS 26.5.2, Darwin). Distinct failure

@@ -1,14 +1,16 @@
 //
 //  File:      BandwidthPMPHistogramTests.swift
 //  Created:   2026-07-15
-//  Updated:   2026-09-24
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Unit tests for the PMP "DCS BW" histogram fallback path in BandwidthSampler —
 //             the residency-weighted-average math, the "NGB/s" state-name parser, requestor
-//             classification, and aggregate-only AMCC fallback.
+//             classification, and aggregate-only AMCC fallback, one die or two, with its
+//             lowest band treated as a bound rather than a reading.
 //  Notes:     No hardware: these are pure functions over explicit inputs. Fixtures come from
-//             M4/M5 Max macOS 26.5.2 per-requestor histograms and the M3 Max macOS 27
-//             aggregate-only histogram documented in docs/ioreport-channels.md.
+//             M4/M5 Max macOS 26.5.2 per-requestor histograms, the M3 Max macOS 27
+//             aggregate-only histogram documented in docs/ioreport-channels.md, and an M3 Ultra
+//             macOS 27.2.1 (#93) with one AMCC per die, idle and under a 733 GB/s GPU stream.
 //
 import XCTest
 @testable import SiliconScopeCore
@@ -129,35 +131,93 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         XCTAssertFalse(BandwidthSampler.isPMPHistogramAggregate("PACC"))
     }
 
+    private func reading(_ gbs: Double, lowest: Double = 32, whole: Bool = false) -> BandwidthSampler.HistogramReading {
+        BandwidthSampler.HistogramReading(gbs: gbs, lowestBandGBs: lowest, wholeInLowestBand: whole)
+    }
+
     func testPMPHistogramUsesSoleAMCCAsMeasuredTotal() {
         // Live M3 Max/macOS 27 fixture: PMP0/DCS BW exposes only AMCC while GPU is loaded.
-        let total = BandwidthSampler.pmpMeasuredTotalGBs(
-            aggregateGBs: 278.695,
-            aggregateChannelCount: 1,
-            perRequestorChannelCount: 0
-        )
-        XCTAssertEqual(total ?? -1, 278.695, accuracy: 0.001)
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", reading(278.695))], perRequestorChannelCount: 0)
+        XCTAssertEqual(r.total ?? -1, 278.695, accuracy: 0.001)
+        XCTAssertNil(r.below)
     }
 
     func testPMPHistogramIgnoresAMCCBesidePerRequestorChannels() {
         // M5's AMCC has an idle floor and must not be added to its real requestor lanes.
-        XCTAssertNil(BandwidthSampler.pmpMeasuredTotalGBs(
-            aggregateGBs: 40.1,
-            aggregateChannelCount: 1,
-            perRequestorChannelCount: 20
-        ))
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", reading(40.1))], perRequestorChannelCount: 20)
+        XCTAssertNil(r.total)
+        XCTAssertNil(r.below, "the lanes carry the total there; no bound either")
     }
 
     func testPMPHistogramRejectsMissingOrAmbiguousAggregate() {
-        XCTAssertNil(BandwidthSampler.pmpMeasuredTotalGBs(
-            aggregateGBs: nil,
-            aggregateChannelCount: 0,
-            perRequestorChannelCount: 0
-        ))
-        XCTAssertNil(BandwidthSampler.pmpMeasuredTotalGBs(
-            aggregateGBs: 200,
-            aggregateChannelCount: 2,
-            perRequestorChannelCount: 0
-        ))
+        XCTAssertNil(BandwidthSampler.pmpAggregateTotal([], perRequestorChannelCount: 0).total)
+        // Two aggregates in ONE group: nothing says how they compose.
+        let twoInOne = BandwidthSampler.pmpAggregateTotal(
+            [("PMP0", reading(100)), ("PMP0", reading(100))], perRequestorChannelCount: 0)
+        XCTAssertNil(twoInOne.total)
+        XCTAssertNil(twoInOne.below)
+    }
+
+    // MARK: - M3 Ultra: one AMCC per die (github.com/kennss/SiliconScope#93)
+
+    /// The live histograms from the Ultra under a Metal kernel the GPU timed at 733 GB/s.
+    private let ultraAMCC0: [(gbs: Double, residency: UInt64)] =
+        [(64, 47), (128, 34), (192, 37), (256, 32), (320, 373), (384, 3925)]
+    private let ultraAMCC1: [(gbs: Double, residency: UInt64)] =
+        [(64, 12), (128, 14), (192, 16), (256, 11), (320, 23), (384, 742)]
+
+    func testUltraDiesAddUpToTheTrafficTheGPUTimed() {
+        let die0 = BandwidthSampler.histogramReading(ultraAMCC0)
+        let die1 = BandwidthSampler.histogramReading(ultraAMCC1)
+        XCTAssertEqual(die0.gbs, 370.8, accuracy: 0.05)
+        XCTAssertEqual(die1.gbs, 367.6, accuracy: 0.05)
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", die0), ("PMP1", die1)], perRequestorChannelCount: 0)
+        XCTAssertEqual(r.total ?? -1, 738.4, accuracy: 0.1, "both dies, not the first one alone (~370)")
+        XCTAssertNil(r.below)
+    }
+
+    /// Idle, all residency sat in the 64 GB/s band on each die: that is a bound, not 64 or 128.
+    func testUltraIdleIsABoundNotAReading() {
+        let idle: [(gbs: Double, residency: UInt64)] = [(64, 897), (128, 0), (192, 0), (384, 0)]
+        let die = BandwidthSampler.histogramReading(idle)
+        XCTAssertTrue(die.wholeInLowestBand)
+        XCTAssertEqual(die.lowestBandGBs, 64)
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", die), ("PMP1", die)], perRequestorChannelCount: 0)
+        XCTAssertNil(r.total)
+        XCTAssertEqual(r.below ?? -1, 128)
+    }
+
+    /// One die busy, one idle: the busy one is a reading, so the sum is an estimate, not a bound.
+    func testOneBusyDieMakesItAReading() {
+        let busy = BandwidthSampler.histogramReading(ultraAMCC0)
+        let idle = BandwidthSampler.histogramReading([(64, 897), (128, 0)])
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", busy), ("PMP1", idle)], perRequestorChannelCount: 0)
+        XCTAssertEqual(r.total ?? -1, 370.8 + 64, accuracy: 0.1)
+        XCTAssertNil(r.below)
+    }
+
+    func testHistogramReadingWholeInLowestBandNeedsResidency() {
+        XCTAssertFalse(BandwidthSampler.histogramReading([(64, 0), (128, 0)]).wholeInLowestBand, "no residency at all")
+        XCTAssertFalse(BandwidthSampler.histogramReading([(64, 5), (128, 1)]).wholeInLowestBand)
+        XCTAssertFalse(BandwidthSampler.histogramReading([(0, 5), (64, 0)]).wholeInLowestBand, "a 0 band is a real reading")
+    }
+
+    // MARK: - What the total looks like as text
+
+    func testTotalTextShowsTheBound() {
+        var s = BandwidthSample()
+        s.belowGBs = 128
+        XCTAssertEqual(s.totalGBs, 0, "math sees a reading that is never the limit")
+        XCTAssertEqual(s.totalText, "< 128 GB/s")
+        s.belowGBs = nil
+        s.measuredTotalGBs = 738.4
+        XCTAssertEqual(s.totalText, "738 GB/s")
+    }
+
+    /// A recording made before `belowGBs` existed still opens.
+    func testBelowGBsDecodesAbsentAsNil() throws {
+        let old = #"{"cpuGBs":0,"gpuGBs":0,"mediaGBs":0,"otherGBs":0,"isEstimated":true}"#
+        let s = try JSONDecoder().decode(BandwidthSample.self, from: Data(old.utf8))
+        XCTAssertNil(s.belowGBs)
     }
 }

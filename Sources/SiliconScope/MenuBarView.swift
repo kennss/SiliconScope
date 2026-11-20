@@ -1,7 +1,7 @@
 //
 //  File:      MenuBarView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Compact menu-bar popover content: the essentials at a glance (E/P, mem,
 //             GPU, bandwidth, power, die temp), trend sparklines, top processes, plus
@@ -119,7 +119,7 @@ struct MenuBarView: View {
         KV(key: "GPU", value: String(format: "%.0f%% · ", snapshot.gpu.usagePercent) + snapshot.power.gpuText())
         KV(key: "ANE", value: snapshot.aneText())
         KV(key: "Media", value: String(format: "%.1f GB/s", snapshot.bandwidth.mediaGBs))
-        KV(key: "Mem BW", value: String(format: "%.0f GB/s", snapshot.bandwidth.totalGBs))
+        KV(key: "Mem BW", value: snapshot.bandwidth.totalText)
         KV(key: "SoC power", value: snapshot.power.text(snapshot.power.socWatts))
         KV(key: "CPU temp", value: formatTemperature(snapshot.temperature.cpuCelsius, fahrenheit: fahrenheit))
         if snapshot.temperature.hasBattery {
@@ -158,7 +158,7 @@ struct MenuBarView: View {
                  axis: .ceiling(max(monitor.mediaPeakGBs, 0.5)))
         graphRow("MEM", c[4], monitor.history.memFraction, String(format: "%.0f%%", s.memory.usedPercent),
                  axis: .fraction)
-        graphRow("MBW", c[5], monitor.history.bandwidth, String(format: "%.0f GB/s", s.bandwidth.totalGBs),
+        graphRow("MBW", c[5], monitor.history.bandwidth, s.bandwidth.totalText,
                  axis: .ceiling(max(monitor.bandwidthPeakGBs, 1)))
     }
 

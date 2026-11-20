@@ -1,7 +1,7 @@
 //
 //  File:      MachineMetrics+Mac.swift
 //  Created:   2026-07-22
-//  Updated:   2026-09-29
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Maps a local Apple-Silicon live snapshot (SystemSnapshot + CPUTopology) into the
 //             source-agnostic MachineMetrics wire schema, so a Mac can serve itself to the fleet the
@@ -117,7 +117,8 @@ public extension MachineMetrics {
                 totalGBs: s.bandwidth.totalGBs,
                 isEstimated: s.bandwidth.isEstimated,
                 totalPeakGBs: bandwidthPeakGBs,
-                aneGBs: s.bandwidth.aneGBs
+                aneGBs: s.bandwidth.aneGBs,
+                belowGBs: s.bandwidth.belowGBs
             ),
             fanRPMs: s.thermal.fanRPMs,
             gpuFreqsMHz: nonEmpty(topology?.gpuFreqsMHz),

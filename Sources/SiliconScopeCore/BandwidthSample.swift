@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSample.swift
 //  Created:   2026-06-08
-//  Updated:   2026-09-24
+//  Updated:   2026-11-20
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Value type holding one unified-memory bandwidth reading (GB/s), split
 //             by requestor. The headline signal for local-LLM throughput (token
@@ -15,6 +15,9 @@
 //             later (e.g. `isEstimated`) would throw .keyNotFound on older .ssrec frames and
 //             SessionReader would drop every frame → an old recording opens as `.noFrames`.
 //             decodeIfPresent + the property default keeps pre-existing recordings loading.
+//             `belowGBs` is the one reading that is NOT a number: a histogram that held all its
+//             residency in its lowest band only says traffic was under that band (#93). Text
+//             goes through `totalText`, charts leave it out, and `totalGBs` reads 0 for math.
 //
 import Foundation
 
@@ -39,6 +42,15 @@ public struct BandwidthSample: Sendable, Equatable, Codable {
     /// not precise byte-delta measurements, so UI that reasons about a chip's ceiling must say so.
     public var isEstimated: Bool = false
 
+    /// Set when every bandwidth histogram this reading came from held all of its residency in
+    /// its lowest band: the total is then only known to be under this value (GB/s), the sum of
+    /// those lowest bands. `measuredTotalGBs` stays nil and the lanes 0, so `totalGBs` reads 0
+    /// for arithmetic (fill fractions, peak, the bottleneck verdict) — a reading that low is
+    /// never the limit. Anything shown as text must use `totalText`, and a chart must leave the
+    /// sample out rather than draw a value that was never read. M3 Max's lowest band is 32 GB/s
+    /// and each M3 Ultra die's is 64, so an idle Ultra reads "< 128 GB/s" (#93).
+    public var belowGBs: Double? = nil
+
     public init() {}
 
     /// Hand-written decoder (see the file header): every key is optional-on-read so that any
@@ -54,7 +66,17 @@ public struct BandwidthSample: Sendable, Equatable, Codable {
         otherGBs = try c.decodeIfPresent(Double.self, forKey: .otherGBs) ?? 0
         measuredTotalGBs = try c.decodeIfPresent(Double.self, forKey: .measuredTotalGBs)
         isEstimated = try c.decodeIfPresent(Bool.self, forKey: .isEstimated) ?? false
+        belowGBs = try c.decodeIfPresent(Double.self, forKey: .belowGBs)
     }
 
     public var totalGBs: Double { measuredTotalGBs ?? (cpuGBs + gpuGBs + mediaGBs + (aneGBs ?? 0) + otherGBs) }
+
+    /// The total as text: "< 128 GB/s" when it was below the histogram's resolution.
+    public var totalText: String { Self.totalText(totalGBs: totalGBs, belowGBs: belowGBs) }
+
+    /// Shared with the Fleet wire type so a remote Mac reads the same way as this one.
+    public static func totalText(totalGBs: Double, belowGBs: Double?) -> String {
+        if let below = belowGBs { return String(format: "< %.0f GB/s", below) }
+        return String(format: "%.0f GB/s", totalGBs)
+    }
 }
