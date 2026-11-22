@@ -1,14 +1,6 @@
 # Changelog
 
-## Unreleased
-
-**M3 Ultra: both dies' CPU temperatures.** The sensor table read only the first die's CPU
-keys, so a load macOS ran on the second die left SiliconScope's CPU temperature nearly flat.
-On an M3 Ultra the Sensors card now also lists the second die's eight CPU sensors
-("Die 2 CPU 1–8"), and the CPU temperature includes them. Two keys that read the same
-sensor as two others (`Tf0E`/`Tf4E`) no longer show the same value twice. @SpencerCurtis
-measured which die each key follows, recording where macOS ran the load
-([#94](https://github.com/kennss/SiliconScope/issues/94)). Other M3 chips are unchanged.
+## v4.9.2 — 2026-11-23
 
 **M5 Ultra: memory bandwidth read about 1 % of the real traffic.** On the M5 Ultra the
 per-requestor bandwidth channels don't carry the traffic: with the GPU streaming 1091 GB/s,
@@ -25,6 +17,17 @@ in its lowest band, which only says traffic was under 64 GB/s, so SiliconScope s
 "< 128 GB/s". A couple of brief bursts in a second of samples used to turn that into a
 reading of 128 GB/s, nearly all of it the floor's label. A total now stays a bound while
 more than half of it comes from that floor. This applies to the M3 Max, M3 Ultra and M5 Ultra.
+
+**M3 Ultra: both dies' CPU temperatures.** The sensor table read only the first die's CPU
+keys, so a load macOS ran on the second die left SiliconScope's CPU temperature nearly flat.
+On an M3 Ultra the Sensors card now also lists the second die's eight CPU sensors
+("Die 2 CPU 1–8"), and the CPU temperature includes them. Two keys that read the same
+sensor as two others (`Tf0E`/`Tf4E`) no longer show the same value twice. @SpencerCurtis
+measured which die each key follows, recording where macOS ran the load
+([#94](https://github.com/kennss/SiliconScope/issues/94)). Other M3 chips are unchanged.
+
+Mac agent **1.4.4** (both changes reach Fleet: the M5 Ultra bandwidth and the M3 Ultra's
+second-die temperatures). Linux agent unchanged at **1.5.3**.
 
 ## v4.9.1 — 2026-11-20
 
