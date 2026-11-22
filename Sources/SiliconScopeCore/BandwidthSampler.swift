@@ -39,9 +39,10 @@
 //             that value is used only when no additive requestor channels exist. Every
 //             histogram reading remains an estimate, surfaced via `isEstimated`.
 //             An AMCC histogram's lowest band is a floor, not a reading: residency held there
-//             only says traffic was under it (32 GB/s on M3 Max, 64 per die on M3 Ultra). When
-//             every aggregate sits wholly in its lowest band the sample carries `belowGBs`
-//             instead of a total, so an idle Ultra reads "< 128 GB/s", not 128.
+//             only says traffic was under it (32 GB/s on M3 Max, 64 per die on M3/M5 Ultra).
+//             When more than half of the aggregates' sum comes from their floors, the sample
+//             carries `belowGBs` instead of a total, so an idle Ultra reads "< 128 GB/s", not
+//             128, even when a die bursts above its floor for a few samples (#95).
 //             `channelDump()` (raw inventory dump, both paths) exists to diagnose chip/OS
 //             combinations neither path handles yet.
 //
@@ -277,20 +278,28 @@ public final class BandwidthSampler {
         return weighted / totalResidency
     }
 
-    /// One histogram channel read out: its residency-weighted GB/s, its lowest labelled band,
-    /// and whether every bit of residency sat in that band — in which case `gbs` equals the
-    /// band's label but the real traffic is only known to be below it.
+    /// One histogram channel read out: its residency-weighted GB/s, and how much of that came
+    /// from the lowest band. The lowest band is a floor: time spent there only says traffic was
+    /// under its label, yet the weighted average counts that time AT the label. So `floorGBs` is
+    /// the part of `gbs` that was never measured.
     struct HistogramReading: Equatable {
         var gbs: Double
-        var lowestBandGBs: Double
-        var wholeInLowestBand: Bool
+        var floorGBs: Double
+
+        /// True when more than half of `gbs` comes from the floor: the figure then says more
+        /// about the band's label than about the traffic, so it is a bound (traffic under `gbs`),
+        /// not a reading. A histogram wholly in its floor is the plain case; a few bursts above
+        /// it leave it a bound too (an idle M5 Ultra die: 2 of ~990 samples in the next band, #95).
+        /// A lowest band labelled 0 is a real reading and never a floor.
+        var isBound: Bool { gbs > 0 && floorGBs * 2 > gbs }
     }
 
     static func histogramReading(_ buckets: [(gbs: Double, residency: UInt64)]) -> HistogramReading {
         let lowest = buckets.map(\.gbs).min() ?? 0
-        let held = buckets.filter { $0.residency > 0 }
-        let whole = lowest > 0 && !held.isEmpty && held.allSatisfy { $0.gbs == lowest }
-        return HistogramReading(gbs: weightedAverageGBs(buckets), lowestBandGBs: lowest, wholeInLowestBand: whole)
+        let total = buckets.reduce(0.0) { $0 + Double($1.residency) }
+        let atFloor = buckets.filter { $0.gbs == lowest }.reduce(0.0) { $0 + Double($1.residency) }
+        let floor = total > 0 ? lowest * atFloor / total : 0
+        return HistogramReading(gbs: weightedAverageGBs(buckets), floorGBs: floor)
     }
 
     /// Parses an IOReport bandwidth-histogram state name like "   1GB/s" (whitespace-padded)
@@ -340,18 +349,19 @@ public final class BandwidthSampler {
     /// beside requestor lanes (M4/M5 Max) is ignored and the lanes are summed, as before: there
     /// it sits on its floor near idle and nobody has checked it against a timed load. Two
     /// aggregates in ONE group are ambiguous, so neither a total nor a bound is reported.
-    /// When every aggregate sat wholly in its lowest band, the result is a bound (`below`), the
-    /// sum of those bands, never a total: the bands are floors, not readings.
+    /// The same floor rule as one histogram (`HistogramReading.isBound`) applies to their sum:
+    /// when more than half of it comes from the dies' floors, the result is a bound (`below`),
+    /// never a total. Wholly-floor dies give the sum of their bands ("< 128 GB/s" on an idle
+    /// Ultra); one busy die beside an idle one is a reading, the idle die counted at its band.
     static func pmpAggregateTotal(_ aggregates: [(group: String, reading: HistogramReading)],
                                   perRequestorChannelCount: Int) -> (total: Double?, below: Double?) {
         let groups = Set(aggregates.map(\.group))
         guard !aggregates.isEmpty, groups.count == aggregates.count,
               perRequestorChannelCount == 0 || groups.count >= 2
         else { return (nil, nil) }
-        if aggregates.allSatisfy(\.reading.wholeInLowestBand) {
-            return (nil, aggregates.reduce(0) { $0 + $1.reading.lowestBandGBs })
-        }
-        return (aggregates.reduce(0) { $0 + $1.reading.gbs }, nil)
+        let sum = HistogramReading(gbs: aggregates.reduce(0) { $0 + $1.reading.gbs },
+                                   floorGBs: aggregates.reduce(0) { $0 + $1.reading.floorGBs })
+        return sum.isBound ? (nil, sum.gbs) : (sum.gbs, nil)
     }
 
     private static func samplePMPHistogram(delta: CFDictionary) -> BandwidthSample {
@@ -508,8 +518,8 @@ public final class BandwidthSampler {
             let reading = histogramReading(buckets)
             let bucket = String(name.dropLast(6))
             let group = (IOReportChannelGetGroup(channel)?.takeUnretainedValue() as String?) ?? "PMP"
-            let value = reading.wholeInLowestBand
-                ? String(format: "< %.0f", reading.lowestBandGBs)
+            let value = reading.isBound
+                ? String(format: "< %.0f", reading.gbs)
                 : String(format: "%.3f", reading.gbs)
             lines.append("\(group) (DCS BW) \(bucket) -> \(value) GB/s  (states: \(nonZero.joined(separator: ", ")))")
             return Int32(kKtopIOReportIterOk)

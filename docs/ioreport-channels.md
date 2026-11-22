@@ -128,9 +128,11 @@ So `BandwidthSampler` subscribes bare `PMP` alone when it works, and otherwise e
 `PMP<n>` group from `PMP0` up to the first missing index, merged into one subscription, adding one
 AMCC per group. Two AMCC channels inside one group would still be ambiguous and give no total.
 
-**The lowest band is a floor, not a reading.** When every aggregate held all its residency in its
-lowest band, the sample carries `belowGBs` (the sum of those bands) and no total: the app shows
-"< 128 GB/s" for an idle Ultra, leaves the chart point out, and does arithmetic with 0. M3 Max gets
+**The lowest band is a floor, not a reading.** Time in the lowest band only says traffic was under
+its label, yet the residency-weighted average counts it at the label. When more than half of the
+aggregates' summed value comes from their floors, the sample carries `belowGBs` (that sum) and no
+total: the app shows "< 128 GB/s" for an idle Ultra, leaves the chart point out, and does arithmetic
+with 0. That covers a die wholly in its floor and one with a few bursts above it (#95). M3 Max gets
 the same treatment with its 32 GB/s band. One busy die beside an idle one is still a reading; the
 idle die then counts at its band label, an overestimate of at most that band.
 
@@ -148,8 +150,12 @@ On macOS 27.0 (26A428), Mac Studio M5 Ultra (Mac17,15, 10 Super + 20 Performance
   **1065.8 GB/s** (0.98). `AGX` sat wholly in its 1 GB/s band, and the lanes summed to ~13 GB/s.
   With every CPU core busy the CPU lanes stayed at 1–2.5 GB/s. Every phase without a memory
   stream left both AMCCs wholly in their 64 GB/s band.
-- Most stream residency was in the top 576 GB/s band (64 % on die 0, 36 % on die 1), so a heavier
-  load could be clipped there; not yet seen.
+- Most stream residency was in the 512 and 576 GB/s bands, but 576 is not the top: the rerun on
+  1266dba put one sample in a 640 GB/s band. On that build the summary read 1067.5 GB/s against
+  1096.8 timed by the kernel (0.97), with the lanes shown as "—".
+- Idle, each die put a couple of its ~990 samples in the 128 GB/s band and the rest in the 64 GB/s
+  floor. Under the old "wholly in the floor" test that turned the bound into a "128 GB/s" reading on
+  some samples; see the floor rule in the M3 Ultra section above.
 
 So when the AMCC aggregates come one per die (two or more groups), `BandwidthSampler` uses them
 as the total even with requestor lanes present, and the lanes are not read as a split (they show

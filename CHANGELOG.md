@@ -18,6 +18,13 @@ split by CPU, GPU and media isn't readable on this chip, so those rows show "—
 Ultra. The bandwidth ceiling for the M5 Ultra is now Apple's 1.2 TB/s. Measured by
 @KoheiKanagu with `--chip-report` ([#95](https://github.com/kennss/SiliconScope/issues/95)).
 The `--chip-report` zip also no longer carries a "._" metadata file for each report file.
+@KoheiKanagu reran it on the fix: 1067.5 GB/s against 1096.8 timed by the kernel.
+
+**An idle Ultra no longer flickers to "128 GB/s".** At rest each die's memory controller sits
+in its lowest band, which only says traffic was under 64 GB/s, so SiliconScope shows
+"< 128 GB/s". A couple of brief bursts in a second of samples used to turn that into a
+reading of 128 GB/s, nearly all of it the floor's label. A total now stays a bound while
+more than half of it comes from that floor. This applies to the M3 Max, M3 Ultra and M5 Ultra.
 
 ## v4.9.1 — 2026-11-20
 

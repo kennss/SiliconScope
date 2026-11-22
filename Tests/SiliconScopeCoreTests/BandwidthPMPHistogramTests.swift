@@ -131,8 +131,8 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         XCTAssertFalse(BandwidthSampler.isPMPHistogramAggregate("PACC"))
     }
 
-    private func reading(_ gbs: Double, lowest: Double = 32, whole: Bool = false) -> BandwidthSampler.HistogramReading {
-        BandwidthSampler.HistogramReading(gbs: gbs, lowestBandGBs: lowest, wholeInLowestBand: whole)
+    private func reading(_ gbs: Double, floor: Double = 0) -> BandwidthSampler.HistogramReading {
+        BandwidthSampler.HistogramReading(gbs: gbs, floorGBs: floor)
     }
 
     func testPMPHistogramUsesSoleAMCCAsMeasuredTotal() {
@@ -181,8 +181,8 @@ final class BandwidthPMPHistogramTests: XCTestCase {
     func testUltraIdleIsABoundNotAReading() {
         let idle: [(gbs: Double, residency: UInt64)] = [(64, 897), (128, 0), (192, 0), (384, 0)]
         let die = BandwidthSampler.histogramReading(idle)
-        XCTAssertTrue(die.wholeInLowestBand)
-        XCTAssertEqual(die.lowestBandGBs, 64)
+        XCTAssertTrue(die.isBound)
+        XCTAssertEqual(die.floorGBs, 64)
         let r = BandwidthSampler.pmpAggregateTotal([("PMP0", die), ("PMP1", die)], perRequestorChannelCount: 0)
         XCTAssertNil(r.total)
         XCTAssertEqual(r.below ?? -1, 128)
@@ -225,10 +225,30 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         XCTAssertEqual(r.below ?? -1, 128)
     }
 
-    func testHistogramReadingWholeInLowestBandNeedsResidency() {
-        XCTAssertFalse(BandwidthSampler.histogramReading([(64, 0), (128, 0)]).wholeInLowestBand, "no residency at all")
-        XCTAssertFalse(BandwidthSampler.histogramReading([(64, 5), (128, 1)]).wholeInLowestBand)
-        XCTAssertFalse(BandwidthSampler.histogramReading([(0, 5), (64, 0)]).wholeInLowestBand, "a 0 band is a real reading")
+    /// #95 rerun on main: idle, each M5 Ultra die put 2 samples in its 128 GB/s band and the
+    /// rest in its 64 GB/s floor. That flipped the old wholly-in-floor rule and showed
+    /// "128 GB/s" as if measured; nearly all of it is the floor, so it stays a bound.
+    func testM5UltraIdleBurstsStayABound() {
+        let die0 = BandwidthSampler.histogramReading([(64, 986), (128, 2)])
+        let die1 = BandwidthSampler.histogramReading([(64, 391), (128, 2)])
+        XCTAssertEqual(die0.gbs, 64.130, accuracy: 0.001)
+        XCTAssertEqual(die1.gbs, 64.326, accuracy: 0.001)
+        XCTAssertTrue(die0.isBound && die1.isBound)
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", die0), ("PMP1", die1)], perRequestorChannelCount: 35)
+        XCTAssertNil(r.total)
+        XCTAssertEqual(r.below ?? -1, 128.456, accuracy: 0.001)
+        // GPU compute (no memory stream) in the same rerun: more bursts, still mostly floor.
+        let gpu0 = BandwidthSampler.histogramReading([(64, 935), (128, 18)])
+        let gpu1 = BandwidthSampler.histogramReading([(64, 935), (128, 15), (192, 4)])
+        XCTAssertNil(BandwidthSampler.pmpAggregateTotal([("PMP0", gpu0), ("PMP1", gpu1)], perRequestorChannelCount: 35).total)
+    }
+
+    func testHistogramBoundRule() {
+        XCTAssertFalse(BandwidthSampler.histogramReading([(64, 0), (128, 0)]).isBound, "no residency at all")
+        XCTAssertTrue(BandwidthSampler.histogramReading([(64, 5), (128, 1)]).isBound, "53 of its 75 GB/s is floor")
+        XCTAssertFalse(BandwidthSampler.histogramReading([(64, 1), (128, 5)]).isBound, "11 of its 117 GB/s is floor")
+        XCTAssertFalse(BandwidthSampler.histogramReading([(0, 5), (64, 0)]).isBound, "a 0 band is a real reading")
+        XCTAssertFalse(BandwidthSampler.histogramReading([(0, 5), (64, 1)]).isBound, "a 0 floor adds nothing unmeasured")
     }
 
     // MARK: - What the total looks like as text
