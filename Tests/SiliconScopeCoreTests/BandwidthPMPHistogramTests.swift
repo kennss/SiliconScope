@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthPMPHistogramTests.swift
 //  Created:   2026-07-15
-//  Updated:   2026-11-20
+//  Updated:   2026-11-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Unit tests for the PMP "DCS BW" histogram fallback path in BandwidthSampler —
 //             the residency-weighted-average math, the "NGB/s" state-name parser, requestor
@@ -143,7 +143,8 @@ final class BandwidthPMPHistogramTests: XCTestCase {
     }
 
     func testPMPHistogramIgnoresAMCCBesidePerRequestorChannels() {
-        // M5's AMCC has an idle floor and must not be added to its real requestor lanes.
+        // M5 Max: one AMCC beside the lanes. It sits on its floor near idle and is unchecked
+        // against a timed load, so the lanes stay the reading (unchanged by #95).
         let r = BandwidthSampler.pmpAggregateTotal([("PMP0", reading(40.1))], perRequestorChannelCount: 20)
         XCTAssertNil(r.total)
         XCTAssertNil(r.below, "the lanes carry the total there; no bound either")
@@ -194,6 +195,34 @@ final class BandwidthPMPHistogramTests: XCTestCase {
         let r = BandwidthSampler.pmpAggregateTotal([("PMP0", busy), ("PMP1", idle)], perRequestorChannelCount: 0)
         XCTAssertEqual(r.total ?? -1, 370.8 + 64, accuracy: 0.1)
         XCTAssertNil(r.below)
+    }
+
+    // MARK: - M5 Ultra: AMCC per die beside lanes that miss the traffic (github.com/kennss/SiliconScope#95)
+
+    /// The live histograms from an M5 Ultra (Mac17,15) under a GPU kernel that timed itself
+    /// moving 1091.3 GB/s; meanwhile AGX sat wholly in its 1 GB/s band.
+    private let m5UltraAMCC0: [(gbs: Double, residency: UInt64)] =
+        [(64, 1), (128, 7), (192, 11), (256, 4), (320, 8), (384, 5), (448, 8), (512, 307), (576, 620)]
+    private let m5UltraAMCC1: [(gbs: Double, residency: UInt64)] =
+        [(64, 5), (128, 4), (192, 12), (256, 5), (320, 7), (384, 4), (448, 9), (512, 568), (576, 353)]
+
+    func testM5UltraDiesAreTheTotalEvenBesideRequestorLanes() {
+        let die0 = BandwidthSampler.histogramReading(m5UltraAMCC0)
+        let die1 = BandwidthSampler.histogramReading(m5UltraAMCC1)
+        XCTAssertEqual(die0.gbs, 542.187, accuracy: 0.01)
+        XCTAssertEqual(die1.gbs, 523.648, accuracy: 0.01)
+        // 37 DCS BW requestors in the dump, 2 of them the AMCCs.
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", die0), ("PMP1", die1)], perRequestorChannelCount: 35)
+        XCTAssertEqual(r.total ?? -1, 1065.8, accuracy: 0.1, "not the ~13 GB/s the lanes summed to")
+        XCTAssertNil(r.below)
+    }
+
+    /// Idle, both M5 Ultra AMCCs sat in their 64 GB/s band: a bound even with lanes beside them.
+    func testM5UltraIdleIsABoundBesideLanes() {
+        let idle = BandwidthSampler.histogramReading([(64, 970), (128, 0), (576, 0)])
+        let r = BandwidthSampler.pmpAggregateTotal([("PMP0", idle), ("PMP1", idle)], perRequestorChannelCount: 35)
+        XCTAssertNil(r.total)
+        XCTAssertEqual(r.below ?? -1, 128)
     }
 
     func testHistogramReadingWholeInLowestBandNeedsResidency() {

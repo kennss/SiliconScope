@@ -1,7 +1,7 @@
 //
 //  File:      ChipReport.swift
 //  Created:   2026-11-20
-//  Updated:   2026-11-20
+//  Updated:   2026-11-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  `sscope-cli --chip-report`: one command that measures a Mac the way a sensor, power or
 //             bandwidth contribution needs it measured, and packs the result into one zip on the
@@ -166,7 +166,10 @@ enum ChipReport {
         let zip = desktop.appendingPathComponent(name + ".zip")
         let ditto = Process()
         ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        ditto.arguments = ["-c", "-k", "--keepParent", folder.path, zip.path]
+        // Without these, ditto adds a "._" AppleDouble file per report file carrying its
+        // extended attributes (com.apple.provenance, TextEncoding): clutter, not data (#95).
+        ditto.arguments = ["-c", "-k", "--norsrc", "--noextattr", "--noqtn", "--noacl",
+                           "--keepParent", folder.path, zip.path]
         try? ditto.run(); ditto.waitUntilExit()
 
         Self.log(started, "done")

@@ -10,6 +10,15 @@ sensor as two others (`Tf0E`/`Tf4E`) no longer show the same value twice. @Spenc
 measured which die each key follows, recording where macOS ran the load
 ([#94](https://github.com/kennss/SiliconScope/issues/94)). Other M3 chips are unchanged.
 
+**M5 Ultra: memory bandwidth read about 1 % of the real traffic.** On the M5 Ultra the
+per-requestor bandwidth channels don't carry the traffic: with the GPU streaming 1091 GB/s,
+its channel stayed at 1 GB/s, and SiliconScope showed about 13 GB/s in total. The total now
+comes from the memory controllers, one per die, which read 1066 GB/s in the same run. Their
+split by CPU, GPU and media isn't readable on this chip, so those rows show "—", as on the M3
+Ultra. The bandwidth ceiling for the M5 Ultra is now Apple's 1.2 TB/s. Measured by
+@KoheiKanagu with `--chip-report` ([#95](https://github.com/kennss/SiliconScope/issues/95)).
+The `--chip-report` zip also no longer carries a "._" metadata file for each report file.
+
 ## v4.9.1 — 2026-11-20
 
 **No zeros where nothing was measured.** M3 Max and M3 Ultra (and A18) report only total

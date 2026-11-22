@@ -1,7 +1,7 @@
 //
 //  File:      BottleneckTests.swift
 //  Created:   2026-06-20
-//  Updated:   2026-06-20
+//  Updated:   2026-11-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Unit tests for the hero classifier (Bottleneck.classify) and the per-chip
 //             bandwidth-ceiling table. Both are pure value logic, so fixed inputs pin the
@@ -112,8 +112,8 @@ final class BottleneckTests: XCTestCase {
         XCTAssertEqual(Bottleneck.bandwidthCeilingGBs(chipName: "Apple M5", pCoreCount: 4), 153)
         XCTAssertEqual(Bottleneck.bandwidthCeilingGBs(chipName: "Apple M5 Pro", pCoreCount: 12), 307)
         XCTAssertEqual(Bottleneck.bandwidthCeilingGBs(chipName: "Apple M5 Max", pCoreCount: 12), 614)
-        // No M5 Ultra yet → 0 (caller falls back to the observed peak).
-        XCTAssertEqual(Bottleneck.bandwidthCeilingGBs(chipName: "Apple M5 Ultra", pCoreCount: 16), 0)
+        // Apple lists "1.2TB/s" for both M5 Ultra configurations (30- and 36-core CPU), #95.
+        XCTAssertEqual(Bottleneck.bandwidthCeilingGBs(chipName: "Apple M5 Ultra", pCoreCount: 20), 1200)
     }
 
     func testCeilingUnknownChipIsZero() {

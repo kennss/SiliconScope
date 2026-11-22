@@ -1,7 +1,7 @@
 //
 //  File:      BandwidthSampler.swift
 //  Created:   2026-06-08
-//  Updated:   2026-11-20
+//  Updated:   2026-11-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Reads unified-memory bandwidth (GB/s) sudolessly. Three read strategies,
 //             tried in order at init and locked in for the sampler's lifetime:
@@ -18,6 +18,12 @@
 //                 measuredTotalGBs while the unavailable CPU/GPU/Media split stays zero.
 //                 M3 Ultra on macOS 27 has one such group per die, "AMCC0" under PMP0 and
 //                 "AMCC1" under PMP1 (#93); both are read and summed.
+//                 M5 Ultra (macOS 27.0, #95) has the same AMCC-per-die pair AND per-requestor
+//                 histograms beside it, but those lanes don't carry the traffic: under a GPU
+//                 stream the GPU timed at 1091 GB/s, AMCC0 + AMCC1 read 1066 while "AGX" stayed
+//                 in its 1 GB/s band and PMP1 has no AGX channel at all; the CPU lanes stayed
+//                 near 1-2 GB/s with every core busy. So when the aggregates come one per die,
+//                 they are the total and the lanes are not read as a split.
 //  Notes:     Requestor map (classic path): ECPU/PCPU* -> CPU, GFX -> GPU,
 //             ISP/VENC/VDEC/PRORES/CODEC/JPEG -> Media, "DCS" is the chip-wide aggregate
 //             (= total); other = total - the above. MSR is intentionally NOT media (matches
@@ -325,18 +331,22 @@ public final class BandwidthSampler {
         requestor.uppercased().hasPrefix("AMCC")
     }
 
-    /// The total from AMCC aggregates, used only for the aggregate-only layout: one AMCC per
-    /// PMP group, no additive requestor lanes (M3 Max/macOS 27 has one group, #46; M3 Ultra one
-    /// per die, #93). Each die's controller carries only its own traffic, so the dies add: on an
-    /// Ultra under a 733 GB/s GPU stream, AMCC0 + AMCC1 read 370.8 + 367.6. If any requestor
-    /// lane exists (M4/M5), AMCC is ignored and the lanes are summed, as before. Two aggregates
-    /// in ONE group are ambiguous, so neither a total nor a bound is reported for them.
+    /// The total from AMCC aggregates. Used when they are the whole signal (one AMCC per PMP
+    /// group, no requestor lanes: M3 Max/macOS 27 has one group, #46; M3 Ultra one per die, #93)
+    /// and whenever they come one per die across two or more groups, lanes or not: on the
+    /// M5 Ultra the lanes beside them miss the traffic (#95). Each die's controller carries only
+    /// its own traffic, so the dies add: on an M3 Ultra under a 733 GB/s GPU stream, AMCC0 +
+    /// AMCC1 read 370.8 + 367.6; on an M5 Ultra under 1091 GB/s, 542.2 + 523.6. A single AMCC
+    /// beside requestor lanes (M4/M5 Max) is ignored and the lanes are summed, as before: there
+    /// it sits on its floor near idle and nobody has checked it against a timed load. Two
+    /// aggregates in ONE group are ambiguous, so neither a total nor a bound is reported.
     /// When every aggregate sat wholly in its lowest band, the result is a bound (`below`), the
     /// sum of those bands, never a total: the bands are floors, not readings.
     static func pmpAggregateTotal(_ aggregates: [(group: String, reading: HistogramReading)],
                                   perRequestorChannelCount: Int) -> (total: Double?, below: Double?) {
-        guard !aggregates.isEmpty, perRequestorChannelCount == 0,
-              Set(aggregates.map(\.group)).count == aggregates.count
+        let groups = Set(aggregates.map(\.group))
+        guard !aggregates.isEmpty, groups.count == aggregates.count,
+              perRequestorChannelCount == 0 || groups.count >= 2
         else { return (nil, nil) }
         if aggregates.allSatisfy(\.reading.wholeInLowestBand) {
             return (nil, aggregates.reduce(0) { $0 + $1.reading.lowestBandGBs })
@@ -393,14 +403,18 @@ public final class BandwidthSampler {
         }
 
         var result = BandwidthSample()
-        result.cpuGBs = cpu
-        result.gpuGBs = gpu
-        result.mediaGBs = media
-        result.aneGBs = ane
-        result.otherGBs = other
         let aggregate = Self.pmpAggregateTotal(aggregates, perRequestorChannelCount: perRequestorChannelCount)
         result.measuredTotalGBs = aggregate.total
         result.belowGBs = aggregate.below
+        // Where the aggregates are the reading, any lanes beside them are not a split of it
+        // (M5 Ultra, #95): they keep their zero defaults and read as unknown (hasRequestorSplit).
+        if result.hasRequestorSplit {
+            result.cpuGBs = cpu
+            result.gpuGBs = gpu
+            result.mediaGBs = media
+            result.aneGBs = ane
+            result.otherGBs = other
+        }
         result.isEstimated = true
         return result
     }

@@ -134,6 +134,28 @@ lowest band, the sample carries `belowGBs` (the sum of those bands) and no total
 the same treatment with its 32 GB/s band. One busy die beside an idle one is still a reading; the
 idle die then counts at its band label, an overestimate of at most that band.
 
+### macOS 27 / M5 Ultra — AMCC per die, and requestor lanes that miss the traffic
+
+On macOS 27.0 (26A428), Mac Studio M5 Ultra (Mac17,15, 10 Super + 20 Performance), from
+[@KoheiKanagu](https://github.com/KoheiKanagu)'s `--chip-report` in
+[issue #95](https://github.com/kennss/SiliconScope/issues/95), 2026-11-22:
+
+- `AMC Stats` is unsubscribable; `PMP0` and `PMP1` / `DCS BW` are read, 37 requestors in all.
+- Each group has one aggregate, `AMCC0` (PMP0) and `AMCC1` (PMP1), with bands 64, 128, … 576 GB/s,
+  and beside them per-requestor histograms (`MACC0`–`3`, `PACC0`/`1`, `AGX`, `ANE0`/`1 L0`/`L1`,
+  media, display). `AGX` exists only in `PMP0`.
+- Under a GPU kernel that timed itself at **1091.3 GB/s**, `AMCC0` + `AMCC1` read 542.2 + 523.6 =
+  **1065.8 GB/s** (0.98). `AGX` sat wholly in its 1 GB/s band, and the lanes summed to ~13 GB/s.
+  With every CPU core busy the CPU lanes stayed at 1–2.5 GB/s. Every phase without a memory
+  stream left both AMCCs wholly in their 64 GB/s band.
+- Most stream residency was in the top 576 GB/s band (64 % on die 0, 36 % on die 1), so a heavier
+  load could be clipped there; not yet seen.
+
+So when the AMCC aggregates come one per die (two or more groups), `BandwidthSampler` uses them
+as the total even with requestor lanes present, and the lanes are not read as a split (they show
+"—"). A single AMCC beside lanes (M4/M5 Max) keeps the old rule: lanes summed, AMCC ignored,
+because it sits on its floor near idle and has not been checked against a timed load there.
+
 ### M4 Max / macOS 26.5.2 — "AMC Stats" subscription fails outright; data relocated to `PMP`/"DCS BW"
 
 Verified on this project's own hardware (Apple M4 Max, macOS 26.5.2, Darwin). Distinct failure
