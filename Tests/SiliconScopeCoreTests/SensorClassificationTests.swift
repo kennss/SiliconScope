@@ -1,7 +1,7 @@
 //
 //  File:      SensorClassificationTests.swift
 //  Created:   2026-06-20
-//  Updated:   2026-11-22
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins the pure classification maps: SMC-key → category, raw HID name → friendly
 //             label/category, the per-generation curated key catalog, and the bandwidth
@@ -131,6 +131,13 @@ final class SensorClassificationTests: XCTestCase {
         XCTAssertEqual(Set(ultraKeys).count, ultraKeys.count, "a key listed twice shows one sensor twice")
         // GPU keys are the same on both: die 2's GPU is not measured yet.
         XCTAssertEqual(ultra.filter { $0.category == .gpu }.map(\.key), max.filter { $0.category == .gpu }.map(\.key))
+        // Both dies named by die (#94 follow-up): no core names left on the Ultra's Tf keys,
+        // and Die 1's numbering has no gap where Tf0E/Tf4E were dropped and Tf0D/Tf4D are absent.
+        let dieOne = ultra.filter { $0.name.hasPrefix("Die 1") }
+        XCTAssertEqual(dieOne.map(\.key), ["Tf04", "Tf09", "Tf0A", "Tf0B", "Tf44", "Tf49", "Tf4A", "Tf4B", "Tf0D", "Tf4D"])
+        XCTAssertEqual(dieOne.map(\.name), (1...10).map { "Die 1 CPU \($0)" })
+        XCTAssertFalse(ultra.contains { $0.key.hasPrefix("Tf") && $0.name.hasPrefix("P-Core") })
+        XCTAssertTrue(max.contains { $0.key == "Tf04" && $0.name == "P-Core 1" }, "M3 Max keeps its names")
         // Display order: every CPU entry before the first GPU entry.
         let lastCPU = ultra.lastIndex { $0.category == .cpu }!, firstGPU = ultra.firstIndex { $0.category == .gpu }!
         XCTAssertLessThan(lastCPU, firstGPU)

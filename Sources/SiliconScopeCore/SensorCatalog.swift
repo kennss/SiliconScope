@@ -1,7 +1,7 @@
 //
 //  File:      SensorCatalog.swift
 //  Created:   2026-06-19
-//  Updated:   2026-11-22
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Curated per-generation SMC temperature-key tables for Apple Silicon (M1–M5).
 //             Apple's SMC FourCC keys are near-arbitrary and change every generation, so the
@@ -20,9 +20,10 @@
 //             checked whether those keys exist or what they would read, is unchanged. On the
 //             Ultra `x4` and `xE` read the same sensor (equal to 0.1 °C across 14 captures, idle
 //             and loaded), so the `xE` keys are dropped there; that duplication is unverified on
-//             M3 Max, which keeps both. The second die's keys are named "Die 2 CPU n", by die
-//             and not core: which key is which core, and E vs P, are not known. Its GPU keys
-//             are left out until a measurement separates them (a GPU load heats both dies).
+//             M3 Max, which keeps both. On the Ultra the `Tf` CPU keys of both dies are named
+//             "Die 1/2 CPU n", by die and not core: which key is which core is not known
+//             (M3 Max keeps its "P-Core n" names). The second die's GPU keys are left out until
+//             a measurement separates them (a GPU load heats both dies).
 //
 import Foundation
 
@@ -105,16 +106,23 @@ public enum SensorCatalog {
         gpu([("Tf14", "GPU 1"), ("Tf18", "GPU 2"), ("Tf19", "GPU 3"), ("Tf1A", "GPU 4"),
              ("Tf24", "GPU 5"), ("Tf28", "GPU 6"), ("Tf29", "GPU 7"), ("Tf2A", "GPU 8")])
 
-    /// M3 Ultra (#94): the first die's table without the `xE` duplicates of `x4`, then the second die's CPU keys.
+    /// M3 Ultra (#94): both dies' CPU keys named by die, then the M3 GPU keys.
+    /// The first die's `Tf` keys are renamed from "P-Core n" because the Ultra's two dies make the
+    /// reason plain: which key is which core is not known, on either die. `Tf0E`/`Tf4E` are left
+    /// out (== `Tf04`/`Tf44` on the Ultra). `Tf0D`/`Tf4D` are absent on the 28-core Ultra and kept
+    /// last for the 32-core one, unchecked there, so the numbering has no gaps on either.
     private static let m3Ultra: [CuratedSensor] = {
-        let duplicates: Set<String> = ["Tf0E", "Tf4E"]   // == Tf04 / Tf44 on the Ultra
-        let dieOne = m3.filter { !duplicates.contains($0.key) }
-        let dieTwoCPU = cpu([("Tf54", "Die 2 CPU 1"), ("Tf59", "Die 2 CPU 2"),
-                             ("Tf5A", "Die 2 CPU 3"), ("Tf5B", "Die 2 CPU 4"),
-                             ("Tf94", "Die 2 CPU 5"), ("Tf99", "Die 2 CPU 6"),
-                             ("Tf9A", "Die 2 CPU 7"), ("Tf9B", "Die 2 CPU 8")])
-        // CPU entries stay together: the second die's cores follow the first die's, before the GPU.
-        return dieOne.filter { $0.category == .cpu } + dieTwoCPU + dieOne.filter { $0.category != .cpu }
+        let eCores = m3.filter { $0.key.hasPrefix("Te") }
+        let dies = cpu([("Tf04", "Die 1 CPU 1"), ("Tf09", "Die 1 CPU 2"),
+                        ("Tf0A", "Die 1 CPU 3"), ("Tf0B", "Die 1 CPU 4"),
+                        ("Tf44", "Die 1 CPU 5"), ("Tf49", "Die 1 CPU 6"),
+                        ("Tf4A", "Die 1 CPU 7"), ("Tf4B", "Die 1 CPU 8"),
+                        ("Tf0D", "Die 1 CPU 9"), ("Tf4D", "Die 1 CPU 10"),
+                        ("Tf54", "Die 2 CPU 1"), ("Tf59", "Die 2 CPU 2"),
+                        ("Tf5A", "Die 2 CPU 3"), ("Tf5B", "Die 2 CPU 4"),
+                        ("Tf94", "Die 2 CPU 5"), ("Tf99", "Die 2 CPU 6"),
+                        ("Tf9A", "Die 2 CPU 7"), ("Tf9B", "Die 2 CPU 8")])
+        return eCores + dies + m3.filter { $0.category == .gpu }
     }()
 
     private static let m4: [CuratedSensor] =
