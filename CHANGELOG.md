@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+**M3 Ultra: both dies' CPU temperatures.** The sensor table read only the first die's CPU
+keys, so a load macOS ran on the second die left SiliconScope's CPU temperature nearly flat.
+On an M3 Ultra the Sensors card now also lists the second die's eight CPU sensors
+("Die 2 CPU 1–8"), and the CPU temperature includes them. Two keys that read the same
+sensor as two others (`Tf0E`/`Tf4E`) no longer show the same value twice. @SpencerCurtis
+measured which die each key follows, recording where macOS ran the load
+([#94](https://github.com/kennss/SiliconScope/issues/94)). Other M3 chips are unchanged.
+
 ## v4.9.1 — 2026-11-20
 
 **No zeros where nothing was measured.** M3 Max and M3 Ultra (and A18) report only total

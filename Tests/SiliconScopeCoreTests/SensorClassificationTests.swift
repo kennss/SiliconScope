@@ -1,7 +1,7 @@
 //
 //  File:      SensorClassificationTests.swift
 //  Created:   2026-06-20
-//  Updated:   2026-09-24
+//  Updated:   2026-11-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Pins the pure classification maps: SMC-key → category, raw HID name → friendly
 //             label/category, the per-generation curated key catalog, and the bandwidth
@@ -111,6 +111,37 @@ final class SensorClassificationTests: XCTestCase {
         XCTAssertTrue(m1.contains { $0.key == "Tp01" && $0.name == "P-Core 1" })
         XCTAssertTrue(m1.contains { $0.key == "Tp09" && $0.name == "E-Core 1" })
         XCTAssertTrue(m1.contains { $0.key == "Tg05" && $0.name == "GPU 1" })
+    }
+
+    /// #94: the M3 Ultra adds its second die's CPU keys and drops the `xE` keys that read the
+    /// same sensor as `x4` there. A non-Ultra M3 must keep the original table untouched.
+    func testM3UltraAddsSecondDieOnlyOnUltra() {
+        let max = SensorCatalog.curated(for: .m3, ultra: false)
+        let ultra = SensorCatalog.curated(for: .m3, ultra: true)
+        let maxKeys = max.map(\.key), ultraKeys = ultra.map(\.key)
+
+        XCTAssertEqual(max.filter { $0.category == .cpu }.count, 16)   // 4 E + 12 P, as before
+        XCTAssertFalse(maxKeys.contains { $0.hasPrefix("Tf5") || $0.hasPrefix("Tf9") })
+        XCTAssertTrue(maxKeys.contains("Tf0E") && maxKeys.contains("Tf4E"))
+
+        XCTAssertFalse(ultraKeys.contains("Tf0E") || ultraKeys.contains("Tf4E"))
+        let dieTwo = ultra.filter { $0.name.hasPrefix("Die 2") }
+        XCTAssertEqual(dieTwo.map(\.key), ["Tf54", "Tf59", "Tf5A", "Tf5B", "Tf94", "Tf99", "Tf9A", "Tf9B"])
+        XCTAssertTrue(dieTwo.allSatisfy { $0.category == .cpu })
+        XCTAssertEqual(Set(ultraKeys).count, ultraKeys.count, "a key listed twice shows one sensor twice")
+        // GPU keys are the same on both: die 2's GPU is not measured yet.
+        XCTAssertEqual(ultra.filter { $0.category == .gpu }.map(\.key), max.filter { $0.category == .gpu }.map(\.key))
+        // Display order: every CPU entry before the first GPU entry.
+        let lastCPU = ultra.lastIndex { $0.category == .cpu }!, firstGPU = ultra.firstIndex { $0.category == .gpu }!
+        XCTAssertLessThan(lastCPU, firstGPU)
+    }
+
+    /// Only M3 has a measured second die; other generations ignore `ultra`.
+    func testUltraFlagChangesOnlyM3() {
+        for gen in [AppleSiliconGen.m1, .m2, .m4, .m5] {
+            XCTAssertEqual(SensorCatalog.curated(for: gen, ultra: true).map(\.key),
+                           SensorCatalog.curated(for: gen, ultra: false).map(\.key), "\(gen)")
+        }
     }
 
     func testEveryKnownGenerationHasCpuAndGpuKeys() {

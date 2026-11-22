@@ -1,7 +1,7 @@
 //
 //  File:      SensorCatalog.swift
 //  Created:   2026-06-19
-//  Updated:   2026-09-12
+//  Updated:   2026-11-22
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Curated per-generation SMC temperature-key tables for Apple Silicon (M1–M5).
 //             Apple's SMC FourCC keys are near-arbitrary and change every generation, so the
@@ -12,6 +12,17 @@
 //             License. Variants (Pro/Max/Ultra) need no special-casing: keys that don't
 //             exist on a given die simply don't read back and are skipped. Names are kept
 //             short for the compact dropdown; the SensorCategory groups them.
+//             Exception — M3 Ultra (#94, measured by @SpencerCurtis on Mac15,14): an Ultra is two
+//             dies, and its second die's CPU sensors are separate keys (`Tf5x`/`Tf9x`, mirroring
+//             the first die's `Tf0x`/`Tf4x`). A load macOS placed on the second die alone (IOReport's
+//             per-core `DIE_1_` residency) raised them and left `Tf0x`/`Tf4x` flat. They
+//             are added only when the brand string says Ultra, so an M3 Max, where nobody has
+//             checked whether those keys exist or what they would read, is unchanged. On the
+//             Ultra `x4` and `xE` read the same sensor (equal to 0.1 °C across 14 captures, idle
+//             and loaded), so the `xE` keys are dropped there; that duplication is unverified on
+//             M3 Max, which keeps both. The second die's keys are named "Die 2 CPU n", by die
+//             and not core: which key is which core, and E vs P, are not known. Its GPU keys
+//             are left out until a measurement separates them (a GPU load heats both dies).
 //
 import Foundation
 
@@ -44,12 +55,16 @@ public enum SensorCatalog {
         }
     }
 
+    /// Whether this Mac's chip is an Ultra (two dies fused), from the brand string.
+    public static let isUltra: Bool = brandString().contains("Ultra")
+
     /// Curated (key, name, category) entries for a generation, in display order.
-    public static func curated(for gen: AppleSiliconGen) -> [CuratedSensor] {
+    /// `ultra` adds what is measured for that generation's second die (only M3 so far, #94).
+    public static func curated(for gen: AppleSiliconGen, ultra: Bool = isUltra) -> [CuratedSensor] {
         switch gen {
         case .m1:      return m1
         case .m2:      return m2
-        case .m3:      return m3
+        case .m3:      return ultra ? m3Ultra : m3
         case .m4:      return m4
         case .m5:      return m5
         case .a18:     return []   // no curated SMC table yet — falls back to HID temps (#12)
@@ -89,6 +104,18 @@ public enum SensorCatalog {
              ("Tf4A", "P-Core 9"), ("Tf4B", "P-Core 10"), ("Tf4D", "P-Core 11"), ("Tf4E", "P-Core 12")]) +
         gpu([("Tf14", "GPU 1"), ("Tf18", "GPU 2"), ("Tf19", "GPU 3"), ("Tf1A", "GPU 4"),
              ("Tf24", "GPU 5"), ("Tf28", "GPU 6"), ("Tf29", "GPU 7"), ("Tf2A", "GPU 8")])
+
+    /// M3 Ultra (#94): the first die's table without the `xE` duplicates of `x4`, then the second die's CPU keys.
+    private static let m3Ultra: [CuratedSensor] = {
+        let duplicates: Set<String> = ["Tf0E", "Tf4E"]   // == Tf04 / Tf44 on the Ultra
+        let dieOne = m3.filter { !duplicates.contains($0.key) }
+        let dieTwoCPU = cpu([("Tf54", "Die 2 CPU 1"), ("Tf59", "Die 2 CPU 2"),
+                             ("Tf5A", "Die 2 CPU 3"), ("Tf5B", "Die 2 CPU 4"),
+                             ("Tf94", "Die 2 CPU 5"), ("Tf99", "Die 2 CPU 6"),
+                             ("Tf9A", "Die 2 CPU 7"), ("Tf9B", "Die 2 CPU 8")])
+        // CPU entries stay together: the second die's cores follow the first die's, before the GPU.
+        return dieOne.filter { $0.category == .cpu } + dieTwoCPU + dieOne.filter { $0.category != .cpu }
+    }()
 
     private static let m4: [CuratedSensor] =
         cpu([("Te05", "E-Core 1"), ("Te0S", "E-Core 2"), ("Te09", "E-Core 3"), ("Te0H", "E-Core 4"),
