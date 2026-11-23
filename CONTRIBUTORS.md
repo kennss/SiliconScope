@@ -7,8 +7,9 @@ or wrote parts of it outright. This page is where they are credited.
 ## Measured on hardware this project doesn't have
 
 **Most of the chips SiliconScope reads correctly are chips it has never run on.** That is not a
-figure of speech: this project owns an M1 Max. M2 Max, M4 Max, M5 Max and Intel support exist
-because people measured on their own hardware carefully enough that nothing had to be guessed.
+figure of speech: this project owns an M1 Max. M2 Max, M3 Ultra, M4 Max, M5 Max, M5 Ultra and
+Intel support exist because people measured on their own hardware carefully enough that nothing
+had to be guessed.
 
 - **[@fparrav](https://github.com/fparrav)** — M4 Max, **diagnosed and fixed**. He found that
   `AMC Stats` enumerates but refuses to subscribe — a different failure from the one already open —
@@ -46,7 +47,17 @@ because people measured on their own hardware carefully enough that nothing had 
   exactly what it can't yet tell ([#93](https://github.com/kennss/SiliconScope/issues/93)). And
   the memory-bandwidth fix on two dies: a GPU kernel timing its own traffic beside what SiliconScope
   read, until the missing half was found. **The procedure he built by hand for all of this is now
-  `sscope-cli --chip-report`**, so the next person measures a Mac with one command.
+  `sscope-cli --chip-report`**, so the next person measures a Mac with one command. Then he came
+  back to the one question #93 had left open, the second die's sensors, and settled it by reading
+  which die each core sat on while macOS ran a load on one die alone. That put both dies' CPU
+  temperatures in the table, named by die rather than by a core nobody can identify
+  ([#94](https://github.com/kennss/SiliconScope/issues/94)).
+- **[@KoheiKanagu](https://github.com/KoheiKanagu)** — M5 Ultra, **diagnosed**. The first
+  `--chip-report` from someone else's Mac, two days after it shipped: memory bandwidth read about
+  1 % of the real traffic, and he traced it to the line that trusted requestor lanes that never
+  moved, with the two memory controllers' 1066 GB/s beside the 1091 his GPU kernel timed. He reran
+  it on the fix the same day, which is how an idle reading flickering to "128 GB/s" was found too
+  ([#95](https://github.com/kennss/SiliconScope/issues/95)).
 
 ## Wrote parts of the app
 
