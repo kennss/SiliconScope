@@ -498,6 +498,13 @@ Five items, corrected against the source. All are hierarchy problems; none needs
    - **Lines** (`Sparkline`) stay for slow levels read as a level — temperatures, memory in use —
      and for overlays, which bars cannot draw without hiding each other. A line takes the last
      `History.lineWindow` (60) samples, so its time span is unchanged.
+   - **A line paired with bars** (beside or under a `WellChart`: the Memory trend under BW, the
+     VRAM and RAM wells in Fleet tiles and the Linux view) is drawn on the bars' grid instead
+     (`onBarGrid`): one point per bar centre, as many as the bars show, so the pair reads on one
+     time axis. Stretched, it spanned a different stretch of time than the bars next to it.
+   - **Everywhere (2026-11-23):** Fleet tiles and the Linux server view no longer overlay two
+     lines; each pair is a bars well and a line well (ANE and bandwidth are both bars). The
+     Inspector draws CPU, IPC and power as bars that print their peak, and keeps memory as lines.
    - Still rejected: ring/donut gauges and the light theme (§2). The bars are the btop form in
      the existing palette, not iStat's look.
 

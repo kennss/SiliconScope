@@ -1,7 +1,7 @@
 //
 //  File:      DashboardView.swift
 //  Created:   2026-06-08
-//  Updated:   2026-11-20
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Full-window dashboard. Header (chip, cores, SoC power, battery), then
 //             CPU + GPU side by side, combined Memory|Bandwidth and Network|Disk cards
@@ -1192,14 +1192,16 @@ private struct MemoryBandwidthCard: View {
             // #20: the dense Memory column has no room for its own trend, so the memory-used trend
             // shares this (sparser) column's spare space, under bandwidth-over-time. Bandwidth
             // moves tick to tick, so it is bars, on the same observed-peak scale as the Total bar
-            // above; memory in use is a slow level, so it stays a line, scaled to total RAM.
+            // above; memory in use is a slow level, so it stays a line, scaled to total RAM, drawn
+            // on the bars' grid so the two wells read on one time axis.
             VStack(alignment: .leading, spacing: Space.card) {
                 WellChart(values: bwHistory, color: Self.bandwidthColor, label: "BW",
                           ceiling: max(bandwidthPeak, 1))
                     .frame(height: Layout.Meter.wellCompact)
                 TrendWell(values: memHistory, color: Self.memoryTrendColor,
                           axis: .ceiling(max(memory.totalGB, 1)),
-                          label: "Mem", value: String(format: "%.0f%%", memory.usedPercent))
+                          label: "Mem", value: String(format: "%.0f%%", memory.usedPercent),
+                          onBarGrid: true)
                     .frame(height: Layout.Meter.wellCompact)
             }
         }

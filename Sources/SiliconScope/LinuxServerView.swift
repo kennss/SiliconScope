@@ -1,7 +1,7 @@
 //
 //  File:      LinuxServerView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-10-21
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Detail dashboard for a remote LINUX / NVIDIA server — GPU-centric, distinct from the
 //             Mac layout. The header carries the machine's identity (OS, agent, cores, RAM, GPU,
@@ -14,10 +14,11 @@
 //             (load, VRAM, temperature), and the chosen card's chart, detail and processes below —
 //             four rows, still never taller than This Mac.
 //             Deliberately omits Apple-only concepts (ANE / E-P / Media).
-//  Notes:     Reuses the app's shared `Sparkline` + `MetricPalette` (line + gradient fill, NOT Swift
-//             Charts) so it matches the local GPU/CPU cards — GPU=green, VRAM=sky-cyan, CPU=blue,
-//             RAM=amber. Each graph overlays two traces on a shared 0…1 axis (util ÷100; VRAM/RAM
-//             fractions as-is). The caption's tinted metric word (GPU/VRAM/CPU/RAM) is the legend.
+//  Notes:     Reuses the app's shared `WellChart` / `TrendWell` + `MetricPalette` (NOT Swift Charts)
+//             so it matches the local cards — GPU=green, VRAM=sky-cyan, CPU=blue, RAM=amber. Each
+//             chart card stacks two wells on 0…1 (util ÷100; VRAM/RAM fractions as-is): utilisation
+//             as bars, one per sample, and memory in use as a line under it. The caption's tinted
+//             metric word (GPU/VRAM/CPU/RAM) is the legend.
 //             Driven by remote MachineMetrics + FleetMonitor's rolling history.
 //
 import SwiftUI
@@ -232,19 +233,22 @@ struct LinuxServerView: View {
         Text(s).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
     }
 
-    /// A card with a tinted value caption and two overlaid `Sparkline` traces on a shared 0…1 axis
-    /// (values pre-normalized by the caller) — matching the local GPU/CPU cards' look.
+    /// A card with a tinted value caption, utilisation `a` as bars and memory in use `b` as a line
+    /// in a shorter well under it, both on 0…1 (values pre-normalized by the caller) — the local
+    /// cards' form: bars for what moves tick to tick, a line for a slow level.
     private func dualChart(title: String, caption: Text,
                            _ a: [Double], _ ca: Color, _ b: [Double], _ cb: Color) -> some View {
         card(title) {
             caption.fixedSize(horizontal: false, vertical: true)
-            // The chart takes whatever height the row leaves it, so the card fits its row instead
-            // of setting the row's height.
-            if history.count >= 2 {
-                Sparkline([Trace(a, ca), Trace(b, cb)], role: .trend)
-                    .frame(maxHeight: .infinity)
-            } else {
+            // The bars take whatever height the row leaves, so the card fits its row instead of
+            // setting the row's height.
+            if history.isEmpty {
                 Color.clear.frame(maxHeight: .infinity)
+            } else {
+                WellChart(values: a, color: ca, ceiling: 1)
+                    .frame(maxHeight: .infinity)
+                TrendWell(values: b, color: cb, axis: .fraction, fills: true, onBarGrid: true)
+                    .frame(height: Layout.Meter.wellCompact)
             }
         }
     }

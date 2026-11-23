@@ -1,11 +1,11 @@
 //
 //  File:      ProcessDetailTests.swift
 //  Created:   2026-06-25
-//  Updated:   2026-06-25
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Tests the pure rate math of ProcessDetail.derive — first-sample-no-rates, CPU%/IPC/
 //             power/disk/wakeup deltas over dt, the not-own guard, ANE-memory gauge, and the
-//             history roll/cap. No syscalls (raw ProcRaw values are constructed directly).
+//             history roll/cap and its gaps. No syscalls (raw ProcRaw values are constructed directly).
 //  Notes:     machToNs = 1 in tests (treat mach ticks as ns) so the arithmetic is exact.
 //
 import XCTest
@@ -68,9 +68,17 @@ final class ProcessDetailTests: XCTestCase {
         XCTAssertNil(d.ipc)
     }
 
-    func testHistoryRollsTo60() {
+    func testHistoryRollsToCapacity() {
         var h = ProcessDetailHistory()
-        for _ in 0..<70 { h.push(derive(raw(), raw(user: 100_000_000), dt: 1)) }
-        XCTAssertEqual(h.cpu.count, 60)
+        for _ in 0..<(ProcessDetailHistory.capacity + 10) { h.push(derive(raw(), raw(user: 100_000_000), dt: 1)) }
+        XCTAssertEqual(h.cpu.count, ProcessDetailHistory.capacity)
+    }
+
+    /// A rate that could not be computed is a gap in the chart, not a measured 0.
+    func testUnmeasuredRateIsAGapNotZero() {
+        var h = ProcessDetailHistory()
+        h.push(derive(raw(), raw(instr: 1000, cycles: 0), dt: 1))   // IPC undefined: no cycles
+        XCTAssertTrue(h.ipc.last?.isNaN == true)
+        XCTAssertEqual(h.cpu.count, h.ipc.count, "series stay aligned")
     }
 }

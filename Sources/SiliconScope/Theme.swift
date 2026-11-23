@@ -1,7 +1,7 @@
 //
 //  File:      Theme.swift
 //  Created:   2026-06-08
-//  Updated:   2026-11-20
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Shared visual language and reusable UI atoms (Card, Bar, KV, Sparkline, the
 //             WellChart / MirroredWellChart bar charts, PopoverButtonStyle), plus the Layout
@@ -16,7 +16,9 @@
 //             Layout.hairline must never be scaled.
 //             Charts: bars (one per sample) for series that move tick to tick, Sparkline's line
 //             for slow levels and overlays. Line charts take MetricsEngine.History.lineWindow
-//             samples; bar charts as many of History.capacity as fit at a fixed pitch.
+//             samples; bar charts as many of History.capacity as fit at a fixed pitch. A line
+//             paired with bars (`onBarGrid`) is drawn on their grid instead, so the pair shares
+//             one time axis.
 //
 import SwiftUI
 import SiliconScopeCore
@@ -1057,6 +1059,9 @@ enum ChartRole {
     /// An inline trace in a row or dropdown: a fixed height from a `Layout.Meter` token, no
     /// gridlines (there is not enough height for them to be legible).
     case inline(height: CGFloat, axis: ChartAxis = .auto)
+    /// A trace that takes all the space its container gives it, with no gridlines of its own: the
+    /// line half of a bars-and-line pair in a flexible tile or card, sized to match its neighbour.
+    case fill(axis: ChartAxis)
 }
 
 /// Line + area trend chart, for series that change slowly and are read as a level — temperatures,
@@ -1067,23 +1072,33 @@ enum ChartRole {
 struct Sparkline: View {
     let traces: [Trace]
     let role: ChartRole
+    /// Draw each sample at the centre of the bar it would be in a `WellChart` of the same width,
+    /// newest at the right edge, as many as those bars show. For a line that sits beside or under
+    /// a bar chart: both then read on one time axis, where a stretched line spans a different
+    /// stretch of time than the bars next to it.
+    let onBarGrid: Bool
+    @Environment(\.displayScale) private var displayScale
 
     /// Each trace is trimmed to `History.lineWindow`: a line stretches whatever it is given across
     /// its width, so it takes the last minute rather than the whole buffer bar charts draw from.
-    init(_ traces: [Trace], role: ChartRole) {
-        self.traces = traces.map { Trace(Array($0.values.suffix(MetricsEngine.History.lineWindow)), $0.color) }
+    /// On the bar grid it keeps the whole buffer and shows as many samples as the bars would.
+    init(_ traces: [Trace], role: ChartRole, onBarGrid: Bool = false) {
+        self.traces = onBarGrid ? traces
+            : traces.map { Trace(Array($0.values.suffix(MetricsEngine.History.lineWindow)), $0.color) }
         self.role = role
+        self.onBarGrid = onBarGrid
     }
 
     /// Single-series convenience — the common case.
-    init(_ values: [Double], color: Color = Theme.accent, role: ChartRole) {
-        self.init([Trace(values, color)], role: role)
+    init(_ values: [Double], color: Color = Theme.accent, role: ChartRole, onBarGrid: Bool = false) {
+        self.init([Trace(values, color)], role: role, onBarGrid: onBarGrid)
     }
 
     private var axis: ChartAxis {
         switch role {
         case .trend:                   return .fraction
         case .inline(_, let axis):     return axis
+        case .fill(let axis):          return axis
         }
     }
 
@@ -1098,7 +1113,19 @@ struct Sparkline: View {
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { ctx, size in
             guard size.width > 0, size.height > 0 else { return }
-            let (lo, hi) = axis.bounds(traces)
+            // Which samples are drawn, and where sample i of n sits across the width.
+            let shown: [Trace]
+            let xOf: (Int, Int) -> CGFloat
+            if onBarGrid {
+                let (bar, pitch) = BarPitch.snapped(scale: displayScale)
+                let n = BarPitch.fitting(width: size.width, scale: displayScale)
+                shown = traces.map { Trace(Array($0.values.suffix(n)), $0.color) }
+                xOf = { i, count in size.width - bar / 2 - CGFloat(count - 1 - i) * pitch }
+            } else {
+                shown = traces
+                xOf = { i, count in CGFloat(i) * size.width / CGFloat(count - 1) }
+            }
+            let (lo, hi) = axis.bounds(shown)
             let span = hi - lo
             let flat = span <= .ulpOfOne          // degenerate/flat series → center (not floor)
 
@@ -1114,11 +1141,11 @@ struct Sparkline: View {
                            style: StrokeStyle(lineWidth: 0.6, dash: [2, 3]))
             }
 
-            for trace in traces where trace.values.count > 1 {
-                let stepX = size.width / CGFloat(trace.values.count - 1)
+            for trace in shown where trace.values.count > 1 {
+                let count = trace.values.count
                 func point(_ i: Int) -> CGPoint {
                     let norm = flat ? 0.5 : (trace.values[i] - lo) / span
-                    return CGPoint(x: CGFloat(i) * stepX, y: (1 - CGFloat(norm)) * size.height)
+                    return CGPoint(x: xOf(i, count), y: (1 - CGFloat(norm)) * size.height)
                 }
                 // A gap (`.nan`) is a tick we did not measure, not a tick that read zero — see
                 // MetricDemand.swift. It breaks the trace into runs: each run is stroked and
@@ -1131,8 +1158,8 @@ struct Sparkline: View {
                     // Area = the line closed down to the baseline, filled with a top→bottom
                     // gradient. Closed under the run's own span, so a gap leaves no fill either.
                     var area = line
-                    area.addLine(to: CGPoint(x: CGFloat(run[run.count - 1]) * stepX, y: size.height))
-                    area.addLine(to: CGPoint(x: CGFloat(run[0]) * stepX, y: size.height))
+                    area.addLine(to: CGPoint(x: xOf(run[run.count - 1], count), y: size.height))
+                    area.addLine(to: CGPoint(x: xOf(run[0], count), y: size.height))
                     area.closeSubpath()
                     // Area quiet, line full: the fill is the large surface, the stroke is the mark.
                     ctx.fill(area, with: .linearGradient(
@@ -1306,6 +1333,11 @@ struct TrendWell: View {
     var axis: ChartAxis = .fraction
     var label: String? = nil
     var value: String? = nil
+    /// Unlabelled only: the line fills the well's whole height instead of a fixed strip, for a
+    /// well that stands beside or under a `WellChart` in a flexible tile or card (Fleet, Linux).
+    var fills = false
+    /// Paired with a `WellChart`: draw on its bar grid so the two read on one time axis.
+    var onBarGrid = false
 
     var body: some View {
         ChartWell(guides: false) {
@@ -1324,11 +1356,15 @@ struct TrendWell: View {
                     .padding(.horizontal, Space.tight)
                     .padding(.top, Space.hair)
                     // Pinned to the well's floor under the strip.
-                    Sparkline(values, color: color, role: .inline(height: Layout.Meter.trendWell, axis: axis))
+                    Sparkline(values, color: color, role: .inline(height: Layout.Meter.trendWell, axis: axis),
+                              onBarGrid: onBarGrid)
                         .frame(maxHeight: .infinity, alignment: .bottom)
                 }
+            } else if fills {
+                Sparkline(values, color: color, role: .fill(axis: axis), onBarGrid: onBarGrid)
             } else {
-                Sparkline(values, color: color, role: .inline(height: Layout.Meter.trendWell, axis: axis))
+                Sparkline(values, color: color, role: .inline(height: Layout.Meter.trendWell, axis: axis),
+                          onBarGrid: onBarGrid)
             }
         }
     }
@@ -1389,6 +1425,8 @@ private struct SparkSize: ViewModifier {
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         case .inline(let height, _):
             content.frame(height: height)
+        case .fill:
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

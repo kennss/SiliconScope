@@ -1,7 +1,7 @@
 //
 //  File:      FleetMonitor.swift
 //  Created:   2026-07-21
-//  Updated:   2026-10-18
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  The Mac-side fleet aggregator: owns mDNS discovery (FleetDiscovery), holds the set of
 //             discovered machines, and polls each on an interval for the latest MachineMetrics (or
@@ -271,7 +271,9 @@ final class FleetMonitor {
     /// Build one rolling-history sample from a machine's current metrics (shared local + remote).
     private func makeSample(_ m: MachineMetrics) -> Sample {
         sampleSeq += 1
-        let memFrac = m.memory.totalBytes > 0 ? Double(m.memory.usedBytes) / Double(m.memory.totalBytes) : 0
+        // No total = memory not read yet (This Mac's first tick, before the monitor's first sample):
+        // a gap, not 0 % used, which drew the RAM line rising from the floor on every launch.
+        let memFrac = m.memory.totalBytes > 0 ? Double(m.memory.usedBytes) / Double(m.memory.totalBytes) : .nan
         // Apple-only extras (nil on Linux → 0): ANE and memory bandwidth, each scaled to the
         // engine's decaying observed peak so a flat-near-zero series isn't amplified to full height.
         // Unknown power (macOS 27's slow counters before their first window, #65) is a gap in the

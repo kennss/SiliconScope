@@ -1,22 +1,23 @@
 //
 //  File:      FleetOverviewView.swift
 //  Created:   2026-07-22
-//  Updated:   2026-11-20
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  At-a-glance view of every machine at once — an adaptive grid of compact tiles. THIS
 //             MAC is always the first tile (a laptop glyph, taps through to its full dashboard);
-//             discovered remote agents follow. Each tile has the same paired-graph form as the local
-//             dashboard: a GPU+VRAM mini graph and a CPU+RAM mini graph, each overlaying two
-//             `Sparkline` traces (line + gradient fill), with the caption's metric word tinted its
-//             line color so it doubles as the legend. So a fleet of GPU boxes / Mac servers reads in
+//             discovered remote agents follow. Each tile charts its machine the way the local
+//             dashboard does: a row per pair (GPU | VRAM, CPU | RAM, and on a Mac ANE | Mem BW), each
+//             row two wells side by side — bars, one per sample, for what moves tick to tick, and a
+//             line for memory in use, a slow level. The caption's metric word is tinted its chart's
+//             color, so it doubles as the legend. So a fleet of GPU boxes / Mac servers reads in
 //             one screen ("which box is busy / idle / hot right now"). With no remote machine yet,
 //             the page carries the install command (copyable) and a link to docs/fleet.md. A tile
 //             of a box running Docker ends with its container count, and how many were restarted.
 //             A box with two GPUs charts each; with more, each card gets one caption line (four at
 //             most, then a count), as their charts would no longer fit the tile.
-//  Notes:     Uses the shared `Sparkline` + `MetricPalette` (NOT Swift Charts) to match the local
-//             GPU/CPU cards exactly — GPU=green, VRAM=sky-cyan, CPU=blue, RAM=amber. All four series
-//             are normalized to 0…1 (util ÷100; VRAM/RAM fractions as-is) to share one axis. FleetTile
+//  Notes:     Uses the shared `WellChart` / `TrendWell` + `MetricPalette` (NOT Swift Charts) to match
+//             the local cards — GPU=green, VRAM=sky-cyan, CPU=blue, RAM=amber. Every series is a 0…1
+//             fraction (util ÷100; VRAM/RAM/ANE/bandwidth fractions as-is), each in its own well. FleetTile
 //             is kind-agnostic (GPU 0 + LLM summary work for Apple + NVIDIA) and source-agnostic
 //             (local Mac = FleetMonitor.localMetrics/localHistory; remote = entry + fleet.history).
 //
@@ -121,8 +122,8 @@ private struct FleetTile: View {
                 if m.gpus.count <= 2 {
                     ForEach(m.gpus) { g in
                         gpuCaption(g, numbered: m.gpus.count > 1, apple: m.apple)
-                        miniChart(history.gpuUtil(g), MetricPalette.gpuC,
-                                  history.vramFrac(g), MetricPalette.gpuMemC)
+                        miniPair(history.gpuUtil(g), MetricPalette.gpuC,
+                                 level: history.vramFrac(g), MetricPalette.gpuMemC)
                     }
                 } else {
                     ForEach(m.gpus.prefix(Self.gpuLines)) { g in gpuCaption(g, numbered: true, apple: m.apple) }
@@ -132,12 +133,12 @@ private struct FleetTile: View {
                     }
                 }
                 cpuCaption(m)
-                miniChart(history.map { $0.cpu / 100 }, MetricPalette.cpuC,
-                          history.map { $0.memFrac }, MetricPalette.ramC)
+                miniPair(history.map { $0.cpu / 100 }, MetricPalette.cpuC,
+                         level: history.map { $0.memFrac }, MetricPalette.ramC)
                 if let a = m.apple {   // Apple-only signature metrics: ANE + memory bandwidth
                     aneCaption(a)
-                    miniChart(history.map { $0.aneFrac }, MetricPalette.aneC,
-                              history.map { $0.bwFrac }, MetricPalette.mediaC)
+                    miniPair(history.map { $0.aneFrac }, MetricPalette.aneC,
+                             bars: history.map { $0.bwFrac }, MetricPalette.mediaC)
                 }
                 if let o = m.llm?.ollama, o.running {
                     let loaded = o.loaded.first?.name
@@ -230,14 +231,31 @@ private struct FleetTile: View {
     private func tag(_ s: String, _ c: Color) -> Text { Text(s).foregroundStyle(c).bold() }
     private func dim(_ s: String) -> Text { Text(s).foregroundStyle(.secondary) }
 
-    /// Two overlaid `Sparkline` traces on a shared 0…1 axis (values pre-normalized by the caller).
-    /// Flexes to fill the tile's spare height so 2-chart and 3-chart tiles stay the same size.
-    private func miniChart(_ a: [Double], _ ca: Color, _ b: [Double], _ cb: Color) -> some View {
+    /// A busy series as bars beside a memory level as a line, each in its own well on 0…1 (values
+    /// pre-normalized by the caller). Bars cannot be overlaid without hiding each other, so the
+    /// pair sits side by side. Flexes to fill the tile's spare height so 2-row and 3-row tiles
+    /// stay the same size.
+    private func miniPair(_ a: [Double], _ ca: Color, level b: [Double], _ cb: Color) -> some View {
+        miniRow {
+            WellChart(values: a, color: ca, ceiling: 1)
+            TrendWell(values: b, color: cb, axis: .fraction, fills: true, onBarGrid: true)
+        }
+    }
+
+    /// Two busy series, both as bars, side by side (ANE | memory bandwidth).
+    private func miniPair(_ a: [Double], _ ca: Color, bars b: [Double], _ cb: Color) -> some View {
+        miniRow {
+            WellChart(values: a, color: ca, ceiling: 1)
+            WellChart(values: b, color: cb, ceiling: 1)
+        }
+    }
+
+    private func miniRow<Content: View>(@ViewBuilder _ wells: () -> Content) -> some View {
         Group {
-            if history.count >= 2 {
-                Sparkline([Trace(a, ca), Trace(b, cb)], role: .trend)
-            } else {
+            if history.isEmpty {
                 Color.clear
+            } else {
+                HStack(spacing: Space.tight) { wells() }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 26, maxHeight: .infinity)

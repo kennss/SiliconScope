@@ -1,15 +1,17 @@
 //
 //  File:      InspectorView.swift
 //  Created:   2026-06-25
-//  Updated:   2026-11-20
+//  Updated:   2026-11-23
 //  Developer: Kennt Kim / Calida Lab
 //  Overview:  Single-process Inspector sheet: every per-process metric for the focused pid —
 //             CPU (+ P/E split), Compute (IPC / instructions / cycles), Energy (power + wakeups),
 //             Memory footprint, Neural-Engine memory (the one genuine per-process ANE signal),
-//             and Disk — each with a live sparkline. Plus a clearly-labeled system-wide
+//             and Disk — each with a live chart: bars, one per sample, for CPU, IPC and power,
+//             and a line for the memory levels. Plus a clearly-labeled system-wide
 //             Accelerators card (GPU/ANE-power/Media/bandwidth are NOT attributable per process).
 //  Notes:     Reads monitor.focusedDetail/focusedHistory/focusEnded (@Observable → live updates).
-//             Built from the shared Card/KV/Sparkline atoms so it reads as part of the suite.
+//             Built from the shared Card/KV/WellChart/Sparkline atoms so it reads as part of the suite.
+//             The bar charts scale to their own peak and print it, at the KV rows' precision.
 //             Unavailable values render "—" (first sample, not-own, or chip doesn't expose them).
 //
 import SwiftUI
@@ -110,7 +112,8 @@ struct InspectorView: View {
                 KV(key: "CPU", value: pct(d.cpuPercent))
                 KV(key: "P-core / E-core", value: "\(pct(d.cpuPPercent)) / \(pct(eCore(d)))")
                 KV(key: "Threads", value: "\(d.threads)")
-                Sparkline(h.cpu, color: Theme.accent, role: .inline(height: Layout.Meter.sparkline))
+                WellChart(values: h.cpu, color: Theme.accent, ceiling: nil, format: { String(format: "%.1f%%", $0) })
+                    .frame(height: Layout.Meter.wellCompact)
             }
         }
         Card(title: "Compute") {
@@ -119,7 +122,8 @@ struct InspectorView: View {
                    valueColor: Theme.accent)
                 KV(key: "Instructions/s", value: si(d.instructionsPerSec))
                 KV(key: "Cycles/s", value: si(d.cyclesPerSec))
-                Sparkline(h.ipc, color: Palette.ane.color, role: .inline(height: Layout.Meter.sparkline))
+                WellChart(values: h.ipc, color: Palette.ane.color, ceiling: nil, format: { String(format: "%.2f", $0) })
+                    .frame(height: Layout.Meter.wellCompact)
             }
         }
         Card(title: "Energy") {
@@ -127,7 +131,9 @@ struct InspectorView: View {
                 KV(key: "Power", value: d.powerWatts.map { String(format: "%.2f W", $0) } ?? "—",
                    valueColor: Theme.accent)
                 KV(key: "Wakeups/s", value: d.wakeupsPerSec.map { String(format: "%.0f", $0) } ?? "—")
-                Sparkline(h.power, color: Palette.flowOut.color, role: .inline(height: Layout.Meter.sparkline))
+                WellChart(values: h.power, color: Palette.flowOut.color, ceiling: nil,
+                          format: { String(format: "%.2f W", $0) })
+                    .frame(height: Layout.Meter.wellCompact)
             }
         }
         Card(title: "Memory") {
